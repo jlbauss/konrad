@@ -10,6 +10,8 @@
     "openrouter": {}
   },
 
+  "instructions": ["/home/node/.opencode-base-instructions.md"],
+
   // Automatically update OpenCode when a new version is available.
   "autoupdate": true
 }

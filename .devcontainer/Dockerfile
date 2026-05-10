@@ -33,3 +33,5 @@ USER node
 # Install OpenCode globally so you can run it with just `opencode` in the terminal.
 # The -g flag makes it available as a system-wide command.
 RUN npm install -g opencode-ai
+
+COPY opencode-base-instructions.md /home/node/.opencode-base-instructions.md

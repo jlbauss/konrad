@@ -4,17 +4,11 @@
 
 This repo is where the sandboxed devcontainer for OpenCode is developed. There is no build, test, or lint pipeline.
 
-## Environment
+## Shared instructions
 
-- Devcontainer based on `node:24` (Dockerfile in `.devcontainer/`)
-- Remote user is `node`, workspace at `/workspace`
-- `NODE_OPTIONS=--max-old-space-size=4096` is set to avoid npm OOM on heavy installs
-- Global npm prefix is `/home/node/.npm-global` (already on `PATH`) — needed because `/usr/local/lib/node_modules` is root-owned
-- `opencode-ai` is installed globally inside the container
+Container-level facts (environment, git workflow) are baked into the Docker image at `/home/node/.opencode-base-instructions.md` and referenced via `opencode.json` `instructions`. Every project using this devcontainer inherits them automatically.
 
-## Git workflow
-
-- Perform a meaningful git commit whenever a new feature is implemented successfully.
+When updating container-level guidance, edit `.devcontainer/opencode-base-instructions.md` — not individual project `AGENTS.md` files.
 
 ## OpenCode config
 
