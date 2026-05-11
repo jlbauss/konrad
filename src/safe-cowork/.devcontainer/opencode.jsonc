@@ -1,0 +1,17 @@
+{
+  // Points to the official OpenCode JSON schema.
+  // This enables autocomplete and validation in editors like VS Code.
+  "$schema": "https://opencode.ai/config.json",
+
+  // Configure which LLM providers OpenCode can use.
+  // "openrouter": {} means "enable OpenRouter with default settings".
+  // You'll set your API key later via the /connect command inside OpenCode.
+  "provider": {
+    "openrouter": {}
+  },
+
+  "instructions": ["/home/node/.opencode-base-instructions.md"],
+
+  // Automatically update OpenCode when a new version is available.
+  "autoupdate": true
+}
