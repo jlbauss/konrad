@@ -1,48 +1,58 @@
-# Start from the official Node.js 24 image.
-# This gives us Node.js + npm pre-installed, which OpenCode needs to run.
 FROM node:24
 
-# Install a few essential system packages.
-# --no-install-recommends keeps the image small by skipping suggested packages.
-# apt-get clean && rm ... removes the package cache to save disk space.
-RUN apt update && apt install -y --no-install-recommends \
-  less git procps sudo fzf zsh man-db unzip gnupg2 nano\
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+  less git procps fzf zsh man-db unzip gnupg2 nano \
   gh iptables ipset iproute2 dnsutils aggregate jq \
   ripgrep fd-find bat tree htop \
   pandoc poppler-utils tesseract-ocr imagemagick ffmpeg \
-  python3 python3-pip python3-venv pipx \
+  python3 curl ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 
-# Debian nennt diese Tools anders — Symlinks für gewohnte Namen
 RUN ln -sf /usr/bin/fdfind /usr/local/bin/fd && \
   ln -sf /usr/bin/batcat /usr/local/bin/bat
 
-# Create the /workspace directory where your project files will live,
-# and make the "node" user the owner (so you can edit files without being root).
 RUN mkdir -p /workspace && chown -R node:node /workspace
-
-# Set the default directory when you open a terminal in the container.
 WORKDIR /workspace
 
-# Increase Node.js memory limit so npm doesn't crash during heavy installs.
-ENV NODE_OPTIONS=--max-old-space-size=4096
+# uv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
 
-# Set up a global npm directory that the "node" user can write to.
-# Without this, "npm install -g" fails because the default location
-# (/usr/local/lib/node_modules) is owned by root.
-ENV NPM_CONFIG_PREFIX=/home/node/.npm-global
-ENV PATH=$PATH:/home/node/.npm-global/bin
+# System-wide Python venv with libs for all four skills
+ENV VIRTUAL_ENV=/opt/venv
+RUN uv venv $VIRTUAL_ENV --python 3.12 && \
+  uv pip install --no-cache \
+  reportlab pypdf \
+  pandas openpyxl \
+  "markitdown[pptx]"
 
-# Switch from root to the "node" user for safety.
-# Everything after this runs as an unprivileged user.
+# Node tools for minimax-pdf (playwright/chromium) and pptx-generator (pptxgenjs)
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright-browsers
+RUN npm install -g playwright pptxgenjs && \
+  npx playwright install --with-deps chromium && \
+  rm -rf /var/lib/apt/lists/*
+
+# .NET SDK 8 for minimax-docx
+ENV DOTNET_ROOT=/usr/share/dotnet \
+  DOTNET_CLI_TELEMETRY_OPTOUT=1 \
+  DOTNET_NOLOGO=1
+RUN curl -sSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh && \
+  chmod +x /tmp/dotnet-install.sh && \
+  /tmp/dotnet-install.sh --channel 8.0 --install-dir "$DOTNET_ROOT" && \
+  ln -s "$DOTNET_ROOT/dotnet" /usr/local/bin/dotnet && \
+  rm /tmp/dotnet-install.sh
+
+# Node user's npm prefix
+RUN mkdir -p /home/node/.npm-global && chown -R node:node /home/node/.npm-global
+
+ENV NODE_OPTIONS=--max-old-space-size=4096 \
+  NPM_CONFIG_PREFIX=/home/node/.npm-global \
+  PATH="/opt/venv/bin:/home/node/.npm-global/bin:/home/node/.local/bin:$PATH"
+
 USER node
 
-# Install OpenCode globally so you can run it with just `opencode` in the terminal.
-# The -g flag makes it available as a system-wide command.
-RUN npm install -g opencode-ai
+RUN npm install -g opencode-ai && \
+  uv tool install httpie
 
-RUN pipx install uv && pipx install httpie
-
-# COPY configurations to global opencode folder
 COPY --chown=node:node opencode /home/node/.config/opencode/
-
