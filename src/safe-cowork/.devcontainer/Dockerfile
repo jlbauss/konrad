@@ -43,5 +43,6 @@ RUN npm install -g opencode-ai
 
 RUN pipx install uv && pipx install httpie
 
-COPY opencode-base-instructions.md /home/node/.opencode-base-instructions.md
-COPY opencode.jsonc /home/node/.config/opencode/opencode.jsonc
+# COPY configurations to global opencode folder
+COPY --chown=node:node opencode /home/node/.config/opencode/
+
