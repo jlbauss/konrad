@@ -1,24 +1,25 @@
 {
   // The name shown in VS Code when the devcontainer is running.
   "name": "OpenCode Sandbox",
-
   // Tells VS Code how to build the container.
   // It will look for a file called "Dockerfile" in the same .devcontainer folder.
   "build": {
     "dockerfile": "Dockerfile"
   },
-
   // The Linux user that VS Code will connect as.
   // "node" is the default non-root user in the node:20 Docker image.
   "remoteUser": "node",
-
+  "containerUser": "node",
+  "updateRemoteUserUID": false,
+  "runArgs": [
+    "--userns=keep-id:uid=1000,gid=1000"
+  ],
   // Mount your local project folder into the container.
   // ${localWorkspaceFolder} = the folder you opened in VS Code on your host machine.
   // /workspace = where it appears inside the container.
   // type=bind = a live two-way sync (changes on either side are visible immediately).
   // consistency=delegated = slightly faster on macOS/Windows (container writes are preferred).
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=delegated",
-
   // The folder VS Code opens when the container starts.
   "workspaceFolder": "/workspace"
 }
