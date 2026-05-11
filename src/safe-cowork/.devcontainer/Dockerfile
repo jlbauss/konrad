@@ -7,8 +7,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   gh iptables ipset iproute2 dnsutils aggregate jq \
   ripgrep fd-find bat tree htop \
   pandoc poppler-utils tesseract-ocr imagemagick ffmpeg \
-  python3 curl ca-certificates \
-  && rm -rf /var/lib/apt/lists/*
+  python3 curl ca-certificates \      
+  fonts-dejavu fonts-liberation fonts-noto-core
 
 RUN ln -sf /usr/bin/fdfind /usr/local/bin/fd && \
   ln -sf /usr/bin/batcat /usr/local/bin/bat
@@ -21,9 +21,9 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
 
 # System-wide Python venv with libs for all four skills
 ENV VIRTUAL_ENV=/opt/venv
-RUN uv venv $VIRTUAL_ENV --python 3.12 && \
+RUN uv venv $VIRTUAL_ENV --python /usr/bin/python3 && \
   uv pip install --no-cache \
-  reportlab pypdf \
+  reportlab pypdf matplotlib \
   pandas openpyxl \
   "markitdown[pptx]"
 
@@ -50,9 +50,11 @@ ENV NODE_OPTIONS=--max-old-space-size=4096 \
   NPM_CONFIG_PREFIX=/home/node/.npm-global \
   PATH="/opt/venv/bin:/home/node/.npm-global/bin:/home/node/.local/bin:$PATH"
 
+ENV NODE_PATH=/usr/local/lib/node_modules
+
+
 USER node
 
-RUN npm install -g opencode-ai && \
-  uv tool install httpie
+RUN npm install -g opencode-ai
 
 COPY --chown=node:node opencode /home/node/.config/opencode/
