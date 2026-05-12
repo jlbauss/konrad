@@ -1,0 +1,37 @@
+# Build context for this Dockerfile is src/konrad/.devcontainer/.
+# Most of what we want to exclude can't appear here, but these are the
+# common offenders if anyone develops a skill in-tree.
+
+# VCS
+**/.git
+**/.gitignore
+**/.gitattributes
+
+# Editor / OS junk
+**/.DS_Store
+**/Thumbs.db
+**/.idea
+**/.vscode
+**/*.swp
+
+# Language ecosystems
+**/node_modules
+**/__pycache__
+**/*.py[cod]
+**/.venv
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/.cache
+
+# Skill build/setup artifacts
+**/.setup.log
+**/bin
+**/obj
+**/dist
+**/build
+
+# Logs and local-only files
+**/*.log
+**/.env
+**/.env.*
