@@ -10,7 +10,7 @@ inspect specific paths or versions when relevant.
 - Search: `rg` (ripgrep), `fd`, `fzf`
 - Viewing: `bat`, `tree`, `less`
 - Data: `jq`
-- Net: `curl`, `wget`, `gh` (GitHub CLI), `httpie` (`http`)
+- Net: `curl`, `gh` (GitHub CLI)
 - Docs: `pandoc`, `pdftotext`, `pdftoppm`, `pdfinfo` (poppler-utils)
 - Media: `ffmpeg`, `magick` (ImageMagick), `tesseract` (OCR)
 - Languages: Python 3 (+ `uv`), Node.js (+ `npm`), .NET 8 SDK
@@ -23,13 +23,14 @@ PowerPoint, or Word documents.
 
 ### Filesystem
 - `/workspace` — project, host-mounted, read-write. Final deliverables go here.
-- `/home/node` — your home, persistent across sessions.
-- `/tmp` — scratch and intermediate work.
+- `/home/node/.local/share/opencode`, `~/.cache/opencode`, `~/.npm-global` —
+  persistent across container rebuilds (named volumes).
+- Anything else under `/home/node` — wiped on rebuild. Don't store work there.
+- `/tmp` — scratch and intermediate work, wiped on container restart.
 
 ### Network
-Firewall-restricted egress. Package registries (npm, pypi, crates),
-GitHub, and the Anthropic/Adobe APIs are reachable. Other domains are
-likely blocked — if a request fails with a network error, that's why.
+Unrestricted egress (for now). Egress filtering is on the roadmap but not
+yet implemented, so any reachable domain will resolve.
 
 ### Conventions
 - Search code: `rg "pattern"` (not `grep -r`)
