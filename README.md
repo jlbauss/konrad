@@ -39,21 +39,28 @@ That's the whole UX: the current directory is mounted at `/workspace` inside the
 
 ### Subcommands
 
-| Command           | What it does                                                 |
-| ----------------- | ------------------------------------------------------------ |
-| `konrad`          | Default. Runs opencode against the current directory.        |
-| `konrad shell`    | Opens a bash shell in the container — same mounts, no agent. |
-| `konrad rebuild`  | Rebuilds the `konrad:latest` image from this repo's `image/`.|
-| `konrad clean`    | Removes the named volumes tied to the current directory.     |
-| `konrad help`     | Show usage.                                                  |
+| Command              | What it does                                                          |
+| -------------------- | --------------------------------------------------------------------- |
+| `konrad`             | Default. Runs opencode against the current directory.                 |
+| `konrad shell`       | Opens a bash shell in the container — same mounts, no agent.          |
+| `konrad rebuild`     | Rebuilds the `konrad:latest` image from this repo's `image/`.         |
+| `konrad clean`       | Removes this project's `.agent/opencode/` (sessions, cache).          |
+| `konrad clean --all` | Also drops the shared volumes (auth, cache, npm). Forces fresh login. |
+| `konrad help`        | Show usage.                                                           |
 
 ### State and isolation
 
-Each working directory gets its own set of named Podman volumes (`konrad-<hash>-opencode-data`, `-opencode-cache`, `-npm-global`), keyed by the absolute path. So:
+konrad splits state across two tiers:
 
-- opencode session history, `/connect` auth, and autoupdated binaries persist across `konrad` invocations in the same folder,
-- different test projects don't share state with each other or with the dev container,
-- `konrad clean` from inside a project wipes only that project's state.
+**Per-project, in the workspace.** When you run `konrad` in a directory, it creates `.agent/opencode/` inside that directory and bind-mounts it as opencode's data dir. Sessions, the SQLite database, and conversation logs live there — visible to `ls`, portable with your project, gitignored automatically. The model's working-memory files (`.agent/task_plan.md`, `.agent/progress.md`, `.agent/findings.md`) sit alongside them and are **not** gitignored, so you can commit them if you want a record.
+
+**Shared, in named Podman volumes.** Three things stay out of the workspace and are shared across every project:
+
+- `konrad-secrets` — `auth.json` (`/connect` credentials). You log in once, every project reuses it. Stays out of your filesystem and can't be committed by accident.
+- `konrad-cache` — opencode's cache. Regeneratable; sharing means warm caches across projects.
+- `konrad-npm-global` — the autoupdated opencode binary. One copy, all projects.
+
+`konrad clean` removes the current project's `.agent/opencode/`. `konrad clean --all` *also* drops the shared volumes (next run requires a fresh `/connect`).
 
 ## Repo layout
 
@@ -62,6 +69,7 @@ konrad/
 ├── bin/konrad                 # The CLI
 ├── image/                     # Container build context — the canonical artifact
 │   ├── Dockerfile
+│   ├── entrypoint.sh          # Sets up the auth.json symlink before exec
 │   └── opencode/              # Copied into ~/.config/opencode/ at build time
 │       ├── AGENTS.md          # Base instructions for the model
 │       ├── opencode.jsonc     # Provider, model, autoupdate

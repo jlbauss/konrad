@@ -5,12 +5,18 @@
 #   konrad             Run opencode against the current directory.
 #   konrad shell       Open a bash shell inside the container.
 #   konrad rebuild     Rebuild the konrad image from the repo's Dockerfile.
-#   konrad clean       Drop the named volumes tied to this directory.
+#   konrad clean       Remove this project's .agent/opencode/ state.
+#   konrad clean --all Also remove the shared volumes (auth, cache, npm).
 #   konrad help        Show this message.
 set -euo pipefail
 
 IMAGE_NAME="konrad:latest"
 LM_STUDIO_HOST_URL="http://localhost:1234/v1/models"
+
+# Shared (cross-project) named volumes.
+SECRETS_VOLUME="konrad-secrets"
+CACHE_VOLUME="konrad-cache"
+NPM_GLOBAL_VOLUME="konrad-npm-global"
 
 # --- Resolve the script's source directory, even when symlinked ---
 # Lets `konrad rebuild` find image/Dockerfile no matter where bin/konrad
@@ -55,12 +61,6 @@ require_image() {
   fi
 }
 
-# Compute a short stable hash of the absolute cwd so each project
-# gets its own isolated set of opencode-state volumes.
-cwd_hash() {
-  printf '%s' "$(pwd -P)" | shasum -a 256 | cut -c1-12
-}
-
 check_lm_studio() {
   if ! curl --max-time 2 -sf "$LM_STUDIO_HOST_URL" >/dev/null 2>&1; then
     info "warning: LM Studio not reachable at $LM_STUDIO_HOST_URL"
@@ -68,19 +68,37 @@ check_lm_studio() {
   fi
 }
 
+# If the cwd is inside a git repo, make sure .agent/opencode/ is
+# gitignored. Idempotent — appends only if not already present.
+ensure_gitignore() {
+  git -C "$(pwd -P)" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
+  local gi="$(pwd -P)/.gitignore"
+  if [[ -f "$gi" ]] && grep -qE '^\.agent/opencode/?$' "$gi"; then
+    return 0
+  fi
+  {
+    [[ -s "$gi" ]] && [[ -n "$(tail -c1 "$gi" 2>/dev/null)" ]] && echo
+    echo "# konrad operational state (sessions, sqlite) — keep out of git"
+    echo ".agent/opencode/"
+  } >> "$gi"
+  info "added '.agent/opencode/' to $gi"
+}
+
 # Run a command inside the konrad container with the standard mount set.
 # All variables are quoted, so paths containing spaces are safe.
 podman_run() {
-  local hash cwd
-  hash=$(cwd_hash)
+  local cwd agent_dir
   cwd="$(pwd -P)"
+  agent_dir="$cwd/.agent/opencode"
+  mkdir -p "$agent_dir"
   exec podman run \
     --rm -it \
     --userns=keep-id:uid=1000,gid=1000 \
     -v "${cwd}:/workspace" \
-    -v "konrad-${hash}-opencode-data:/home/node/.local/share/opencode:U" \
-    -v "konrad-${hash}-opencode-cache:/home/node/.cache/opencode:U" \
-    -v "konrad-${hash}-npm-global:/home/node/.npm-global:U" \
+    -v "${agent_dir}:/home/node/.local/share/opencode" \
+    -v "${SECRETS_VOLUME}:/home/node/.opencode-secrets:U" \
+    -v "${CACHE_VOLUME}:/home/node/.cache/opencode:U" \
+    -v "${NPM_GLOBAL_VOLUME}:/home/node/.npm-global:U" \
     -w /workspace \
     "$IMAGE_NAME" "$@"
 }
@@ -91,12 +109,14 @@ cmd_run() {
   require_podman
   require_image
   check_lm_studio
+  ensure_gitignore
   podman_run opencode
 }
 
 cmd_shell() {
   require_podman
   require_image
+  ensure_gitignore
   podman_run bash
 }
 
@@ -110,21 +130,28 @@ cmd_rebuild() {
 
 cmd_clean() {
   require_podman
-  local hash; hash=$(cwd_hash)
-  local removed=0
-  for suffix in opencode-data opencode-cache npm-global; do
-    local vol="konrad-${hash}-${suffix}"
-    if podman volume exists "$vol" 2>/dev/null; then
-      podman volume rm "$vol" >/dev/null
-      info "removed volume $vol"
-      removed=$((removed + 1))
-    fi
-  done
-  [[ "$removed" -eq 0 ]] && info "no volumes to remove for $(pwd -P)"
+  local agent_dir="$(pwd -P)/.agent/opencode"
+
+  if [[ -d "$agent_dir" ]]; then
+    rm -rf "$agent_dir"
+    info "removed $agent_dir"
+  else
+    info "no project state at $agent_dir"
+  fi
+
+  if [[ "${1:-}" == "--all" ]]; then
+    for vol in "$SECRETS_VOLUME" "$CACHE_VOLUME" "$NPM_GLOBAL_VOLUME"; do
+      if podman volume exists "$vol" 2>/dev/null; then
+        podman volume rm "$vol" >/dev/null
+        info "removed shared volume $vol"
+      fi
+    done
+    info "next run will need a fresh /connect and will repopulate caches"
+  fi
 }
 
 cmd_help() {
-  sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'
 }
 
 # --- Dispatch ---
@@ -133,7 +160,7 @@ case "${1:-run}" in
   run|"")              cmd_run ;;
   shell)               cmd_shell ;;
   rebuild)             cmd_rebuild ;;
-  clean)               cmd_clean ;;
+  clean)               shift; cmd_clean "$@" ;;
   help|-h|--help)      cmd_help ;;
   *)                   die "unknown command: $1 (try: konrad help)" ;;
 esac

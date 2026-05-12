@@ -1,9 +1,7 @@
-# Model-as-working-memory files (see image/opencode/AGENTS.md
-# "Planning workflow"). The agent writes these into /workspace; if the
-# konrad repo is itself the workspace (dev mode), keep them out of git.
-task_plan.md
-progress.md
-findings.md
+# Operational state of any local konrad session in this repo
+# (sessions, sqlite, cache). Planning files live in .agent/ too,
+# but those are committable so this ignore is scoped tightly.
+.agent/opencode/
 
 # OS / editor junk
 .DS_Store

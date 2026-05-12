@@ -43,17 +43,24 @@ RUN curl -sSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh && 
   ln -s "$DOTNET_ROOT/dotnet" /usr/local/bin/dotnet && \
   rm /tmp/dotnet-install.sh
 
-# Pre-create the node user's XDG dirs and npm prefix so that Podman's
-# volume mounts (and opencode's runtime mkdirs into XDG_STATE_HOME etc.)
-# don't end up creating parents as root.
+# Pre-create the node user's XDG dirs, npm prefix, and the secrets dir
+# (for auth.json) so that Podman's volume mounts don't end up creating
+# parents as root, and opencode's runtime mkdirs (XDG_STATE_HOME etc.)
+# don't trip on permission denials.
 RUN mkdir -p \
     /home/node/.npm-global \
-    /home/node/.local/share \
+    /home/node/.local/share/opencode \
     /home/node/.local/state \
     /home/node/.local/bin \
+    /home/node/.cache/opencode \
+    /home/node/.config \
+    /home/node/.opencode-secrets \
+  && chown -R node:node \
+    /home/node/.npm-global \
+    /home/node/.local \
     /home/node/.cache \
     /home/node/.config \
-  && chown -R node:node /home/node/.npm-global /home/node/.local /home/node/.cache /home/node/.config
+    /home/node/.opencode-secrets
 
 ENV NODE_OPTIONS=--max-old-space-size=4096 \
   NPM_CONFIG_PREFIX=/home/node/.npm-global \
@@ -67,3 +74,7 @@ USER node
 RUN npm install -g opencode-ai
 
 COPY --chown=node:node opencode /home/node/.config/opencode/
+
+# Entrypoint sets up the auth.json symlink before exec'ing the real command.
+COPY --chown=node:node entrypoint.sh /usr/local/bin/konrad-entrypoint
+ENTRYPOINT ["/usr/local/bin/konrad-entrypoint"]
