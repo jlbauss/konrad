@@ -1,0 +1,32 @@
+# Normalize line endings. Shell scripts MUST be LF — CRLF breaks the
+# entrypoint and the bash shebang resolution at runtime.
+* text=auto eol=lf
+
+*.sh text eol=lf
+*.bash text eol=lf
+bin/konrad text eol=lf
+image/entrypoint.sh text eol=lf
+
+# Windows-specific files keep CRLF.
+*.ps1 text eol=crlf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# Treat these as binary so git doesn't try to diff/merge them.
+*.ttf binary
+*.otf binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.mp4 binary
+*.mp3 binary
+*.pdf binary
+*.docx binary
+*.xlsx binary
+*.pptx binary
+*.zip binary
+*.tar binary
+*.tar.gz binary
+*.tgz binary
