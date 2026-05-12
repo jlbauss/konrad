@@ -1,0 +1,23 @@
+{
+  // VS Code entry point for working ON konrad itself.
+  // Not the primary way to USE konrad — for that, install the CLI
+  // (see README) and run `konrad` from any folder on the host.
+  "name": "konrad-dev",
+  "build": {
+    "dockerfile": "../image/Dockerfile",
+    "context": "../image"
+  },
+  "remoteUser": "node",
+  "containerUser": "node",
+  "updateRemoteUserUID": false,
+  // Podman-specific: map host UID/GID 1000 to the container's `node` user so
+  // bind-mounted /workspace files have correct ownership without chowning.
+  // Docker does not accept this flag — see BACKLOG.md (Docker support).
+  "runArgs": [
+    "--userns=keep-id:uid=1000,gid=1000"
+  ],
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=delegated",
+  "workspaceFolder": "/workspace",
+  // Verify the host's LM Studio server is reachable on every start.
+  "postStartCommand": "curl --max-time 2 -sf http://host.containers.internal:1234/v1/models > /dev/null && echo '[konrad] LM Studio reachable.' || echo '[konrad] WARNING: LM Studio not reachable at host.containers.internal:1234. Start LM Studio on the host and load qwen/qwen3.6-35b-a3b before using opencode.'"
+}

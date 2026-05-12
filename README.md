@@ -1,58 +1,83 @@
 # konrad
 
-A sandboxed [opencode](https://github.com/sst/opencode) devcontainer preloaded with skills and instructions, aimed at making locally hosted agent models genuinely useful out of the box.
+A CLI wrapper around [opencode](https://github.com/sst/opencode) that runs it inside a sandboxed Podman container preloaded with skills and instructions. Aimed at making locally hosted agent models genuinely useful out of the box.
 
 Status: **early / experimental**. The "safe" half of the original `safe-cowork` name (egress firewall, permission ACLs) is not yet implemented — see [BACKLOG.md](BACKLOG.md).
 
 ## What konrad gives you
 
-- **A Debian devcontainer** with curated CLI tools (ripgrep, fd, jq, pandoc, ffmpeg, ImageMagick, tesseract, .NET 8, uv, playwright) so the agent doesn't have to install its own toolchain.
+- **A `konrad` CLI** you run from any folder on the host. It spins up the container with that folder mounted as the workspace, then drops you straight into opencode.
+- **A Debian image** with curated tools (ripgrep, fd, jq, pandoc, ffmpeg, ImageMagick, tesseract, .NET 8, uv, playwright) so the agent doesn't have to install its own toolchain.
 - **opencode** prewired to talk to LM Studio on the host.
-- **A base instruction file** (`AGENTS.md`) that teaches the model file-based planning (`task_plan.md` / `progress.md` / `findings.md`), a 3-strike error protocol, and conventions for the bundled tools.
+- **Base instructions** ([AGENTS.md](image/opencode/AGENTS.md)) teaching the model file-based planning (`task_plan.md` / `progress.md` / `findings.md`), a 3-strike error protocol, and conventions for the bundled tools.
 - **Seven domain skills** covering PDF, DOCX, XLSX, PPTX, GIF sticker generation, frontend, and full-stack work.
 
 ## Requirements
 
-- **[Podman](https://podman.io/)** — Docker support is on the backlog. The devcontainer's `runArgs` use `--userns=keep-id`, which is Podman-specific.
+- **[Podman](https://podman.io/)** — Docker support is on the backlog. The image is run with `--userns=keep-id`, which is Podman-specific.
 - **[LM Studio](https://lmstudio.ai/)** running on the host, with an OpenAI-compatible server on port `1234` and the [`qwen/qwen3.6-35b-a3b`](https://lmstudio.ai/models/qwen/qwen3.6-35b-a3b) model loaded.
-- A devcontainer-aware editor (VS Code with Dev Containers, or `devcontainer` CLI).
 
-## Quick start
+## Install
 
-1. Start LM Studio on the host, load `qwen/qwen3.6-35b-a3b`, enable the local server.
-2. Open this repo in your devcontainer-aware editor and **Reopen in Container**.
-3. On first start, the container will print whether LM Studio is reachable. If not, fix the host side and rebuild — the container won't be useful without it.
-4. Inside the container: `opencode` to start.
+```sh
+git clone <this-repo> ~/src/konrad
+cd ~/src/konrad
+./scripts/install.sh        # symlinks bin/konrad into ~/.local/bin
+./scripts/build-image.sh    # builds the konrad:latest image (one-time, ~5 min)
+```
 
-## Trying konrad out
+Make sure `~/.local/bin` is on your `PATH`. The installer warns if it isn't.
 
-The repo ships an empty top-level `scratch/` directory for hands-on testing. Drop sample inputs (PDFs, photos, whatever) under `scratch/<topic>/` and point opencode at them — for example, "summarise everything in `scratch/bike/inputs/` and write a PDF report to `scratch/bike/outputs/`". `scratch/` is gitignored (except the `.gitkeep`), so test files and generated outputs never end up in commits.
+## Use
 
-`task_plan.md`, `progress.md`, and `findings.md` (the model's working-memory files described in [opencode/AGENTS.md](src/konrad/.devcontainer/opencode/AGENTS.md)) are also gitignored at the repo root, so you can let the agent use them freely without polluting history.
+```sh
+cd ~/wherever-you-keep-the-files-the-agent-will-touch
+konrad
+```
+
+That's the whole UX: the current directory is mounted at `/workspace` inside the container, opencode starts pointing at LM Studio, and you go.
+
+### Subcommands
+
+| Command           | What it does                                                 |
+| ----------------- | ------------------------------------------------------------ |
+| `konrad`          | Default. Runs opencode against the current directory.        |
+| `konrad shell`    | Opens a bash shell in the container — same mounts, no agent. |
+| `konrad rebuild`  | Rebuilds the `konrad:latest` image from this repo's `image/`.|
+| `konrad clean`    | Removes the named volumes tied to the current directory.     |
+| `konrad help`     | Show usage.                                                  |
+
+### State and isolation
+
+Each working directory gets its own set of named Podman volumes (`konrad-<hash>-opencode-data`, `-opencode-cache`, `-npm-global`), keyed by the absolute path. So:
+
+- opencode session history, `/connect` auth, and autoupdated binaries persist across `konrad` invocations in the same folder,
+- different test projects don't share state with each other or with the dev container,
+- `konrad clean` from inside a project wipes only that project's state.
 
 ## Repo layout
 
 ```
 konrad/
-├── scratch/                # Gitignored. Drop test inputs/outputs here.
-└── src/konrad/.devcontainer/
-    ├── Dockerfile          # The container image
-    ├── devcontainer.json   # Mount, user, lifecycle config
-    └── opencode/           # Copied into ~/.config/opencode/ at build time
-        ├── AGENTS.md       # Base instructions for the model
-        ├── opencode.jsonc  # Provider, model, autoupdate
-        └── skills/         # Domain skills (pdf, docx, xlsx, pptx, etc.)
+├── bin/konrad                 # The CLI
+├── image/                     # Container build context — the canonical artifact
+│   ├── Dockerfile
+│   └── opencode/              # Copied into ~/.config/opencode/ at build time
+│       ├── AGENTS.md          # Base instructions for the model
+│       ├── opencode.jsonc     # Provider, model, autoupdate
+│       └── skills/            # Domain skills (pdf, docx, xlsx, pptx, etc.)
+├── scripts/
+│   ├── build-image.sh         # `podman build -t konrad:latest image/`
+│   └── install.sh             # Symlinks bin/konrad into ~/.local/bin
+└── .devcontainer/             # Optional: VS Code entry point for working ON konrad
+    └── devcontainer.json
 ```
 
-## Why a named volume for opencode state
+## Two ways to work with konrad
 
-The devcontainer mounts a named volume at `/home/node/.local/share/opencode` (and a few neighbours). Without it, **every container rebuild wipes**:
+**Using konrad as a user.** Install once with the steps above. From then on, `cd` to whatever folder you want the agent to operate on and run `konrad`. The konrad repo only matters for getting the image and CLI installed; you don't open it day-to-day.
 
-- opencode session history and `/connect` provider state,
-- the autoupdated opencode binary in `~/.npm-global/`,
-- the model's planning files if it happened to write them to `$HOME` instead of `/workspace`.
-
-A named volume keeps those across rebuilds without coupling them to a specific host path. The mounted `/workspace` is still where your project work lives — it's bind-mounted from the host as before.
+**Hacking on konrad itself.** Open this repo in VS Code with the Dev Containers extension and "Reopen in Container" — that path uses [.devcontainer/devcontainer.json](.devcontainer/devcontainer.json) and builds the image from `image/Dockerfile`. After any change to the Dockerfile or `image/opencode/`, run `konrad rebuild` (or `./scripts/build-image.sh`) to refresh the `konrad:latest` tag for the CLI side.
 
 ## License and attribution
 

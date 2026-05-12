@@ -1,0 +1,124 @@
+#!/usr/bin/env bash
+# konrad — sandboxed opencode in a Podman container.
+#
+# Usage:
+#   konrad             Run opencode against the current directory.
+#   konrad shell       Open a bash shell inside the container.
+#   konrad rebuild     Rebuild the konrad image from the repo's Dockerfile.
+#   konrad clean       Drop the named volumes tied to this directory.
+#   konrad help        Show this message.
+set -euo pipefail
+
+IMAGE_NAME="konrad:latest"
+LM_STUDIO_HOST_URL="http://localhost:1234/v1/models"
+
+# --- Resolve the script's source directory, even when symlinked ---
+# Lets `konrad rebuild` find image/Dockerfile no matter where bin/konrad
+# is symlinked from.
+SOURCE="${BASH_SOURCE[0]}"
+while [[ -L "$SOURCE" ]]; do
+  SRC_DIR_TMP="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ "$SOURCE" != /* ]] && SOURCE="$SRC_DIR_TMP/$SOURCE"
+done
+SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+IMAGE_CONTEXT="$REPO_ROOT/image"
+
+# --- Helpers ---
+
+die()  { echo "konrad: $*" >&2; exit 1; }
+info() { echo "konrad: $*" >&2; }
+
+require_podman() {
+  command -v podman >/dev/null 2>&1 || die "podman is not installed."
+}
+
+require_image() {
+  if ! podman image exists "$IMAGE_NAME"; then
+    info "image '$IMAGE_NAME' not found locally — building it now (one-time, ~5 min)."
+    cmd_rebuild
+  fi
+}
+
+# Compute a short stable hash of the absolute cwd so each project
+# gets its own isolated set of opencode-state volumes.
+cwd_hash() {
+  printf '%s' "$(pwd -P)" | shasum -a 256 | cut -c1-12
+}
+
+# Common podman flags used by `run` and `shell`.
+run_flags() {
+  local hash="$1"
+  echo "--rm -it" \
+    "--userns=keep-id:uid=1000,gid=1000" \
+    "-v $(pwd -P):/workspace" \
+    "-v konrad-${hash}-opencode-data:/home/node/.local/share/opencode" \
+    "-v konrad-${hash}-opencode-cache:/home/node/.cache/opencode" \
+    "-v konrad-${hash}-npm-global:/home/node/.npm-global" \
+    "-w /workspace"
+}
+
+check_lm_studio() {
+  if ! curl --max-time 2 -sf "$LM_STUDIO_HOST_URL" >/dev/null 2>&1; then
+    info "warning: LM Studio not reachable at $LM_STUDIO_HOST_URL"
+    info "         Start LM Studio and load qwen/qwen3.6-35b-a3b before giving the agent work."
+  fi
+}
+
+# --- Subcommands ---
+
+cmd_run() {
+  require_podman
+  require_image
+  check_lm_studio
+  local hash; hash=$(cwd_hash)
+  # shellcheck disable=SC2046
+  exec podman run $(run_flags "$hash") "$IMAGE_NAME" opencode
+}
+
+cmd_shell() {
+  require_podman
+  require_image
+  local hash; hash=$(cwd_hash)
+  # shellcheck disable=SC2046
+  exec podman run $(run_flags "$hash") "$IMAGE_NAME" bash
+}
+
+cmd_rebuild() {
+  require_podman
+  [[ -f "$IMAGE_CONTEXT/Dockerfile" ]] \
+    || die "expected Dockerfile at $IMAGE_CONTEXT/Dockerfile (is the konrad repo intact?)"
+  info "building $IMAGE_NAME from $IMAGE_CONTEXT"
+  podman build -t "$IMAGE_NAME" "$IMAGE_CONTEXT"
+}
+
+cmd_clean() {
+  require_podman
+  local hash; hash=$(cwd_hash)
+  local removed=0
+  for suffix in opencode-data opencode-cache npm-global; do
+    local vol="konrad-${hash}-${suffix}"
+    if podman volume exists "$vol" 2>/dev/null; then
+      podman volume rm "$vol" >/dev/null
+      info "removed volume $vol"
+      removed=$((removed + 1))
+    fi
+  done
+  [[ "$removed" -eq 0 ]] && info "no volumes to remove for $(pwd -P)"
+}
+
+cmd_help() {
+  sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'
+}
+
+# --- Dispatch ---
+
+case "${1:-run}" in
+  run|"")              cmd_run ;;
+  shell)               cmd_shell ;;
+  rebuild)             cmd_rebuild ;;
+  clean)               cmd_clean ;;
+  help|-h|--help)      cmd_help ;;
+  *)                   die "unknown command: $1 (try: konrad help)" ;;
+esac

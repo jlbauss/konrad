@@ -2,6 +2,12 @@
 
 Things we've deliberately deferred. Roughly grouped by theme.
 
+## Distribution
+
+- **Publish image to ghcr.io.** Push `konrad:latest` to `ghcr.io/<owner>/konrad` so end users get a fast `podman pull` on first run instead of waiting through a local build. Update `bin/konrad`'s `require_image` to try `podman pull` before falling back to a local build.
+- **Frictionless install.** A `curl … | sh` one-liner (or a Homebrew tap) that drops `konrad` on `PATH` and pulls the image, so users don't need to clone the repo.
+- **End-user config override.** Let users override `opencode.jsonc` (model, provider, API keys) without rebuilding the image — e.g. read `~/.config/konrad/opencode.jsonc` from the host and bind-mount it over the baked-in copy.
+
 ## Sandbox / security
 
 - **Egress firewall.** Install-time scripts that configure `iptables` + `ipset` to restrict outbound traffic to package registries, GitHub, and a small allowlist. Requires `--cap-add=NET_ADMIN` in `runArgs` and an init script invoked via `postStartCommand`. Until this lands, the `AGENTS.md` claim "firewall-restricted egress" should be considered aspirational.
