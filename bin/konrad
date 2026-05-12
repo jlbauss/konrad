@@ -31,7 +31,21 @@ die()  { echo "konrad: $*" >&2; exit 1; }
 info() { echo "konrad: $*" >&2; }
 
 require_podman() {
-  command -v podman >/dev/null 2>&1 || die "podman is not installed."
+  command -v podman >/dev/null 2>&1 \
+    || die "podman is not installed."
+  if ! podman info >/dev/null 2>&1; then
+    cat >&2 <<'EOF'
+konrad: cannot reach Podman.
+
+On macOS this usually means the Podman VM isn't running. Start it with:
+
+  podman machine init     # first time only
+  podman machine start
+
+Then re-run your command.
+EOF
+    exit 1
+  fi
 }
 
 require_image() {
@@ -47,23 +61,28 @@ cwd_hash() {
   printf '%s' "$(pwd -P)" | shasum -a 256 | cut -c1-12
 }
 
-# Common podman flags used by `run` and `shell`.
-run_flags() {
-  local hash="$1"
-  echo "--rm -it" \
-    "--userns=keep-id:uid=1000,gid=1000" \
-    "-v $(pwd -P):/workspace" \
-    "-v konrad-${hash}-opencode-data:/home/node/.local/share/opencode" \
-    "-v konrad-${hash}-opencode-cache:/home/node/.cache/opencode" \
-    "-v konrad-${hash}-npm-global:/home/node/.npm-global" \
-    "-w /workspace"
-}
-
 check_lm_studio() {
   if ! curl --max-time 2 -sf "$LM_STUDIO_HOST_URL" >/dev/null 2>&1; then
     info "warning: LM Studio not reachable at $LM_STUDIO_HOST_URL"
     info "         Start LM Studio and load qwen/qwen3.6-35b-a3b before giving the agent work."
   fi
+}
+
+# Run a command inside the konrad container with the standard mount set.
+# All variables are quoted, so paths containing spaces are safe.
+podman_run() {
+  local hash cwd
+  hash=$(cwd_hash)
+  cwd="$(pwd -P)"
+  exec podman run \
+    --rm -it \
+    --userns=keep-id:uid=1000,gid=1000 \
+    -v "${cwd}:/workspace" \
+    -v "konrad-${hash}-opencode-data:/home/node/.local/share/opencode" \
+    -v "konrad-${hash}-opencode-cache:/home/node/.cache/opencode" \
+    -v "konrad-${hash}-npm-global:/home/node/.npm-global" \
+    -w /workspace \
+    "$IMAGE_NAME" "$@"
 }
 
 # --- Subcommands ---
@@ -72,17 +91,13 @@ cmd_run() {
   require_podman
   require_image
   check_lm_studio
-  local hash; hash=$(cwd_hash)
-  # shellcheck disable=SC2046
-  exec podman run $(run_flags "$hash") "$IMAGE_NAME" opencode
+  podman_run opencode
 }
 
 cmd_shell() {
   require_podman
   require_image
-  local hash; hash=$(cwd_hash)
-  # shellcheck disable=SC2046
-  exec podman run $(run_flags "$hash") "$IMAGE_NAME" bash
+  podman_run bash
 }
 
 cmd_rebuild() {
