@@ -8,23 +8,35 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 SOURCE="$REPO_ROOT/bin/konrad"
 TARGET="${HOME}/.local/bin/konrad"
 
+say()  { printf 'konrad-install: %s\n' "$*"; }
+die()  { printf 'konrad-install: %s\n' "$*" >&2; exit 1; }
+
+[[ -f "$SOURCE" ]] || die "expected $SOURCE to exist (is the repo intact?)"
 [[ -x "$SOURCE" ]] || chmod +x "$SOURCE"
 
-if [[ -e "$TARGET" && ! -L "$TARGET" ]]; then
-  echo "install.sh: refusing to overwrite $TARGET (not a symlink)" >&2
-  exit 1
+# If TARGET already exists, decide what to do:
+#  - symlink pointing at SOURCE → nothing to do (or just re-link).
+#  - symlink pointing elsewhere → tell the user, then overwrite.
+#  - regular file → refuse, don't clobber.
+if [[ -L "$TARGET" ]]; then
+  current="$(readlink "$TARGET")"
+  if [[ "$current" != "$SOURCE" ]]; then
+    say "replacing existing symlink (was: $current)"
+  fi
+elif [[ -e "$TARGET" ]]; then
+  die "refusing to overwrite $TARGET (exists and is not a symlink)"
 fi
 
 mkdir -p "$(dirname "$TARGET")"
-ln -sf "$SOURCE" "$TARGET"
-echo "install.sh: linked $TARGET -> $SOURCE"
+ln -sfn "$SOURCE" "$TARGET"
+say "linked $TARGET -> $SOURCE"
 
 case ":$PATH:" in
   *":$HOME/.local/bin:"*) ;;
   *)
-    echo
-    echo "install.sh: warning — $HOME/.local/bin is not in your PATH."
-    echo "  Add this to your shell config (~/.zshrc, ~/.bashrc, or ~/.config/fish/config.fish):"
-    echo "    export PATH=\"\$HOME/.local/bin:\$PATH\""
+    printf '\n'
+    say "warning — $HOME/.local/bin is not in your PATH."
+    say "  Add this to your shell config (~/.zshrc, ~/.bashrc, or ~/.config/fish/config.fish):"
+    say "    export PATH=\"\$HOME/.local/bin:\$PATH\""
     ;;
 esac

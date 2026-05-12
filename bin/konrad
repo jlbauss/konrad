@@ -1,15 +1,8 @@
 #!/usr/bin/env bash
-# konrad — sandboxed opencode in a Podman container.
-#
-# Usage:
-#   konrad             Run opencode against the current directory.
-#   konrad shell       Open a bash shell inside the container.
-#   konrad rebuild     Rebuild the konrad image from the repo's Dockerfile.
-#   konrad clean       Remove this project's .agent/opencode/ state.
-#   konrad clean --all Also remove the shared volumes (auth, cache, npm).
-#   konrad help        Show this message.
+# konrad — sandboxed opencode in a Podman container. See `konrad help`.
 set -euo pipefail
 
+KONRAD_VERSION="0.1.0"
 IMAGE_NAME="konrad:latest"
 LM_STUDIO_HOST_URL="http://localhost:1234/v1/models"
 
@@ -31,10 +24,13 @@ SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 IMAGE_CONTEXT="$REPO_ROOT/image"
 
-# --- Helpers ---
+# --- Output helpers (all go to stderr; stdout is reserved for tool output) ---
 
-die()  { echo "konrad: $*" >&2; exit 1; }
-info() { echo "konrad: $*" >&2; }
+die()  { printf 'konrad: %s\n' "$*" >&2; exit 1; }
+warn() { printf 'konrad: warning: %s\n' "$*" >&2; }
+info() { printf 'konrad: %s\n' "$*" >&2; }
+
+# --- Preflight checks ---
 
 require_podman() {
   command -v podman >/dev/null 2>&1 \
@@ -63,8 +59,8 @@ require_image() {
 
 check_lm_studio() {
   if ! curl --max-time 2 -sf "$LM_STUDIO_HOST_URL" >/dev/null 2>&1; then
-    info "warning: LM Studio not reachable at $LM_STUDIO_HOST_URL"
-    info "         Start LM Studio and load qwen/qwen3.6-35b-a3b before giving the agent work."
+    warn "LM Studio not reachable at $LM_STUDIO_HOST_URL"
+    warn "start LM Studio and load qwen/qwen3.6-35b-a3b before giving the agent work"
   fi
 }
 
@@ -72,14 +68,23 @@ check_lm_studio() {
 # gitignored. Idempotent — appends only if not already present.
 ensure_gitignore() {
   git -C "$(pwd -P)" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
-  local gi="$(pwd -P)/.gitignore"
+  local gi
+  gi="$(pwd -P)/.gitignore"
   if [[ -f "$gi" ]] && grep -qE '^\.agent/opencode/?$' "$gi"; then
     return 0
   fi
+  # Read the trailing byte BEFORE we open $gi for append, so the read
+  # and write happen in separate pipelines.
+  local needs_newline=""
+  if [[ -s "$gi" ]]; then
+    local last_byte
+    last_byte=$(tail -c1 "$gi" 2>/dev/null || printf '')
+    [[ -n "$last_byte" ]] && needs_newline=1
+  fi
   {
-    [[ -s "$gi" ]] && [[ -n "$(tail -c1 "$gi" 2>/dev/null)" ]] && echo
-    echo "# konrad operational state (sessions, sqlite) — keep out of git"
-    echo ".agent/opencode/"
+    [[ -n "$needs_newline" ]] && printf '\n'
+    printf '# konrad operational state (sessions, sqlite) — keep out of git\n'
+    printf '.agent/opencode/\n'
   } >> "$gi"
   info "added '.agent/opencode/' to $gi"
 }
@@ -130,7 +135,8 @@ cmd_rebuild() {
 
 cmd_clean() {
   require_podman
-  local agent_dir="$(pwd -P)/.agent/opencode"
+  local agent_dir
+  agent_dir="$(pwd -P)/.agent/opencode"
 
   if [[ -d "$agent_dir" ]]; then
     rm -rf "$agent_dir"
@@ -150,8 +156,41 @@ cmd_clean() {
   fi
 }
 
+cmd_version() {
+  printf 'konrad %s\n' "$KONRAD_VERSION"
+  if command -v podman >/dev/null 2>&1 && podman info >/dev/null 2>&1; then
+    if podman image exists "$IMAGE_NAME"; then
+      local digest
+      digest=$(podman image inspect "$IMAGE_NAME" --format '{{.Id}}' 2>/dev/null \
+        || printf 'unknown')
+      printf 'image:  %s (%s)\n' "$IMAGE_NAME" "${digest:0:19}"
+    else
+      printf 'image:  %s (not built — run: konrad rebuild)\n' "$IMAGE_NAME"
+    fi
+  else
+    printf 'image:  (cannot inspect — podman unavailable)\n'
+  fi
+}
+
 cmd_help() {
-  sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'
+  cat <<'EOF'
+konrad — sandboxed opencode in a Podman container.
+
+Usage:
+  konrad             Run opencode against the current directory.
+  konrad shell       Open a bash shell in the container, same mounts.
+  konrad rebuild     Rebuild the konrad image from this repo's image/.
+  konrad clean       Remove this project's .agent/opencode/ state.
+  konrad clean --all Also remove the shared volumes (auth, cache, npm).
+  konrad version     Print version info.
+  konrad help        Show this message.
+
+Files:
+  .agent/opencode/         Per-project session/cache state (auto-gitignored).
+  .agent/task_plan.md      The model's working-memory files (committable).
+  .agent/progress.md
+  .agent/findings.md
+EOF
 }
 
 # --- Dispatch ---
@@ -161,6 +200,7 @@ case "${1:-run}" in
   shell)               cmd_shell ;;
   rebuild)             cmd_rebuild ;;
   clean)               shift; cmd_clean "$@" ;;
+  version|--version)   cmd_version ;;
   help|-h|--help)      cmd_help ;;
   *)                   die "unknown command: $1 (try: konrad help)" ;;
 esac
