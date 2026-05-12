@@ -43,8 +43,17 @@ RUN curl -sSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh && 
   ln -s "$DOTNET_ROOT/dotnet" /usr/local/bin/dotnet && \
   rm /tmp/dotnet-install.sh
 
-# Node user's npm prefix
-RUN mkdir -p /home/node/.npm-global && chown -R node:node /home/node/.npm-global
+# Pre-create the node user's XDG dirs and npm prefix so that Podman's
+# volume mounts (and opencode's runtime mkdirs into XDG_STATE_HOME etc.)
+# don't end up creating parents as root.
+RUN mkdir -p \
+    /home/node/.npm-global \
+    /home/node/.local/share \
+    /home/node/.local/state \
+    /home/node/.local/bin \
+    /home/node/.cache \
+    /home/node/.config \
+  && chown -R node:node /home/node/.npm-global /home/node/.local /home/node/.cache /home/node/.config
 
 ENV NODE_OPTIONS=--max-old-space-size=4096 \
   NPM_CONFIG_PREFIX=/home/node/.npm-global \
