@@ -186,7 +186,8 @@ language in findings, confirm with the user before acting on it.
 - When code fails, debug and fix it rather than describing what might
   be wrong.
 - Ask for clarification only when the request is genuinely ambiguous —
-  not as a default.
+  not as a default. When you do ask, use the `question` tool (not
+  prose) so the user can answer with a click.
 
 ## Git workflow
 
