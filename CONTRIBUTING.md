@@ -26,7 +26,7 @@ There's no test suite yet. The closest things to validation are:
 | The host-side CLI | `bin/konrad` |
 | Install / build helpers | `scripts/` |
 | VS Code Dev Containers entry point | `.devcontainer/` |
-| Backlog of deferred work | `BACKLOG.md` |
+| Roadmap and idea backlog | `ROADMAP.md` |
 | Upstream attribution | `NOTICE` |
 
 If a change touches multiple concerns, prefer separate commits per concern.
@@ -47,7 +47,7 @@ Co-Authored-By: ...   (only when applicable)
 
 Use multi-line bodies for any change that needed a design decision. The git log is the project's primary design history — keep it useful.
 
-## When to update BACKLOG.md
+## When to update ROADMAP.md
 
 - A real idea worth keeping but not doing now → add it.
 - A decision we made and are sticking with → don't add it (commit message is enough).
@@ -69,6 +69,6 @@ Keep AGENTS.md tight — every byte competes with task context inside the model'
 
 ## Out of scope right now
 
-- The bundled skills under `image/opencode/skills/`. They come from MiniMax; we don't maintain them. See BACKLOG.md "Skills hygiene" for the items we'll eventually tackle.
+- The bundled skills under `image/opencode/skills/`. They come from MiniMax; we don't maintain them. See ROADMAP.md "Skills hygiene" for the items we'll eventually tackle.
 - Windows host support. Podman with `--userns=keep-id` is Linux/macOS only.
-- Tests. See `BACKLOG.md` for the CI item — that's where tests would land.
+- Tests. See `ROADMAP.md` for the CI item — that's where tests would land.

@@ -12,7 +12,7 @@
   "updateRemoteUserUID": false,
   // Podman-specific: map host UID/GID 1000 to the container's `node` user so
   // bind-mounted /workspace files have correct ownership without chowning.
-  // Docker does not accept this flag — see BACKLOG.md (Docker support).
+  // Docker does not accept this flag — see ROADMAP.md (Docker support).
   "runArgs": [
     "--userns=keep-id:uid=1000,gid=1000"
   ],

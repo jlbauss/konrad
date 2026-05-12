@@ -2,7 +2,7 @@
 
 A CLI wrapper around [opencode](https://github.com/sst/opencode) that runs it inside a sandboxed Podman container preloaded with skills and instructions. Aimed at making locally hosted agent models genuinely useful out of the box.
 
-Status: **early / experimental**. The "safe" half of the original `safe-cowork` name (egress firewall, permission ACLs) is not yet implemented — see [BACKLOG.md](BACKLOG.md).
+Status: **early / experimental**. The "safe" half of the original `safe-cowork` name (egress firewall, permission ACLs) is not yet implemented — see [ROADMAP.md](ROADMAP.md).
 
 ## What konrad gives you
 
@@ -92,12 +92,12 @@ konrad/
 
 A short, opinionated record of the load-bearing choices, so future-you can tell what's a constraint and what's a preference:
 
-- **Podman, not Docker.** Open-source, free for commercial use, ergonomic on macOS. `--userns=keep-id` lets the container's `node` user share UID with the host user, so bind-mounted files have sane ownership. Docker support is in [BACKLOG.md](BACKLOG.md).
+- **Podman, not Docker.** Open-source, free for commercial use, ergonomic on macOS. `--userns=keep-id` lets the container's `node` user share UID with the host user, so bind-mounted files have sane ownership. Docker support is in [ROADMAP.md](ROADMAP.md).
 - **The image is the canonical artifact.** `image/Dockerfile` builds `konrad:latest`. Both `bin/konrad` and the optional `.devcontainer/devcontainer.json` are consumers of that one image.
 - **Two-tier state.** Per-project workspace state in `.agent/opencode/` (visible, portable, gitignored); shared state (`auth.json`, cache, opencode binary) in named Podman volumes (out of the host filesystem, can't be committed by accident). The `auth.json`-symlink trick in `image/entrypoint.sh` is what makes these two halves coexist under one opencode data dir.
 - **No per-project secrets in the workspace.** Auth credentials live only in the `konrad-secrets` named volume. Users who don't read `.gitignore` carefully still can't accidentally publish their tokens.
 - **GPL v3.** Compatible with all bundled upstream licenses (MIT, Apache 2.0, OFL 1.1). Strong copyleft is a deliberate choice for a sandbox-style tool — if someone extends konrad for commercial use, the improvements come back to the commons.
-- **LM Studio only, for now.** API-key providers are deferred ([BACKLOG.md](BACKLOG.md) → API key passthrough). Keeps the install story to "Podman + LM Studio" with no third surface area to manage.
+- **LM Studio only, for now.** API-key providers are deferred ([ROADMAP.md](ROADMAP.md) → API key passthrough). Keeps the install story to "Podman + LM Studio" with no third surface area to manage.
 
 ## Troubleshooting
 

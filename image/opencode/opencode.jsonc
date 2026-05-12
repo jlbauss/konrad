@@ -25,6 +25,6 @@
   // Default model on startup. Remove this line to pick interactively via /models.
   "model": "lmstudio/qwen/qwen3.6-35b-a3b",
   // Auto-update opencode when a new version is available.
-  // See BACKLOG.md — we plan to pin a version and turn this off.
+  // See ROADMAP.md — we plan to pin a version and turn this off.
   "autoupdate": true
 }
