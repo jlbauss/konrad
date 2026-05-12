@@ -15,6 +15,7 @@ Things we've deliberately deferred. Roughly grouped by theme.
 
 ## Configuration
 
+- **User config directory at `~/.config/konrad/`.** A standard home-dir location where users keep their own konrad settings — preferred model, UI language, default agent mode, whatever else accumulates. `bin/konrad` reads it on startup; bind-mount the relevant pieces (or pass them as env vars) into the container. Subsumes the "end-user config override" item below as the canonical place those overrides live.
 - **API key passthrough.** Add `remoteEnv`/`containerEnv` in `devcontainer.json` for `MINIMAX_API_KEY`, `OPENROUTER_API_KEY`, etc. — currently only the keyless LM Studio flow is supported.
 - **Pin opencode version, disable autoupdate.** `autoupdate: true` makes the immutable-image story fuzzy and silently changes behavior. Pin via the `npm install -g opencode-ai@<version>` line in the Dockerfile and set `autoupdate: false`.
 - **Docker support.** Currently Podman-only because of `--userns=keep-id`. A small Docker-compatible alternative `devcontainer.json` (or a conditional `runArgs`) would broaden the audience.
@@ -23,6 +24,7 @@ Things we've deliberately deferred. Roughly grouped by theme.
 
 - **Preconfigured MCP servers.** Bake in a couple of MCP servers (fs, fetch, gh) in `opencode.jsonc` so the model has working tools the moment it boots.
 - **Custom opencode agent profiles.** Use opencode's `agents/` mechanism to ship purpose-built modes — e.g. `research`, `code-only`, `no-network`.
+- **Multi-language support.** Today `AGENTS.md` and the bundled skill descriptions are English-only. Ship localized variants (German first) — likely as `AGENTS.<lang>.md` files plus a setting in `~/.config/konrad/` to pick the active language, so a non-English user gets the agent talking back in their language without prompting for it every time.
 
 ## Skills hygiene
 
