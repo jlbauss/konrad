@@ -20,6 +20,7 @@ own contributions and the combined work as a whole are licensed under GPL v3.
 
 opencode
     https://github.com/sst/opencode
+    Copyright (c) 2025 opencode
     MIT License
 
 planning-with-files (file-based planning methodology used in AGENTS.md)
@@ -27,11 +28,26 @@ planning-with-files (file-based planning methodology used in AGENTS.md)
     Copyright (c) Othman Adi
     MIT License
 
+OpenAgentsControl
+    https://github.com/darrenhinde/OpenAgentsControl
+    Copyright (c) 2025 Darren Hinde
+    MIT License
+    — The "report → propose → wait → fix" error-handling pattern in
+      image/opencode/agents/konrad.md is adapted from
+      .opencode/agent/core/opencoder.md.
+
+opencode-froggy
+    https://github.com/smartfrog/opencode-froggy
+    Copyright (c) 2024 Fred
+    MIT License
+    — The "Decision philosophy" section in image/opencode/agents/konrad.md
+      adapts the "Pragmatic Minimalism" principles from agent/architect.md.
+
 MiniMax skills (minimax-pdf, minimax-docx, minimax-xlsx, pptx-generator,
 gif-sticker-maker, frontend-dev, fullstack-dev)
     Copyright (c) MiniMaxAI
     MIT License — see each skill's frontmatter or LICENSE file under
-    src/konrad/.devcontainer/opencode/skills/<skill>/
+    image/opencode/skills/<skill>/
 
 Qwen3.6-35B-A3B (model weights, used unmodified via LM Studio,
 not redistributed in this repository)
@@ -39,5 +55,5 @@ not redistributed in this repository)
     Apache License 2.0
 
 Fonts bundled in
-src/konrad/.devcontainer/opencode/skills/frontend-dev/canvas-fonts/
+image/opencode/skills/frontend-dev/canvas-fonts/
     SIL Open Font License 1.1 — see each font's accompanying *-OFL.txt
