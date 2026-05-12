@@ -25,8 +25,15 @@
   // Default model on startup. Remove this line to pick interactively via /models.
   "model": "lmstudio/qwen/qwen3.6-35b-a3b",
   // Primary agent on startup. Defined in agents/konrad.md.
-  // Tab still cycles to the built-in `build` and `plan` agents.
   "default_agent": "konrad",
+  // Disable opencode's built-in `build` and `plan` agents so konrad is
+  // the only primary the user sees. konrad's body absorbs both roles —
+  // full-tool execution by default, plan-only behaviour via prompting
+  // when the user asks for it.
+  "agent": {
+    "build": { "disable": true },
+    "plan":  { "disable": true }
+  },
   // Auto-update opencode when a new version is available.
   // See ROADMAP.md — we plan to pin a version and turn this off.
   "autoupdate": true
