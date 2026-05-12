@@ -19,4 +19,3 @@
 - [ ] **Docker support.** Currently Podman-only because of `--userns=keep-id`. A small Docker-compatible alternative `devcontainer.json` (or a conditional `runArgs`) would broaden the audience.
 - [ ] **Multi-language support.** Today `AGENTS.md` and the bundled skill descriptions are English-only. Ship localized variants (German first) — likely as `AGENTS.<lang>.md` files plus a setting in `~/.config/konrad/` to pick the active language, so a non-English user gets the agent talking back in their language without prompting for it every time.
 - [ ] **Top-level CI.** JSON/JSONC schema validation for the opencode configs, `shellcheck` on the bundled `.sh` files, and a "image actually builds" smoke job.
-- [ ] **`.editorconfig` + `.gitattributes`.** Especially for the cross-platform shell/powershell scripts inside skills.
