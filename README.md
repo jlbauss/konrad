@@ -24,16 +24,24 @@ Status: **early / experimental**. The "safe" half of the original `safe-cowork` 
 3. On first start, the container will print whether LM Studio is reachable. If not, fix the host side and rebuild — the container won't be useful without it.
 4. Inside the container: `opencode` to start.
 
+## Trying konrad out
+
+The repo ships an empty top-level `scratch/` directory for hands-on testing. Drop sample inputs (PDFs, photos, whatever) under `scratch/<topic>/` and point opencode at them — for example, "summarise everything in `scratch/bike/inputs/` and write a PDF report to `scratch/bike/outputs/`". `scratch/` is gitignored (except the `.gitkeep`), so test files and generated outputs never end up in commits.
+
+`task_plan.md`, `progress.md`, and `findings.md` (the model's working-memory files described in [opencode/AGENTS.md](src/konrad/.devcontainer/opencode/AGENTS.md)) are also gitignored at the repo root, so you can let the agent use them freely without polluting history.
+
 ## Repo layout
 
 ```
-src/konrad/.devcontainer/
-├── Dockerfile          # The container image
-├── devcontainer.json   # Mount, user, lifecycle config
-└── opencode/           # Copied into ~/.config/opencode/ at build time
-    ├── AGENTS.md       # Base instructions for the model
-    ├── opencode.jsonc  # Provider, model, autoupdate
-    └── skills/         # Domain skills (pdf, docx, xlsx, pptx, etc.)
+konrad/
+├── scratch/                # Gitignored. Drop test inputs/outputs here.
+└── src/konrad/.devcontainer/
+    ├── Dockerfile          # The container image
+    ├── devcontainer.json   # Mount, user, lifecycle config
+    └── opencode/           # Copied into ~/.config/opencode/ at build time
+        ├── AGENTS.md       # Base instructions for the model
+        ├── opencode.jsonc  # Provider, model, autoupdate
+        └── skills/         # Domain skills (pdf, docx, xlsx, pptx, etc.)
 ```
 
 ## Why a named volume for opencode state

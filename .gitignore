@@ -1,0 +1,19 @@
+# Test scratch dir — bike files, generated outputs, anything you don't
+# want in git. See README → "Trying konrad out".
+/scratch/*
+!/scratch/.gitkeep
+
+# Model-as-working-memory files (see opencode/AGENTS.md "Planning workflow")
+task_plan.md
+progress.md
+findings.md
+
+# OS / editor junk
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Logs
+*.log
