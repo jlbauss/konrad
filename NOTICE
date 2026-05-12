@@ -1,0 +1,43 @@
+konrad
+Copyright (C) 2026 Jan-Luca Bauß
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version. See LICENSE for the full text.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+================================================================================
+Third-party components
+================================================================================
+
+konrad bundles or builds on software released under licenses compatible
+with GPL v3. Those components retain their original licenses; only konrad's
+own contributions and the combined work as a whole are licensed under GPL v3.
+
+opencode
+    https://github.com/sst/opencode
+    MIT License
+
+planning-with-files (file-based planning methodology used in AGENTS.md)
+    https://github.com/OthmanAdi/planning-with-files
+    Copyright (c) Othman Adi
+    MIT License
+
+MiniMax skills (minimax-pdf, minimax-docx, minimax-xlsx, pptx-generator,
+gif-sticker-maker, frontend-dev, fullstack-dev)
+    Copyright (c) MiniMaxAI
+    MIT License — see each skill's frontmatter or LICENSE file under
+    src/konrad/.devcontainer/opencode/skills/<skill>/
+
+Qwen3.6-35B-A3B (model weights, used unmodified via LM Studio,
+not redistributed in this repository)
+    https://huggingface.co/Qwen/Qwen3.6-35B-A3B
+    Apache License 2.0
+
+Fonts bundled in
+src/konrad/.devcontainer/opencode/skills/frontend-dev/canvas-fonts/
+    SIL Open Font License 1.1 — see each font's accompanying *-OFL.txt

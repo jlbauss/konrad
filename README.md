@@ -48,11 +48,10 @@ A named volume keeps those across rebuilds without coupling them to a specific h
 
 ## License and attribution
 
-konrad is released under the [MIT License](LICENSE). It bundles or builds on:
+konrad is released under the [GNU General Public License v3.0](LICENSE). The combined work as a whole is GPL v3; bundled third-party components retain their own (GPL-compatible) licenses. See [NOTICE](NOTICE) for the full upstream list:
 
 - [opencode](https://github.com/sst/opencode) — MIT
-- [planning-with-files](https://github.com/OthmanAdi/planning-with-files) by Othman Adi — MIT — the source of the file-based planning methodology in `AGENTS.md`
-- [MiniMax skills](https://huggingface.co/MiniMaxAI) (`minimax-pdf`, `minimax-docx`, `minimax-xlsx`, `gif-sticker-maker`, `frontend-dev`, `pptx-generator`, `fullstack-dev`) — MIT (see each skill's frontmatter / `LICENSE`)
-- [Qwen3.6-35B-A3B](https://huggingface.co/Qwen/Qwen3.6-35B-A3B) weights — Apache 2.0 (used unmodified via LM Studio; not redistributed in this repo)
-
-All bundled components ship under MIT-compatible terms.
+- [planning-with-files](https://github.com/OthmanAdi/planning-with-files) by Othman Adi — MIT — source of the file-based planning methodology in `AGENTS.md`
+- [MiniMax skills](https://huggingface.co/MiniMaxAI) (`minimax-pdf`, `minimax-docx`, `minimax-xlsx`, `gif-sticker-maker`, `frontend-dev`, `pptx-generator`, `fullstack-dev`) — MIT
+- [Qwen3.6-35B-A3B](https://huggingface.co/Qwen/Qwen3.6-35B-A3B) weights — Apache 2.0 (used unmodified via LM Studio; not redistributed)
+- Fonts under `frontend-dev/canvas-fonts/` — SIL Open Font License 1.1
