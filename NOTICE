@@ -43,6 +43,16 @@ opencode-froggy
     — The "Decision philosophy" section in image/opencode/agents/konrad.md
       adapts the "Pragmatic Minimalism" principles from agent/architect.md.
 
+opencode-models-discovery
+    https://github.com/rivy-t/opencode-models-discovery
+    MIT License
+    — Pre-declared as a runtime plugin in
+      image/konrad-defaults/opencode-defaults.jsonc. Queries provider
+      /v1/models endpoints on opencode startup and dynamically populates
+      the model picker, so konrad can ship without hardcoded model lists
+      for LM Studio / Ollama / llama.cpp. Resolved by opencode from npm
+      at runtime; not redistributed in this repository.
+
 MiniMax skills (minimax-pdf, minimax-docx, minimax-xlsx, pptx-generator,
 gif-sticker-maker, frontend-dev, fullstack-dev)
     Copyright (c) MiniMaxAI

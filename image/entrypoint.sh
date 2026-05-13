@@ -15,18 +15,20 @@ SECRETS=/home/node/.opencode-secrets
 USER_CFG=/home/node/.config/konrad             # everything below comes from the host
 KONRAD_BAKED=/etc/konrad                       # everything below was shipped in the image
 
+say() { printf '[konrad container] %s\n' "$*" >&2; }
+
 mkdir -p "$OPENCODE_CFG" "$OPENCODE_DATA" "$SECRETS"
 
 # ── 1. Compose opencode.jsonc (baked defaults + optional user override) ──────
 TARGET_JSONC="$OPENCODE_CFG/opencode.jsonc"
 if [[ -f "$USER_CFG/opencode.jsonc" ]]; then
-  echo "[konrad] merging user opencode.jsonc with baked defaults" >&2
+  say "composing config: baked defaults + your override"
   node "$KONRAD_BAKED/merge-config.js" \
     "$KONRAD_BAKED/opencode-defaults.jsonc" \
     "$USER_CFG/opencode.jsonc" \
     > "$TARGET_JSONC"
 else
-  # No user override — use baked defaults verbatim (preserves comments).
+  say "composing config: baked defaults (no user override found)"
   cp "$KONRAD_BAKED/opencode-defaults.jsonc" "$TARGET_JSONC"
 fi
 
@@ -53,10 +55,10 @@ fi
 # from a user who manually placed one) into the secrets volume once.
 if [[ -f "$OPENCODE_DATA/auth.json" && ! -L "$OPENCODE_DATA/auth.json" ]]; then
   if [[ -e "$SECRETS/auth.json" ]]; then
-    echo "[konrad] auth.json already in secrets volume; removing stray copy from .agent/" >&2
+    say "auth.json already in secrets volume; removing stray copy from .agent/"
     rm "$OPENCODE_DATA/auth.json"
   else
-    echo "[konrad] migrating auth.json into the secrets volume (one-time)" >&2
+    say "migrating auth.json into the secrets volume (one-time)"
     mv "$OPENCODE_DATA/auth.json" "$SECRETS/auth.json"
   fi
 fi
@@ -64,5 +66,7 @@ fi
 if [[ ! -L "$OPENCODE_DATA/auth.json" ]]; then
   ln -sf "$SECRETS/auth.json" "$OPENCODE_DATA/auth.json"
 fi
+
+say "starting opencode…"
 
 exec "$@"
