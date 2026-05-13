@@ -11,6 +11,9 @@ SECRETS_VOLUME="konrad-secrets"
 CACHE_VOLUME="konrad-cache"
 NPM_GLOBAL_VOLUME="konrad-npm-global"
 
+# Where the user keeps their personal konrad overrides on the host.
+USER_CFG_DIR="${HOME}/.config/konrad"
+
 # --- Resolve the script's source directory, even when symlinked ---
 # Lets `konrad rebuild` find image/Dockerfile no matter where bin/konrad
 # is symlinked from.
@@ -89,6 +92,26 @@ ensure_gitignore() {
   info "added '.agent/opencode/' to $gi"
 }
 
+# Build the bind-mount args that surface the user's ~/.config/konrad/
+# overrides to the container at /home/node/.config/konrad/. Each piece
+# is optional; the entrypoint inside the container merges what it finds.
+user_cfg_mounts() {
+  local -a out=()
+  if [[ -f "$USER_CFG_DIR/opencode.jsonc" ]]; then
+    out+=(-v "$USER_CFG_DIR/opencode.jsonc:/home/node/.config/konrad/opencode.jsonc:ro")
+  fi
+  if [[ -d "$USER_CFG_DIR/agents" ]]; then
+    out+=(-v "$USER_CFG_DIR/agents:/home/node/.config/konrad/agents:ro")
+  fi
+  if [[ -d "$USER_CFG_DIR/skills" ]]; then
+    out+=(-v "$USER_CFG_DIR/skills:/home/node/.config/konrad/skills:ro")
+  fi
+  if [[ -f "$USER_CFG_DIR/AGENTS.md" ]]; then
+    out+=(-v "$USER_CFG_DIR/AGENTS.md:/home/node/.config/konrad/AGENTS.md:ro")
+  fi
+  printf '%s\n' "${out[@]}"
+}
+
 # Run a command inside the konrad container with the standard mount set.
 # All variables are quoted, so paths containing spaces are safe.
 podman_run() {
@@ -96,6 +119,14 @@ podman_run() {
   cwd="$(pwd -P)"
   agent_dir="$cwd/.agent/opencode"
   mkdir -p "$agent_dir"
+
+  # User-config bind-mounts are dynamic; collect them into an array.
+  local -a user_mounts=()
+  if [[ -d "$USER_CFG_DIR" ]]; then
+    # shellcheck disable=SC2207
+    user_mounts=($(user_cfg_mounts))
+  fi
+
   exec podman run \
     --rm -it \
     --userns=keep-id:uid=1000,gid=1000 \
@@ -104,6 +135,7 @@ podman_run() {
     -v "${SECRETS_VOLUME}:/home/node/.opencode-secrets:U" \
     -v "${CACHE_VOLUME}:/home/node/.cache/opencode:U" \
     -v "${NPM_GLOBAL_VOLUME}:/home/node/.npm-global:U" \
+    "${user_mounts[@]}" \
     -w /workspace \
     "$IMAGE_NAME" "$@"
 }
@@ -172,24 +204,76 @@ cmd_version() {
   fi
 }
 
+# --- Config subcommands ---
+
+cmd_config_path() {
+  printf '%s\n' "$USER_CFG_DIR/opencode.jsonc"
+}
+
+cmd_config_init() {
+  local target="$USER_CFG_DIR/opencode.jsonc"
+  if [[ -f "$target" ]]; then
+    die "$target already exists; refusing to overwrite"
+  fi
+  require_podman
+  require_image
+  mkdir -p "$USER_CFG_DIR"
+  podman run --rm --entrypoint cat "$IMAGE_NAME" /etc/konrad/opencode-defaults.jsonc > "$target"
+  info "wrote $target"
+  info "edit it to add providers (Anthropic, OpenRouter, etc.) or change the default model"
+}
+
+cmd_config_show() {
+  local user="$USER_CFG_DIR/opencode.jsonc"
+  if [[ ! -f "$user" ]]; then
+    info "no user override at $user"
+    info "run 'konrad config init' to create one from the baked default"
+    return 0
+  fi
+  require_podman
+  require_image
+  info "diff: baked default (-) vs your override (+)"
+  diff -u \
+    <(podman run --rm --entrypoint cat "$IMAGE_NAME" /etc/konrad/opencode-defaults.jsonc) \
+    "$user" || true
+}
+
+cmd_config() {
+  case "${1:-}" in
+    init)  cmd_config_init ;;
+    path)  cmd_config_path ;;
+    show)  cmd_config_show ;;
+    *)     die "unknown config subcommand: ${1:-<none>} — try: init / path / show" ;;
+  esac
+}
+
 cmd_help() {
   cat <<'EOF'
 konrad — sandboxed opencode in a Podman container.
 
 Usage:
-  konrad             Run opencode against the current directory.
-  konrad shell       Open a bash shell in the container, same mounts.
-  konrad rebuild     Rebuild the konrad image from this repo's image/.
-  konrad clean       Remove this project's .agent/opencode/ state.
-  konrad clean --all Also remove the shared volumes (auth, cache, npm).
-  konrad version     Print version info.
-  konrad help        Show this message.
+  konrad                Run opencode against the current directory.
+  konrad shell          Open a bash shell in the container, same mounts.
+  konrad rebuild        Rebuild the konrad image from this repo's image/.
+  konrad clean          Remove this project's .agent/opencode/ state.
+  konrad clean --all    Also remove the shared volumes (auth, cache, npm).
+  konrad config init    Copy the baked opencode.jsonc to your user override.
+  konrad config path    Print the path of your user override.
+  konrad config show    Diff your user override against the baked default.
+  konrad version        Print version info.
+  konrad help           Show this message.
 
-Files:
-  .agent/opencode/         Per-project session/cache state (auto-gitignored).
-  .agent/task_plan.md      The model's working-memory files (committable).
+Files in the workspace:
+  .agent/opencode/      Per-project session/cache state (auto-gitignored).
+  .agent/task_plan.md   The model's working-memory files (committable).
   .agent/progress.md
   .agent/findings.md
+
+Files in ~/.config/konrad/ (all optional):
+  opencode.jsonc        Deep-merged with konrad's baked defaults at start.
+  agents/               Your own opencode primary agents, layered in.
+  skills/               Your own opencode skills, layered in.
+  AGENTS.md             Personal/org instructions, loaded on top of base.
 EOF
 }
 
@@ -200,6 +284,7 @@ case "${1:-run}" in
   shell)               cmd_shell ;;
   rebuild)             cmd_rebuild ;;
   clean)               shift; cmd_clean "$@" ;;
+  config)              shift; cmd_config "$@" ;;
   version|--version)   cmd_version ;;
   help|-h|--help)      cmd_help ;;
   *)                   die "unknown command: $1 (try: konrad help)" ;;
