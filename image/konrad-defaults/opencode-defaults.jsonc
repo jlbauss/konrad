@@ -27,21 +27,24 @@
   // wants it removes "opencode" from this list in their override).
   "disabled_providers": ["opencode"],
 
-  // Dynamic model discovery. On startup, this plugin queries each
-  // OpenAI-compatible provider's /v1/models endpoint and adds whatever
-  // is actually loaded to the model picker.
+  // Dynamic model discovery for Ollama / llama.cpp. The plugin queries
+  // each provider's /v1/models endpoint at startup. Each call has a
+  // 3s timeout — so an unreachable provider costs 3s of startup delay.
   //
-  // lmstudio is excluded from discovery because the current plugin
-  // version writes `modalities.output: ["embedding"]` for LM Studio
-  // embedding models, which opencode rejects (its schema only allows
-  // text|audio|image|video|pdf). For LM Studio we fall back to a
-  // declared model below; users with extra LM Studio models can add
-  // them to their override. Tracked upstream — see ROADMAP.md.
+  // Two things keep this fast:
+  //   1. lmstudio is excluded statically here (upstream bug — it emits
+  //      "embedding" as a modality which opencode's schema rejects).
+  //   2. konrad's CLI (bin/konrad) probes ollama and llama.cpp on the
+  //      host BEFORE launching the container and dynamically adds them
+  //      to providers.exclude if they're not reachable. That layer
+  //      arrives via merge-config.js as a runtime override. See
+  //      image/entrypoint.sh.
   //
-  // Ollama and llama.cpp keep dynamic discovery because they expose
-  // a more uniform model list. MIT-licensed; see NOTICE.
+  // Pinned to @0.8.0 (not @latest) so opencode doesn't make a network
+  // call to npm on every startup to check for a newer version.
+  // MIT-licensed; see NOTICE.
   "plugin": [
-    ["opencode-models-discovery@latest", {
+    ["opencode-models-discovery@0.8.0", {
       "providers": { "exclude": ["lmstudio"] }
     }]
   ],
@@ -102,7 +105,9 @@
     "plan":  { "disable": true }
   },
 
-  // Auto-update opencode when a new version is available.
-  // See ROADMAP.md — we plan to pin a version and turn this off.
-  "autoupdate": true
+  // Don't have opencode check npm for new versions on every startup.
+  // The check adds ~1-3s of cold-network latency to every launch, and
+  // makes the immutable-image story fuzzy. To update opencode, rebuild
+  // the konrad image (which `npm install -g opencode-ai` at build time).
+  "autoupdate": false
 }

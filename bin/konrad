@@ -67,6 +67,26 @@ check_lm_studio() {
   fi
 }
 
+# Probe each local engine port that konrad's baked default declares as a
+# provider. Return a comma-separated list of provider names that are NOT
+# reachable from the host. The container's entrypoint reads this via the
+# KONRAD_PROVIDER_EXCLUDES env var and feeds it into the discovery plugin's
+# providers.exclude, so the plugin doesn't waste 3 seconds timing out on
+# each unreachable provider.
+compute_unreachable_providers() {
+  local -a unreachable=()
+  # ollama
+  if ! curl --max-time 1 -sf "http://localhost:11434/v1/models" >/dev/null 2>&1; then
+    unreachable+=("ollama")
+  fi
+  # llama.cpp
+  if ! curl --max-time 1 -sf "http://localhost:8080/v1/models" >/dev/null 2>&1; then
+    unreachable+=("llamacpp")
+  fi
+  local IFS=','
+  printf '%s' "${unreachable[*]+${unreachable[*]}}"
+}
+
 # If the cwd is inside a git repo, make sure .agent/opencode/ is
 # gitignored. Idempotent — appends only if not already present.
 ensure_gitignore() {
@@ -95,10 +115,11 @@ ensure_gitignore() {
 # Run a command inside the konrad container with the standard mount set.
 # All variables are quoted, so paths containing spaces are safe.
 podman_run() {
-  local cwd agent_dir
+  local cwd agent_dir excludes
   cwd="$(pwd -P)"
   agent_dir="$cwd/.agent/opencode"
   mkdir -p "$agent_dir"
+  excludes=$(compute_unreachable_providers)
 
   # Optional user-config mounts. Surface anything the user keeps in
   # ~/.config/konrad/ to the container at /home/node/.config/konrad/;
@@ -120,6 +141,7 @@ podman_run() {
   exec podman run \
     --rm -it \
     --userns=keep-id:uid=1000,gid=1000 \
+    -e "KONRAD_PROVIDER_EXCLUDES=${excludes}" \
     -v "${cwd}:/workspace" \
     -v "${agent_dir}:/home/node/.local/share/opencode" \
     -v "${SECRETS_VOLUME}:/home/node/.opencode-secrets:U" \

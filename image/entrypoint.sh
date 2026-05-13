@@ -19,16 +19,61 @@ say() { printf '[konrad container] %s\n' "$*" >&2; }
 
 mkdir -p "$OPENCODE_CFG" "$OPENCODE_DATA" "$SECRETS"
 
-# ── 1. Compose opencode.jsonc (baked defaults + optional user override) ──────
+# ── 1. Compose opencode.jsonc (baked defaults + runtime override + user override) ──
+# Three layers, merged in order so the latter wins on conflicts:
+#   1. /etc/konrad/opencode-defaults.jsonc          (baked into image)
+#   2. /tmp/konrad-runtime-override.jsonc           (generated below from
+#                                                    KONRAD_PROVIDER_EXCLUDES)
+#   3. ~/.config/konrad/opencode.jsonc              (bind-mounted from host)
 TARGET_JSONC="$OPENCODE_CFG/opencode.jsonc"
-if [[ -f "$USER_CFG/opencode.jsonc" ]]; then
-  say "composing config: baked defaults + your override"
+RUNTIME_OVERRIDE=""
+
+# Build the runtime override if the CLI passed a non-empty exclude list.
+# The exclude list adds providers that aren't reachable on the host to
+# the discovery plugin's providers.exclude, so the plugin doesn't waste
+# 3 seconds per missing provider.
+if [[ -n "${KONRAD_PROVIDER_EXCLUDES:-}" ]]; then
+  RUNTIME_OVERRIDE=/tmp/konrad-runtime-override.jsonc
+  # Convert the CSV from KONRAD_PROVIDER_EXCLUDES into a JSON string array.
+  # Always include "lmstudio" since the baked default excludes it for the
+  # embedding-modality bug and we want both lists merged.
+  IFS=',' read -r -a _excludes <<< "lmstudio,${KONRAD_PROVIDER_EXCLUDES}"
+  _list=""
+  for _name in "${_excludes[@]}"; do
+    [[ -z "$_name" ]] && continue
+    [[ -n "$_list" ]] && _list="${_list}, "
+    _list="${_list}\"${_name}\""
+  done
+  cat > "$RUNTIME_OVERRIDE" <<EOF
+{
+  "plugin": [
+    ["opencode-models-discovery@0.8.0", { "providers": { "exclude": [${_list}] } }]
+  ]
+}
+EOF
+  say "runtime: excluding unreachable providers from discovery (${KONRAD_PROVIDER_EXCLUDES})"
+fi
+
+INTERMEDIATE="$KONRAD_BAKED/opencode-defaults.jsonc"
+if [[ -n "$RUNTIME_OVERRIDE" ]]; then
   node "$KONRAD_BAKED/merge-config.js" \
     "$KONRAD_BAKED/opencode-defaults.jsonc" \
+    "$RUNTIME_OVERRIDE" \
+    > /tmp/konrad-intermediate.jsonc
+  INTERMEDIATE=/tmp/konrad-intermediate.jsonc
+fi
+
+if [[ -f "$USER_CFG/opencode.jsonc" ]]; then
+  say "composing config: baked + runtime + your override"
+  node "$KONRAD_BAKED/merge-config.js" \
+    "$INTERMEDIATE" \
     "$USER_CFG/opencode.jsonc" \
     > "$TARGET_JSONC"
+elif [[ -n "$RUNTIME_OVERRIDE" ]]; then
+  say "composing config: baked + runtime (no user override found)"
+  cp "$INTERMEDIATE" "$TARGET_JSONC"
 else
-  say "composing config: baked defaults (no user override found)"
+  say "composing config: baked defaults (no overrides)"
   cp "$KONRAD_BAKED/opencode-defaults.jsonc" "$TARGET_JSONC"
 fi
 
