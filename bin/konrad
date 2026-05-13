@@ -92,26 +92,6 @@ ensure_gitignore() {
   info "added '.agent/opencode/' to $gi"
 }
 
-# Build the bind-mount args that surface the user's ~/.config/konrad/
-# overrides to the container at /home/node/.config/konrad/. Each piece
-# is optional; the entrypoint inside the container merges what it finds.
-user_cfg_mounts() {
-  local -a out=()
-  if [[ -f "$USER_CFG_DIR/opencode.jsonc" ]]; then
-    out+=(-v "$USER_CFG_DIR/opencode.jsonc:/home/node/.config/konrad/opencode.jsonc:ro")
-  fi
-  if [[ -d "$USER_CFG_DIR/agents" ]]; then
-    out+=(-v "$USER_CFG_DIR/agents:/home/node/.config/konrad/agents:ro")
-  fi
-  if [[ -d "$USER_CFG_DIR/skills" ]]; then
-    out+=(-v "$USER_CFG_DIR/skills:/home/node/.config/konrad/skills:ro")
-  fi
-  if [[ -f "$USER_CFG_DIR/AGENTS.md" ]]; then
-    out+=(-v "$USER_CFG_DIR/AGENTS.md:/home/node/.config/konrad/AGENTS.md:ro")
-  fi
-  printf '%s\n' "${out[@]}"
-}
-
 # Run a command inside the konrad container with the standard mount set.
 # All variables are quoted, so paths containing spaces are safe.
 podman_run() {
@@ -120,13 +100,23 @@ podman_run() {
   agent_dir="$cwd/.agent/opencode"
   mkdir -p "$agent_dir"
 
-  # User-config bind-mounts are dynamic; collect them into an array.
+  # Optional user-config mounts. Surface anything the user keeps in
+  # ~/.config/konrad/ to the container at /home/node/.config/konrad/;
+  # the entrypoint picks them up from there. Each piece is independent.
   local -a user_mounts=()
   if [[ -d "$USER_CFG_DIR" ]]; then
-    # shellcheck disable=SC2207
-    user_mounts=($(user_cfg_mounts))
+    [[ -f "$USER_CFG_DIR/opencode.jsonc" ]] \
+      && user_mounts+=(-v "$USER_CFG_DIR/opencode.jsonc:/home/node/.config/konrad/opencode.jsonc:ro")
+    [[ -d "$USER_CFG_DIR/agents" ]] \
+      && user_mounts+=(-v "$USER_CFG_DIR/agents:/home/node/.config/konrad/agents:ro")
+    [[ -d "$USER_CFG_DIR/skills" ]] \
+      && user_mounts+=(-v "$USER_CFG_DIR/skills:/home/node/.config/konrad/skills:ro")
+    [[ -f "$USER_CFG_DIR/AGENTS.md" ]] \
+      && user_mounts+=(-v "$USER_CFG_DIR/AGENTS.md:/home/node/.config/konrad/AGENTS.md:ro")
   fi
 
+  # ${user_mounts[@]+"${user_mounts[@]}"} is the empty-safe array splice —
+  # under `set -u`, a bare ${arr[@]} on an empty array would error.
   exec podman run \
     --rm -it \
     --userns=keep-id:uid=1000,gid=1000 \
@@ -135,7 +125,7 @@ podman_run() {
     -v "${SECRETS_VOLUME}:/home/node/.opencode-secrets:U" \
     -v "${CACHE_VOLUME}:/home/node/.cache/opencode:U" \
     -v "${NPM_GLOBAL_VOLUME}:/home/node/.npm-global:U" \
-    "${user_mounts[@]}" \
+    ${user_mounts[@]+"${user_mounts[@]}"} \
     -w /workspace \
     "$IMAGE_NAME" "$@"
 }
