@@ -7,7 +7,8 @@
 ## ToDo
 
 - [ ] **Other providers.** Remove hard-coded lm-studio as provider.
-- [ ] **publish image in container registry.**
+- [ ] **publish image in container registry.** implement an automated ci/cd workflow each time the containerfile is edited and daily or so.
+- [ ] **bug: Agent does not do the file-based workflow and does not use todowrite.** find out why and how to solve it.
 - [ ] **Preconfigured MCP servers.** Bake in a couple of MCP servers (fs, fetch, gh) in `opencode.jsonc` so the model has working tools the moment it boots.
 - [ ] **Skill Refactoring.** Currently, we blindly imported the minimax skills. They might be overly complex or unfunctional. Sample tasks:
   - [ ] **Deduplicate MiniMax scripts.** `frontend-dev/scripts/minimax_image.py` and `gif-sticker-maker/scripts/minimax_image.py` (plus `_video.py`) have already drifted. Extract a shared `lib/minimax/` or canonicalize one copy.
