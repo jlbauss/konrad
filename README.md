@@ -8,14 +8,19 @@ Status: **early / experimental**. The "safe" half of the original `safe-cowork` 
 
 - **A `konrad` CLI** you run from any folder on the host. It spins up the container with that folder mounted as the workspace, then drops you straight into opencode.
 - **A Debian image** with curated tools (ripgrep, fd, jq, pandoc, ffmpeg, ImageMagick, tesseract, .NET 8, uv, playwright) so the agent doesn't have to install its own toolchain.
-- **opencode** prewired to talk to LM Studio on the host.
-- **Base instructions** ([AGENTS.md](image/opencode/AGENTS.md)) teaching the model file-based planning (`task_plan.md` / `progress.md` / `findings.md`), a 3-strike error protocol, and conventions for the bundled tools.
+- **opencode prewired** to talk to LM Studio (default), Ollama, or llama.cpp on the host — zero configuration on first run.
+- **A layered config system** that lets you add any opencode-supported provider (Anthropic, OpenAI, OpenRouter, Gemini, …) via a tiny override file, without losing konrad's defaults.
+- **Base instructions** ([instructions.md](image/konrad-defaults/instructions.md)) teaching the model file-based planning (`.agent/task_plan.md` / `progress.md` / `findings.md`), a 3-strike error protocol, and conventions for the bundled tools.
 - **Seven domain skills** covering PDF, DOCX, XLSX, PPTX, GIF sticker generation, frontend, and full-stack work.
 
 ## Requirements
 
 - **[Podman](https://podman.io/)** — Docker support is on the backlog. The image is run with `--userns=keep-id`, which is Podman-specific.
-- **[LM Studio](https://lmstudio.ai/)** running on the host, with an OpenAI-compatible server on port `1234` and the [`qwen/qwen3.6-35b-a3b`](https://lmstudio.ai/models/qwen/qwen3.6-35b-a3b) model loaded.
+- **A model provider.** Out of the box, konrad expects one of:
+  - **[LM Studio](https://lmstudio.ai/)** on `localhost:1234` with [`qwen/qwen3.6-35b-a3b`](https://lmstudio.ai/models/qwen/qwen3.6-35b-a3b) loaded (the documented default), or
+  - **[Ollama](https://ollama.com/)** on `localhost:11434`, or
+  - **[llama.cpp](https://github.com/ggerganov/llama.cpp) server** on `localhost:8080`.
+  - For API providers (Anthropic, OpenAI, OpenRouter, etc.), see [Configuration](#configuration) below.
 
 ## Install
 
@@ -35,21 +40,121 @@ cd ~/wherever-you-keep-the-files-the-agent-will-touch
 konrad
 ```
 
-That's the whole UX: the current directory is mounted at `/workspace` inside the container, opencode starts pointing at LM Studio, and you go.
+That's the whole UX: the current directory is mounted at `/workspace` inside the container, opencode starts pointing at LM Studio (or whatever you've configured), and you go.
 
 ### Subcommands
 
-| Command              | What it does                                                          |
-| -------------------- | --------------------------------------------------------------------- |
-| `konrad`             | Default. Runs opencode against the current directory.                 |
-| `konrad shell`       | Opens a bash shell in the container — same mounts, no agent.          |
-| `konrad rebuild`     | Rebuilds the `konrad:latest` image from this repo's `image/`.         |
-| `konrad clean`       | Removes this project's `.agent/opencode/` (sessions, cache).          |
-| `konrad clean --all` | Also drops the shared volumes (auth, cache, npm). Forces fresh login. |
-| `konrad version`     | Print CLI version and image info.                                     |
-| `konrad help`        | Show usage.                                                           |
+| Command                | What it does                                                          |
+| ---------------------- | --------------------------------------------------------------------- |
+| `konrad`               | Default. Runs opencode against the current directory.                 |
+| `konrad shell`         | Opens a bash shell in the container — same mounts, no agent.          |
+| `konrad rebuild`       | Rebuilds the `konrad:latest` image from this repo's `image/`.         |
+| `konrad clean`         | Removes this project's `.agent/opencode/` (sessions, cache).          |
+| `konrad clean --all`   | Also drops the shared volumes (auth, cache, npm). Forces fresh login. |
+| `konrad config init`   | Copies the baked default `opencode.jsonc` to your user override.      |
+| `konrad config path`   | Prints the path of your user override.                                |
+| `konrad config show`   | Diffs your user override against the baked default.                   |
+| `konrad version`       | Prints CLI version and image info.                                    |
+| `konrad help`          | Show usage.                                                           |
 
-### State and isolation
+## Configuration
+
+konrad composes opencode's runtime config from up to three layers at container start. **You only override what you want to change**; everything else stays inherited.
+
+```
+Layer 1 — Baked defaults     /etc/konrad/opencode-defaults.jsonc   (in the image)
+Layer 2 — Your overrides     ~/.config/konrad/                     (on the host)
+Layer 3 — Per-project        <workspace>/.opencode/opencode.json   (opencode-native)
+```
+
+Layer 2 is the interesting one. It's a directory with up to four optional pieces:
+
+```
+~/.config/konrad/
+├── opencode.jsonc      Deep-merged with the baked default at start.
+├── agents/             Your own primary agents, layered in (filenames don't conflict).
+├── skills/             Your own opencode skills, layered in.
+└── AGENTS.md           Personal/org model instructions, loaded on top of konrad's base.
+```
+
+The merge of `opencode.jsonc` is deep: **objects merge recursively, your keys win on conflict, new keys from either side come through, arrays replace.** That last one matters — see [the AGENTS.md convention](#adding-your-own-model-instructions) below.
+
+### Quick start: edit your override
+
+```sh
+konrad config init          # copies the baked default to ~/.config/konrad/opencode.jsonc
+$EDITOR "$(konrad config path)"
+konrad config show          # diff against the baked default to see what you changed
+```
+
+### Recipes
+
+**Use Ollama instead of LM Studio.** The Ollama provider is already declared in the baked default; just register your model and switch the default:
+
+```jsonc
+// ~/.config/konrad/opencode.jsonc
+{
+  "provider": {
+    "ollama": {
+      "models": { "qwen3:30b": { "name": "Qwen 3 30B (Ollama)" } }
+    }
+  },
+  "model": "ollama/qwen3:30b"
+}
+```
+
+**Add Anthropic alongside the local providers.** Your override only adds — local engines stay available.
+
+```jsonc
+{
+  "provider": {
+    "anthropic": {
+      "options": { "apiKey": "{env:ANTHROPIC_API_KEY}" }
+    }
+  },
+  "model": "anthropic/claude-3-7-sonnet"
+}
+```
+
+Then export `ANTHROPIC_API_KEY` on the host before running `konrad`. The CLI passes it through to the container via opencode's `{env:...}` placeholder.
+
+**Add OpenRouter** (one key, many models):
+
+```jsonc
+{
+  "provider": {
+    "openrouter": {
+      "npm": "@openrouter/ai-sdk-provider",
+      "options": { "apiKey": "{env:OPENROUTER_API_KEY}" }
+    }
+  },
+  "model": "openrouter/anthropic/claude-3-7-sonnet"
+}
+```
+
+**Run a different model on LM Studio** (e.g. you swapped to a smaller one):
+
+```jsonc
+{
+  "provider": {
+    "lmstudio": {
+      "models": { "your-model-id": { "name": "Friendly display name" } }
+    }
+  },
+  "model": "lmstudio/your-model-id"
+}
+```
+
+### Adding your own model instructions
+
+konrad ships its base model instructions via the `instructions` config key. **For your own additions, use `AGENTS.md`**, which opencode discovers automatically and loads *on top of* the base:
+
+- `~/.config/konrad/AGENTS.md` — personal or org-wide rules, loaded globally.
+- `<workspace>/AGENTS.md` — per-project rules, loaded only in that workspace.
+
+Both are additive. Don't set `instructions` in your override unless you specifically want to **replace** konrad's base — arrays don't merge.
+
+## State and isolation
 
 konrad splits state across two tiers:
 
@@ -67,18 +172,21 @@ konrad splits state across two tiers:
 
 ```
 konrad/
-├── bin/konrad                 # The CLI
-├── image/                     # Container build context — the canonical artifact
+├── bin/konrad                       # The CLI
+├── image/                           # Container build context — the canonical artifact
 │   ├── Dockerfile
-│   ├── entrypoint.sh          # Sets up the auth.json symlink before exec
-│   └── opencode/              # Copied into ~/.config/opencode/ at build time
-│       ├── AGENTS.md          # Base instructions for the model
-│       ├── opencode.jsonc     # Provider, model, autoupdate
-│       └── skills/            # Domain skills (pdf, docx, xlsx, pptx, etc.)
+│   ├── entrypoint.sh                # Composes opencode.jsonc + layers user content at start
+│   ├── merge-config.js              # Deep-merge for the JSONC layering
+│   ├── konrad-defaults/             # → /etc/konrad/ in the image (not opencode-discoverable)
+│   │   ├── opencode-defaults.jsonc  # Baked defaults — merged with user override at start
+│   │   └── instructions.md          # konrad's base instructions, loaded via instructions key
+│   └── opencode/                    # → ~/.config/opencode/ in the image
+│       ├── agents/                  # Built-in primary agents (konrad)
+│       └── skills/                  # Bundled skills (pdf, docx, xlsx, pptx, etc.)
 ├── scripts/
-│   ├── build-image.sh         # `podman build -t konrad:latest image/`
-│   └── install.sh             # Symlinks bin/konrad into ~/.local/bin
-└── .devcontainer/             # Optional: VS Code entry point for working ON konrad
+│   ├── build-image.sh               # `podman build -t konrad:latest image/`
+│   └── install.sh                   # Symlinks bin/konrad into ~/.local/bin
+└── .devcontainer/                   # Optional: VS Code entry point for working ON konrad
     └── devcontainer.json
 ```
 
@@ -86,7 +194,7 @@ konrad/
 
 **Using konrad as a user.** Install once with the steps above. From then on, `cd` to whatever folder you want the agent to operate on and run `konrad`. The konrad repo only matters for getting the image and CLI installed; you don't open it day-to-day.
 
-**Hacking on konrad itself.** Open this repo in VS Code with the Dev Containers extension and "Reopen in Container" — that path uses [.devcontainer/devcontainer.json](.devcontainer/devcontainer.json) and builds the image from `image/Dockerfile`. After any change to the Dockerfile or `image/opencode/`, run `konrad rebuild` (or `./scripts/build-image.sh`) to refresh the `konrad:latest` tag for the CLI side. See [CONTRIBUTING.md](CONTRIBUTING.md) for the development loop.
+**Hacking on konrad itself.** Open this repo in VS Code with the Dev Containers extension and "Reopen in Container" — that path uses [.devcontainer/devcontainer.json](.devcontainer/devcontainer.json) and builds the image from `image/Dockerfile`. After any change to the Dockerfile or `image/`, run `konrad rebuild` (or `./scripts/build-image.sh`) to refresh the `konrad:latest` tag for the CLI side. See [CONTRIBUTING.md](CONTRIBUTING.md) for the development loop.
 
 ## Design decisions
 
@@ -94,20 +202,22 @@ A short, opinionated record of the load-bearing choices, so future-you can tell 
 
 - **Podman, not Docker.** Open-source, free for commercial use, ergonomic on macOS. `--userns=keep-id` lets the container's `node` user share UID with the host user, so bind-mounted files have sane ownership. Docker support is in [ROADMAP.md](ROADMAP.md).
 - **The image is the canonical artifact.** `image/Dockerfile` builds `konrad:latest`. Both `bin/konrad` and the optional `.devcontainer/devcontainer.json` are consumers of that one image.
+- **Layered config, not replacement.** konrad's baked `opencode.jsonc` is composed with the user's `~/.config/konrad/opencode.jsonc` at every container start via a self-contained Node deep-merger. Users add a provider without losing the defaults; konrad ships a new local engine and the user gets it automatically on next rebuild. The merge step is in `image/entrypoint.sh` and runs *before* opencode loads anything.
 - **Two-tier state.** Per-project workspace state in `.agent/opencode/` (visible, portable, gitignored); shared state (`auth.json`, cache, opencode binary) in named Podman volumes (out of the host filesystem, can't be committed by accident). The `auth.json`-symlink trick in `image/entrypoint.sh` is what makes these two halves coexist under one opencode data dir.
 - **No per-project secrets in the workspace.** Auth credentials live only in the `konrad-secrets` named volume. Users who don't read `.gitignore` carefully still can't accidentally publish their tokens.
+- **`AGENTS.md` is the user's slot; `instructions` is konrad's.** opencode loads both, additively, into the system prompt. By assigning each side its own loading mechanism, we never collide.
 - **GPL v3.** Compatible with all bundled upstream licenses (MIT, Apache 2.0, OFL 1.1). Strong copyleft is a deliberate choice for a sandbox-style tool — if someone extends konrad for commercial use, the improvements come back to the commons.
-- **LM Studio only, for now.** API-key providers are deferred ([ROADMAP.md](ROADMAP.md) → API key passthrough). Keeps the install story to "Podman + LM Studio" with no third surface area to manage.
 
 ## Troubleshooting
 
 | Symptom                                                          | Likely cause                                | Fix                                                                                       |
 | ---------------------------------------------------------------- | ------------------------------------------- | ----------------------------------------------------------------------------------------- |
 | `Cannot connect to Podman` / `connection refused`                | Podman VM not running (macOS)               | `podman machine init` (once), then `podman machine start`                                 |
-| `konrad: LM Studio not reachable at http://localhost:1234`       | LM Studio off or listening on a wrong port  | Open LM Studio → Developer → Start Server, port 1234                                      |
+| `konrad: LM Studio not reachable at http://localhost:1234`       | LM Studio off or listening on a wrong port  | Open LM Studio → Developer → Start Server, port 1234. (Or you're on Ollama / llama.cpp — see [Configuration](#configuration) to set your model and ignore this warning.) |
 | `EACCES: permission denied, mkdir '/home/node/.local/state'`     | Stale image (pre-permission-fix)            | `konrad rebuild`                                                                          |
 | Agent can't find the file you mentioned                          | You ran `konrad` in the wrong directory     | The cwd is what gets mounted at `/workspace`. Always `cd` first.                          |
 | `konrad: warning: LM Studio not reachable …` but you started it  | Wrong host: `host.containers.internal`      | Inside container it's `host.containers.internal`; from the host it's `localhost`. The CLI checks the host side — make sure your host `curl localhost:1234/v1/models` returns JSON. |
+| `merge-config: failed to parse ~/.config/konrad/opencode.jsonc`  | Syntax error in your user override          | `konrad config show` to see the file; check the JSONC syntax. Comments are fine.          |
 | Want to wipe and start over                                      | —                                           | `konrad clean --all`, then `konrad rebuild`                                               |
 
 If a problem isn't listed here, run `konrad shell` to poke around inside the container with the same mounts opencode would see.
@@ -117,7 +227,7 @@ If a problem isn't listed here, run `konrad shell` to poke around inside the con
 konrad is released under the [GNU General Public License v3.0](LICENSE). The combined work as a whole is GPL v3; bundled third-party components retain their own (GPL-compatible) licenses. See [NOTICE](NOTICE) for the full upstream list:
 
 - [opencode](https://github.com/sst/opencode) — MIT
-- [planning-with-files](https://github.com/OthmanAdi/planning-with-files) by Othman Adi — MIT — source of the file-based planning methodology in `AGENTS.md`
+- [planning-with-files](https://github.com/OthmanAdi/planning-with-files) by Othman Adi — MIT — source of the file-based planning methodology baked into konrad's base instructions
 - [MiniMax skills](https://huggingface.co/MiniMaxAI) (`minimax-pdf`, `minimax-docx`, `minimax-xlsx`, `gif-sticker-maker`, `frontend-dev`, `pptx-generator`, `fullstack-dev`) — MIT
 - [Qwen3.6-35B-A3B](https://huggingface.co/Qwen/Qwen3.6-35B-A3B) weights — Apache 2.0 (used unmodified via LM Studio; not redistributed)
 - Fonts under `frontend-dev/canvas-fonts/` — SIL Open Font License 1.1

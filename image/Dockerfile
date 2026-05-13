@@ -80,8 +80,19 @@ USER node
 
 RUN npm install -g opencode-ai
 
-COPY --chown=node:node opencode /home/node/.config/opencode/
+# Auto-discovered opencode content (agents, skills). The opencode.jsonc
+# itself is composed at container start — see entrypoint + konrad-defaults/.
+COPY --chown=node:node opencode/ /home/node/.config/opencode/
 
-# Entrypoint sets up the auth.json symlink before exec'ing the real command.
+# konrad-baked defaults that the entrypoint composes into opencode's config.
+# These live OUTSIDE opencode's auto-discovery path so they don't conflict
+# with user content the entrypoint may layer in.
+USER root
+COPY konrad-defaults/ /etc/konrad/
+COPY merge-config.js /etc/konrad/merge-config.js
+USER node
+
+# Entrypoint runs the config merge + user-content layering before exec'ing
+# the real command (opencode by default, see bin/konrad on the host).
 COPY --chown=node:node entrypoint.sh /usr/local/bin/konrad-entrypoint
 ENTRYPOINT ["/usr/local/bin/konrad-entrypoint"]
