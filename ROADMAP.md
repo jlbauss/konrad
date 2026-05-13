@@ -7,6 +7,7 @@
 ## ToDo
 
 - [ ] **Other providers.** Remove hard-coded lm-studio as provider.
+- [ ] **Restore LM Studio dynamic model discovery.** The [`opencode-models-discovery`](https://github.com/rivy-t/opencode-models-discovery) plugin currently emits `modalities.output: ["embedding"]` for LM Studio embedding models, which opencode's config schema rejects (only `text|audio|image|video|pdf` allowed). LM Studio is excluded from the plugin's discovery as a workaround (`providers.exclude: ["lmstudio"]` in `opencode-defaults.jsonc`); the documented default model is hard-declared. File an upstream issue, drop the exclusion when fixed.
 - [ ] **publish image in container registry.** implement an automated ci/cd workflow each time the containerfile is edited and daily or so.
 - [ ] **bug: Agent does not do the file-based workflow and does not use todowrite.** find out why and how to solve it.
 - [ ] **Preconfigured MCP servers.** Bake in a couple of MCP servers (fs, fetch, gh) in `opencode.jsonc` so the model has working tools the moment it boots.
