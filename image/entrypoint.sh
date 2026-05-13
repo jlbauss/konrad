@@ -125,15 +125,25 @@ fi
 dbg "auth.json symlink ready"
 
 dbg "entrypoint done — about to exec: $*"
+
+# opencode writes a fresh, timestamped INFO-level log file under
+# ~/.local/share/opencode/log/ on every launch, with per-line +Xms deltas
+# (the structure that makes "what took 2 seconds" easy to spot). Inside
+# konrad that path is bind-mounted to the host workspace, so the same
+# file is visible there at .agent/opencode/log/<timestamp>.log — easy
+# to tail in another shell, or via `konrad logs`.
+say "opencode logs: .agent/opencode/log/ in this workspace"
 say "starting opencode…"
 
-# In debug mode, hand opencode hints to be verbose. opencode honors a
-# couple of env-var names depending on version; setting both is cheap.
-# Output goes to stderr, so it should still surface above/around the TUI.
+# Debug mode: ask Bun to print every fetch/http call to fd 2. This catches
+# slow network round-trips that opencode's own logger doesn't surface
+# (e.g. the models.dev catalog fetch, plugin install probes).
+# We don't bother with OPENCODE_LOG_LEVEL or DEBUG=opencode:* — neither
+# exists in the current opencode source; the file log already gives us
+# what we need.
 if [[ "$KONRAD_DEBUG" == "1" ]]; then
-  export OPENCODE_LOG_LEVEL=debug
-  export DEBUG="${DEBUG:-opencode:*}"
-  dbg "OPENCODE_LOG_LEVEL=$OPENCODE_LOG_LEVEL DEBUG=$DEBUG"
+  export BUN_CONFIG_VERBOSE_FETCH=true
+  dbg "BUN_CONFIG_VERBOSE_FETCH=true"
 fi
 
 exec "$@"

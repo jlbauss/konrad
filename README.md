@@ -240,6 +240,29 @@ A short, opinionated record of the load-bearing choices, so future-you can tell 
 
 If a problem isn't listed here, run `konrad shell` to poke around inside the container with the same mounts opencode would see.
 
+## Debugging opencode
+
+opencode writes a fresh, timestamped log file to `~/.local/share/opencode/log/` on every launch. Because konrad bind-mounts that directory to the host workspace's `.agent/opencode/`, the logs appear at **`<workspace>/.agent/opencode/log/<timestamp>.log`** — already gitignored (via `.agent/opencode/`), already at INFO level, already including `+Xms` deltas per line so a startup stall is easy to spot.
+
+```sh
+konrad logs                   # tail the latest log in the current workspace
+ls -t .agent/opencode/log/    # browse older runs
+```
+
+For deeper digging, set `KONRAD_DEBUG=1` before invoking konrad. This adds per-phase timestamps to the CLI and entrypoint, and turns on Bun's `BUN_CONFIG_VERBOSE_FETCH` so every HTTP call opencode makes appears in the log. Note: `OPENCODE_LOG_LEVEL` and `DEBUG=opencode:*` don't exist in opencode's source (don't waste time setting them); the default file log is what gives you visibility.
+
+If startup is slow, the highest-probability suspects (per opencode's own issue tracker) and the env vars that disable each:
+
+| Knob                                     | What it disables                                              |
+| ---------------------------------------- | ------------------------------------------------------------- |
+| `OPENCODE_DISABLE_AUTOUPDATE=1`          | the npm registry check on every launch                        |
+| `OPENCODE_DISABLE_MODELS_FETCH=1`        | the models.dev catalog fetch (we're local-first; safe to off) |
+| `OPENCODE_DISABLE_LSP_DOWNLOAD=1`        | auto-install of language servers on first use                 |
+| `OPENCODE_DISABLE_CLAUDE_CODE_SKILLS=1`  | scanning `.claude/skills/` (none in our container)            |
+| `--pure` (CLI flag)                      | external plugins entirely — useful for bisecting plugin cost  |
+
+Add the ones you want as env vars in `~/.config/konrad/opencode.jsonc` (via the merged config's `env` key) or pass them via `podman run -e` if iterating manually inside `konrad shell`.
+
 ## License and attribution
 
 konrad is released under the [GNU General Public License v3.0](LICENSE). The combined work as a whole is GPL v3; bundled third-party components retain their own (GPL-compatible) licenses. See [NOTICE](NOTICE) for the full upstream list:
