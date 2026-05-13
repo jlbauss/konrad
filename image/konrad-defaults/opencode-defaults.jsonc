@@ -80,12 +80,15 @@
     }
   },
 
-  // Default startup model. Points at konrad's documented LM Studio
-  // default; if the user is on a different provider, opencode will
-  // surface the picker once they /connect. konrad is optimized for
-  // Qwen3.6-class local models (e.g. qwen3.6-35b-a3b on LM Studio) but
-  // any opencode-supported provider works — see README → Configuration.
-  "model": "lmstudio/qwen/qwen3.6-35b-a3b",
+  // No top-level `"model"` set on purpose. opencode persists the
+  // user's last selection to ~/.local/state/opencode/model.json (kept
+  // across konrad runs by the konrad-state named volume), so the next
+  // launch starts on whatever they used last. On first run, opencode
+  // prompts for a model interactively. Setting "model" here would
+  // override that persistence on every launch — see commit history.
+  //
+  // konrad is optimized for Qwen3.6-class local models (e.g.
+  // qwen3.6-35b-a3b on LM Studio) — see README → Configuration.
 
   // Primary agent on startup. Defined in agents/konrad.md.
   "default_agent": "konrad",
