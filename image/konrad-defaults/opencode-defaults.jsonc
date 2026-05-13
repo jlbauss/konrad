@@ -13,9 +13,12 @@
   // Points to the official opencode JSON schema.
   "$schema": "https://opencode.ai/config.json",
 
-  // konrad's base instructions for the model. Loaded by opencode via the
-  // instructions key (not via the AGENTS.md filesystem walk) so users can
-  // add their own AGENTS.md without clobbering or merging with ours.
+  // konrad's base instructions for the model, loaded via the instructions
+  // key. opencode also additively loads any AGENTS.md it discovers — both
+  // the user-level one (~/.config/opencode/AGENTS.md) and the project-level
+  // one (workspace root). Keeping konrad's base on the instructions key
+  // (rather than parking it as an AGENTS.md) gives us a clear "konrad's
+  // domain vs user's domain" split: AGENTS.md is for user content.
   // See README → Configuration → "Adding your own model instructions".
   "instructions": ["/etc/konrad/instructions.md"],
 
