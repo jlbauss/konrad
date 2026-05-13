@@ -19,5 +19,5 @@
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=delegated",
   "workspaceFolder": "/workspace",
   // Verify the host's LM Studio server is reachable on every start.
-  "postStartCommand": "curl --max-time 2 -sf http://host.containers.internal:1234/v1/models > /dev/null && echo '[konrad] LM Studio reachable.' || echo '[konrad] WARNING: LM Studio not reachable at host.containers.internal:1234. Start LM Studio on the host and load qwen/qwen3.6-35b-a3b before using opencode.'"
+  "postStartCommand": "curl --max-time 2 -sf http://host.containers.internal:1234/v1/models > /dev/null && echo '[konrad] LM Studio reachable on host.containers.internal:1234.' || echo '[konrad] LM Studio not detected on host.containers.internal:1234 — ignore if you are using a different provider.'"
 }

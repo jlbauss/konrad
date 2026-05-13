@@ -62,8 +62,7 @@ require_image() {
 
 check_lm_studio() {
   if ! curl --max-time 2 -sf "$LM_STUDIO_HOST_URL" >/dev/null 2>&1; then
-    warn "LM Studio not reachable at $LM_STUDIO_HOST_URL"
-    warn "start LM Studio and load qwen/qwen3.6-35b-a3b before giving the agent work"
+    info "LM Studio not detected at $LM_STUDIO_HOST_URL (ignore if you're using a different provider)"
   fi
 }
 
@@ -133,17 +132,21 @@ podman_run() {
 # --- Subcommands ---
 
 cmd_run() {
+  info "preflight checks…"
   require_podman
   require_image
   check_lm_studio
   ensure_gitignore
+  info "launching container (this can take a few seconds on first run)…"
   podman_run opencode
 }
 
 cmd_shell() {
+  info "preflight checks…"
   require_podman
   require_image
   ensure_gitignore
+  info "launching container…"
   podman_run bash
 }
 

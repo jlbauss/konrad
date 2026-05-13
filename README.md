@@ -16,11 +16,14 @@ Status: **early / experimental**. The "safe" half of the original `safe-cowork` 
 ## Requirements
 
 - **[Podman](https://podman.io/)** — Docker support is on the backlog. The image is run with `--userns=keep-id`, which is Podman-specific.
-- **A model provider.** Out of the box, konrad expects one of:
-  - **[LM Studio](https://lmstudio.ai/)** on `localhost:1234` with [`qwen/qwen3.6-35b-a3b`](https://lmstudio.ai/models/qwen/qwen3.6-35b-a3b) loaded (the documented default), or
+- **A model provider.** konrad ships pre-wired for three local engines and you pick one on first run:
+  - **[LM Studio](https://lmstudio.ai/)** on `localhost:1234`, or
   - **[Ollama](https://ollama.com/)** on `localhost:11434`, or
   - **[llama.cpp](https://github.com/ggerganov/llama.cpp) server** on `localhost:8080`.
-  - For API providers (Anthropic, OpenAI, OpenRouter, etc.), see [Configuration](#configuration) below.
+
+  The loaded models are auto-discovered via each engine's `/v1/models` endpoint — you don't have to declare anything for them to appear in the model picker. For API providers (Anthropic, OpenAI, OpenRouter, etc.), see [Configuration](#configuration) below.
+
+- **Recommended model class.** konrad's base instructions are tuned for **Qwen3.6-class local models** — specifically [`qwen/qwen3.6-35b-a3b`](https://lmstudio.ai/models/qwen/qwen3.6-35b-a3b) is what we test against. Other models work but may need prompt tweaks; see [Design decisions](#design-decisions) for why the agent body is sized for this class.
 
 ## Install
 
@@ -78,6 +81,14 @@ Layer 2 is the interesting one. It's a directory with up to four optional pieces
 ```
 
 The merge of `opencode.jsonc` is deep: **objects merge recursively, your keys win on conflict, new keys from either side come through, arrays replace.** That last one matters — see [the AGENTS.md convention](#adding-your-own-model-instructions) below.
+
+### Model discovery is automatic
+
+konrad ships with the [`opencode-models-discovery`](https://github.com/rivy-t/opencode-models-discovery) plugin enabled. On every startup, opencode queries each configured provider's `/v1/models` endpoint and adds whatever models are *currently loaded* to the picker — you don't have to declare LM Studio / Ollama / llama.cpp models in your config for them to show up. If a local engine isn't running, that provider just doesn't surface models.
+
+### opencode Zen is disabled by default
+
+opencode Zen is the upstream's paid hosted model gateway. konrad is local-first, so we disable it (`disabled_providers: ["opencode"]` in the baked default) to keep the picker focused on what you actually configured. To re-enable, override `disabled_providers` in your user config.
 
 ### Quick start: edit your override
 
@@ -206,6 +217,8 @@ A short, opinionated record of the load-bearing choices, so future-you can tell 
 - **Two-tier state.** Per-project workspace state in `.agent/opencode/` (visible, portable, gitignored); shared state (`auth.json`, cache, opencode binary) in named Podman volumes (out of the host filesystem, can't be committed by accident). The `auth.json`-symlink trick in `image/entrypoint.sh` is what makes these two halves coexist under one opencode data dir.
 - **No per-project secrets in the workspace.** Auth credentials live only in the `konrad-secrets` named volume. Users who don't read `.gitignore` carefully still can't accidentally publish their tokens.
 - **`AGENTS.md` is the user's slot; `instructions` is konrad's.** opencode loads both, additively, into the system prompt. By assigning each side its own loading mechanism, we never collide.
+- **No hardcoded default model.** On first run, opencode prompts the user to pick a provider+model. konrad ships pre-wired local-engine *providers* (LM Studio, Ollama, llama.cpp) but no preselected model, because the actually-loaded models vary per user and per engine. Dynamic discovery fills the picker; the user's choice is whatever they pick once.
+- **Optimised for Qwen3.6-class local models.** The agent body in `image/opencode/agents/konrad.md` is sized and worded for a ~30B-class MoE local model — terse-but-deliberate, no Claude-style verification loops. Bigger frontier models work fine; smaller (<10B) ones may need prompt softening. The specific recommendation we test against is `qwen/qwen3.6-35b-a3b`.
 - **GPL v3.** Compatible with all bundled upstream licenses (MIT, Apache 2.0, OFL 1.1). Strong copyleft is a deliberate choice for a sandbox-style tool — if someone extends konrad for commercial use, the improvements come back to the commons.
 
 ## Troubleshooting

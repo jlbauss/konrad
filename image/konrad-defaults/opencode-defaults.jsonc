@@ -22,23 +22,29 @@
   // See README → Configuration → "Adding your own model instructions".
   "instructions": ["/etc/konrad/instructions.md"],
 
-  // Local-model providers, all pre-wired to their default ports on the host.
+  // Hide opencode Zen from the picker. Zen is opencode's hosted/paid
+  // model gateway; konrad is local-first, so it's opt-in (a user who
+  // wants it removes "opencode" from this list in their override).
+  "disabled_providers": ["opencode"],
+
+  // Dynamic model discovery. On startup, this plugin queries each
+  // OpenAI-compatible provider's /v1/models endpoint and adds whatever
+  // is actually loaded to the model picker. Means we don't have to
+  // hardcode model lists for LM Studio / Ollama / llama.cpp — users
+  // see exactly what they have running. MIT-licensed; see NOTICE.
+  "plugin": ["opencode-models-discovery@latest"],
+
+  // Local-engine providers, pre-wired to their default ports on the host.
   // host.containers.internal resolves to the host machine from inside Podman.
-  // Add more (Anthropic, OpenAI, OpenRouter, etc.) in your user override.
+  // No models declared here — the discovery plugin fills them in at start
+  // from whatever the provider actually has loaded.
+  // Add more providers (Anthropic, OpenRouter, etc.) in your user override.
   "provider": {
     "lmstudio": {
       "npm": "@ai-sdk/openai-compatible",
       "name": "LM Studio (local)",
       "options": {
         "baseURL": "http://host.containers.internal:1234/v1"
-      },
-      "models": {
-        // Canonical LM Studio id for Qwen3.6-35B-A3B.
-        // If LM Studio exposes the model under a different name on your host,
-        // override this key in ~/.config/konrad/opencode.jsonc.
-        "qwen/qwen3.6-35b-a3b": {
-          "name": "Qwen3.6 35B A3B"
-        }
       }
     },
     "ollama": {
@@ -46,23 +52,21 @@
       "name": "Ollama (local)",
       "options": {
         "baseURL": "http://host.containers.internal:11434/v1"
-      },
-      // No models declared — register yours in ~/.config/konrad/opencode.jsonc
-      // (e.g. `"qwen3:30b": { "name": "Qwen 3 30B (Ollama)" }`).
-      "models": {}
+      }
     },
     "llamacpp": {
       "npm": "@ai-sdk/openai-compatible",
       "name": "llama.cpp (local)",
       "options": {
         "baseURL": "http://host.containers.internal:8080/v1"
-      },
-      "models": {}
+      }
     }
   },
 
-  // Default model on startup. Remove this line to pick interactively via /models.
-  "model": "lmstudio/qwen/qwen3.6-35b-a3b",
+  // No default `model` set on purpose. On first run, opencode prompts the
+  // user to pick a provider+model. konrad is optimized for Qwen3.6-class
+  // local models (e.g. qwen3.6-35b-a3b on LM Studio) but any opencode-
+  // supported provider works — see README → Configuration for recipes.
 
   // Primary agent on startup. Defined in agents/konrad.md.
   "default_agent": "konrad",
