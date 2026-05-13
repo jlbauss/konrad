@@ -10,6 +10,7 @@ LM_STUDIO_HOST_URL="http://localhost:1234/v1/models"
 SECRETS_VOLUME="konrad-secrets"
 CACHE_VOLUME="konrad-cache"
 NPM_GLOBAL_VOLUME="konrad-npm-global"
+STATE_VOLUME="konrad-state"
 
 # Where the user keeps their personal konrad overrides on the host.
 USER_CFG_DIR="${HOME}/.config/konrad"
@@ -124,6 +125,7 @@ podman_run() {
     -v "${SECRETS_VOLUME}:/home/node/.opencode-secrets:U" \
     -v "${CACHE_VOLUME}:/home/node/.cache/opencode:U" \
     -v "${NPM_GLOBAL_VOLUME}:/home/node/.npm-global:U" \
+    -v "${STATE_VOLUME}:/home/node/.local/state/opencode:U" \
     ${user_mounts[@]+"${user_mounts[@]}"} \
     -w /workspace \
     "$IMAGE_NAME" "$@"
@@ -171,13 +173,13 @@ cmd_clean() {
   fi
 
   if [[ "${1:-}" == "--all" ]]; then
-    for vol in "$SECRETS_VOLUME" "$CACHE_VOLUME" "$NPM_GLOBAL_VOLUME"; do
+    for vol in "$SECRETS_VOLUME" "$CACHE_VOLUME" "$NPM_GLOBAL_VOLUME" "$STATE_VOLUME"; do
       if podman volume exists "$vol" 2>/dev/null; then
         podman volume rm "$vol" >/dev/null
         info "removed shared volume $vol"
       fi
     done
-    info "next run will need a fresh /connect and will repopulate caches"
+    info "next run will need a fresh /connect, repopulate caches, and re-pick a model"
   fi
 }
 
@@ -249,7 +251,7 @@ Usage:
   konrad shell          Open a bash shell in the container, same mounts.
   konrad rebuild        Rebuild the konrad image from this repo's image/.
   konrad clean          Remove this project's .agent/opencode/ state.
-  konrad clean --all    Also remove the shared volumes (auth, cache, npm).
+  konrad clean --all    Also remove the shared volumes (auth, cache, npm, state).
   konrad config init    Copy the baked opencode.jsonc to your user override.
   konrad config path    Print the path of your user override.
   konrad config show    Diff your user override against the baked default.
