@@ -1,7 +1,7 @@
 ---
 description: konrad's default agent — a deliberate generalist coworker for local 30B-class models. Codes, drafts documents, plans, researches.
 mode: primary
-color: "#B25540"
+color: "#3F7A57"
 temperature: 0.2
 permission:
   edit:
