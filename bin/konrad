@@ -222,6 +222,27 @@ cmd_clean() {
   fi
 }
 
+cmd_logs() {
+  local log_dir
+  log_dir="$(pwd -P)/.agent/opencode/log"
+  if [[ ! -d "$log_dir" ]]; then
+    info "no log directory yet at $log_dir"
+    info "logs are written when opencode runs in this workspace — try 'konrad' first"
+    return 0
+  fi
+  # ls -t sorts newest first; head -1 picks the latest log file
+  local latest
+  latest=$(find "$log_dir" -maxdepth 1 -name '*.log' -type f -print0 2>/dev/null \
+    | xargs -0 ls -t 2>/dev/null \
+    | head -1)
+  if [[ -z "$latest" ]]; then
+    info "no log files in $log_dir yet"
+    return 0
+  fi
+  info "tailing $latest (Ctrl-C to stop)"
+  exec tail -F -n +1 "$latest"
+}
+
 cmd_version() {
   printf 'konrad %s\n' "$KONRAD_VERSION"
   if command -v podman >/dev/null 2>&1 && podman info >/dev/null 2>&1; then
@@ -294,6 +315,7 @@ Usage:
   konrad config init    Copy the baked opencode.jsonc to your user override.
   konrad config path    Print the path of your user override.
   konrad config show    Diff your user override against the baked default.
+  konrad logs           Tail opencode's latest log file in this workspace.
   konrad version        Print version info.
   konrad help           Show this message.
 
@@ -324,6 +346,7 @@ case "${1:-run}" in
   rebuild)             cmd_rebuild ;;
   clean)               shift; cmd_clean "$@" ;;
   config)              shift; cmd_config "$@" ;;
+  logs)                cmd_logs ;;
   version|--version)   cmd_version ;;
   help|-h|--help)      cmd_help ;;
   *)                   die "unknown command: $1 (try: konrad help)" ;;
