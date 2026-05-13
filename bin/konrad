@@ -34,6 +34,18 @@ die()  { printf 'konrad: %s\n' "$*" >&2; exit 1; }
 warn() { printf 'konrad: warning: %s\n' "$*" >&2; }
 info() { printf 'konrad: %s\n' "$*" >&2; }
 
+# Debug mode: KONRAD_DEBUG=1 turns on per-phase timestamps and passes
+# verbose flags through to opencode. Helpful when chasing startup
+# delays. Off by default — output stays concise.
+KONRAD_DEBUG="${KONRAD_DEBUG:-0}"
+# $SECONDS is bash's built-in script-elapsed counter (portable to bash 3.2
+# on macOS). The container side uses GNU `date +%N` for sub-second precision
+# since Linux has that. Both are good enough to spot what's slow.
+dbg() {
+  [[ "$KONRAD_DEBUG" != "1" ]] && return 0
+  printf 'konrad [debug +%ss]: %s\n' "$SECONDS" "$*" >&2
+}
+
 # --- Preflight checks ---
 
 require_podman() {
@@ -142,6 +154,7 @@ podman_run() {
     --rm -it \
     --userns=keep-id:uid=1000,gid=1000 \
     -e "KONRAD_PROVIDER_EXCLUDES=${excludes}" \
+    -e "KONRAD_DEBUG=${KONRAD_DEBUG}" \
     -v "${cwd}:/workspace" \
     -v "${agent_dir}:/home/node/.local/share/opencode" \
     -v "${SECRETS_VOLUME}:/home/node/.opencode-secrets:U" \
@@ -156,21 +169,25 @@ podman_run() {
 # --- Subcommands ---
 
 cmd_run() {
+  dbg "cmd_run start"
   info "preflight checks…"
-  require_podman
-  require_image
-  check_lm_studio
-  ensure_gitignore
+  require_podman; dbg "podman OK"
+  require_image;  dbg "image OK"
+  check_lm_studio; dbg "lm-studio probe done"
+  ensure_gitignore; dbg "gitignore ensured"
   info "launching container (this can take a few seconds on first run)…"
+  dbg "about to exec podman run"
   podman_run opencode
 }
 
 cmd_shell() {
+  dbg "cmd_shell start"
   info "preflight checks…"
-  require_podman
-  require_image
-  ensure_gitignore
+  require_podman; dbg "podman OK"
+  require_image;  dbg "image OK"
+  ensure_gitignore; dbg "gitignore ensured"
   info "launching container…"
+  dbg "about to exec podman run"
   podman_run bash
 }
 
@@ -279,6 +296,11 @@ Usage:
   konrad config show    Diff your user override against the baked default.
   konrad version        Print version info.
   konrad help           Show this message.
+
+Debug:
+  KONRAD_DEBUG=1 konrad    Run with timestamped per-phase logs on both sides
+                           (CLI and container entrypoint), plus opencode set
+                           to verbose. Useful for chasing startup delays.
 
 Files in the workspace:
   .agent/opencode/      Per-project session/cache state (auto-gitignored).

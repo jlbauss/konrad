@@ -78,7 +78,14 @@ ENV NODE_OPTIONS=--max-old-space-size=4096 \
 
 USER node
 
-RUN npm install -g opencode-ai
+# opencode itself + the model-discovery plugin we declare in
+# opencode-defaults.jsonc. Installing both at image build time means
+# the named volume that mounts /home/node/.npm-global gets seeded with
+# them on first creation (podman copies the image's content at the
+# mount point into a fresh named volume), so opencode doesn't have to
+# pull anything from npm at startup. Updates flow through `konrad
+# rebuild` — see ROADMAP for the version-pinning trade-off.
+RUN npm install -g opencode-ai opencode-models-discovery
 
 # Auto-discovered opencode content (agents, skills). The opencode.jsonc
 # itself is composed at container start — see entrypoint + konrad-defaults/.

@@ -28,23 +28,23 @@
   "disabled_providers": ["opencode"],
 
   // Dynamic model discovery for Ollama / llama.cpp. The plugin queries
-  // each provider's /v1/models endpoint at startup. Each call has a
-  // 3s timeout — so an unreachable provider costs 3s of startup delay.
+  // each provider's /v1/models endpoint at startup. Each call has a 3s
+  // timeout — so an unreachable provider costs 3s of startup delay.
   //
   // Two things keep this fast:
-  //   1. lmstudio is excluded statically here (upstream bug — it emits
-  //      "embedding" as a modality which opencode's schema rejects).
-  //   2. konrad's CLI (bin/konrad) probes ollama and llama.cpp on the
-  //      host BEFORE launching the container and dynamically adds them
-  //      to providers.exclude if they're not reachable. That layer
-  //      arrives via merge-config.js as a runtime override. See
-  //      image/entrypoint.sh.
+  //   1. lmstudio is excluded statically here (upstream bug — the plugin
+  //      emits "embedding" as a modality which opencode's schema rejects).
+  //   2. konrad's CLI (bin/konrad) probes ollama and llama.cpp on the host
+  //      BEFORE launching the container and dynamically adds them to
+  //      providers.exclude if they're not reachable. That layer arrives
+  //      via merge-config.js as a runtime override. See image/entrypoint.sh.
   //
-  // Pinned to @0.8.0 (not @latest) so opencode doesn't make a network
-  // call to npm on every startup to check for a newer version.
-  // MIT-licensed; see NOTICE.
+  // No version pinned: the plugin is installed at image build time
+  // (image/Dockerfile), and updates flow through `konrad rebuild`. opencode
+  // resolves the unversioned name from the already-installed copy in
+  // /home/node/.npm-global, so no startup network call. MIT-licensed; see NOTICE.
   "plugin": [
-    ["opencode-models-discovery@0.8.0", {
+    ["opencode-models-discovery", {
       "providers": { "exclude": ["lmstudio"] }
     }]
   ],

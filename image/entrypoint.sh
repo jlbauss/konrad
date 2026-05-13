@@ -15,9 +15,18 @@ SECRETS=/home/node/.opencode-secrets
 USER_CFG=/home/node/.config/konrad             # everything below comes from the host
 KONRAD_BAKED=/etc/konrad                       # everything below was shipped in the image
 
+KONRAD_DEBUG="${KONRAD_DEBUG:-0}"
+
 say() { printf '[konrad container] %s\n' "$*" >&2; }
+dbg() {
+  [[ "$KONRAD_DEBUG" != "1" ]] && return 0
+  printf '[konrad container debug %s] %s\n' "$(date +%H:%M:%S.%3N)" "$*" >&2
+}
+
+dbg "entrypoint start"
 
 mkdir -p "$OPENCODE_CFG" "$OPENCODE_DATA" "$SECRETS"
+dbg "mkdir done"
 
 # ── 1. Compose opencode.jsonc (baked defaults + runtime override + user override) ──
 # Three layers, merged in order so the latter wins on conflicts:
@@ -76,6 +85,7 @@ else
   say "composing config: baked defaults (no overrides)"
   cp "$KONRAD_BAKED/opencode-defaults.jsonc" "$TARGET_JSONC"
 fi
+dbg "config composed at $TARGET_JSONC"
 
 # ── 2. Layer in user-shipped agents / skills / AGENTS.md ─────────────────────
 # Each is optional. If the user hasn't provided one, do nothing.
@@ -94,6 +104,7 @@ fi
 if [[ -f "$USER_CFG/AGENTS.md" ]]; then
   cp "$USER_CFG/AGENTS.md" "$OPENCODE_CFG/AGENTS.md"
 fi
+dbg "user content layered in"
 
 # ── 3. auth.json on a named volume (unchanged from previous behaviour) ───────
 # Migrate a pre-existing real auth.json (from before this split, or
@@ -111,7 +122,18 @@ fi
 if [[ ! -L "$OPENCODE_DATA/auth.json" ]]; then
   ln -sf "$SECRETS/auth.json" "$OPENCODE_DATA/auth.json"
 fi
+dbg "auth.json symlink ready"
 
+dbg "entrypoint done — about to exec: $*"
 say "starting opencode…"
+
+# In debug mode, hand opencode hints to be verbose. opencode honors a
+# couple of env-var names depending on version; setting both is cheap.
+# Output goes to stderr, so it should still surface above/around the TUI.
+if [[ "$KONRAD_DEBUG" == "1" ]]; then
+  export OPENCODE_LOG_LEVEL=debug
+  export DEBUG="${DEBUG:-opencode:*}"
+  dbg "OPENCODE_LOG_LEVEL=$OPENCODE_LOG_LEVEL DEBUG=$DEBUG"
+fi
 
 exec "$@"
