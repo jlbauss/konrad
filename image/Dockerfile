@@ -1,9 +1,9 @@
 FROM node:26-trixie-slim
 
 LABEL org.opencontainers.image.title="konrad" \
-      org.opencontainers.image.description="Sandboxed opencode for local agent models, preloaded with instructions and a curated tool set." \
-      org.opencontainers.image.licenses="GPL-3.0-only" \
-      org.opencontainers.image.source="https://github.com/jan-luca-bauss/konrad"
+    org.opencontainers.image.description="Sandboxed opencode for local agent models, preloaded with instructions and a curated tool set." \
+    org.opencontainers.image.licenses="GPL-3.0-only" \
+    org.opencontainers.image.source="https://github.com/jan-luca-bauss/konrad"
 
 # NODE_ENV=production per Node Docker best-practices §1: opencode treats
 # this as "real run, optimise"; cheap to set and harmless if a dev wants
@@ -32,17 +32,18 @@ ENV DEBIAN_FRONTEND=noninteractive \
 # --no-install-recommends keeps us off the "this package and 30 friends"
 # rails; apt cleanup happens in-RUN so the layer stays small.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      git ca-certificates curl jq \
-      ripgrep fd-find bat tree gh \
-      python3 pandoc poppler-utils \
-      less procps fzf zsh man-db unzip gnupg2 nano htop \
-      iproute2 dnsutils \
-  && apt-get clean \
-  && rm -rf /var/lib/apt/lists/*
+    git ca-certificates curl jq \
+    ripgrep fd-find bat tree gh \
+    python3 pandoc poppler-utils \
+    less procps fzf zsh man-db unzip gnupg2 nano htop \
+    iproute2 dnsutils \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* \
+    && rm -rf /var/log/apt/* /var/log/dpkg.log
 
 # Debian renames fd → fdfind and bat → batcat; symlink to canonical names.
 RUN ln -sf /usr/bin/fdfind /usr/local/bin/fd \
- && ln -sf /usr/bin/batcat /usr/local/bin/bat
+    && ln -sf /usr/bin/batcat /usr/local/bin/bat
 
 # ── Python toolchain ────────────────────────────────────────────────────────
 # uv is a single static binary — drop it in /usr/local/bin from the official
@@ -53,21 +54,21 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
 # skill rebuilds add their own deps here via `uv pip install`.
 ENV VIRTUAL_ENV=/opt/venv
 RUN uv venv $VIRTUAL_ENV --python /usr/bin/python3 \
- && uv pip install --no-cache pandas
+    && uv pip install --no-cache pandas
 
 # ── XDG-compliant home structure for the node user ──────────────────────────
 # Pre-creating these owned by node avoids the EACCES we used to hit when
 # Podman creates named-volume parents as root at mount time.
 RUN mkdir -p \
-      /workspace \
-      /home/node/.npm-global \
-      /home/node/.local/share/opencode \
-      /home/node/.local/state \
-      /home/node/.local/bin \
-      /home/node/.cache/opencode \
-      /home/node/.config \
-      /home/node/.opencode-secrets \
- && chown -R node:node /workspace /home/node
+    /workspace \
+    /home/node/.npm-global \
+    /home/node/.local/share/opencode \
+    /home/node/.local/state \
+    /home/node/.local/bin \
+    /home/node/.cache/opencode \
+    /home/node/.config \
+    /home/node/.opencode-secrets \
+    && chown -R node:node /workspace /home/node
 
 # ── konrad-baked content (root-owned by design — node user can't tamper) ────
 COPY konrad-defaults/  /etc/konrad/
@@ -93,7 +94,9 @@ USER node
 # the konrad-npm-global named volume gets seeded from this layer on
 # first creation — opencode doesn't have to pull anything from npm at
 # startup. Updates flow through `konrad rebuild`.
-RUN npm install -g npm opencode-ai opencode-models-discovery
+RUN npm install -g npm opencode-ai opencode-models-discovery \
+    && npm cache clean --force \
+    && rm -rf /tmp/*
 
 # Opencode-discoverable content (currently just the konrad primary agent;
 # skills directory was removed pending a ground-up rebuild — see ROADMAP).
