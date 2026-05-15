@@ -69,6 +69,6 @@ Keep AGENTS.md tight — every byte competes with task context inside the model'
 
 ## Out of scope right now
 
-- The bundled skills under `image/opencode/skills/`. They come from MiniMax; we don't maintain them. See ROADMAP.md "Skills hygiene" for the items we'll eventually tackle.
+- Skills. None ship in this version of konrad — the previously-bundled MiniMax skills were removed pending a ground-up rebuild. New skills will live under `image/opencode/skills/` once added. See ROADMAP.md.
 - Windows host support. Podman with `--userns=keep-id` is Linux/macOS only.
 - Tests. See `ROADMAP.md` for the CI item — that's where tests would land.

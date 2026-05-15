@@ -12,14 +12,16 @@ inspect specific paths or versions when relevant.
 - Data: `jq`
 - Net: `curl`, `gh` (GitHub CLI)
 - Docs: `pandoc`, `pdftotext`, `pdftoppm`, `pdfinfo` (poppler-utils)
-- Media: `ffmpeg`, `magick` (ImageMagick), `tesseract` (OCR)
-- Languages: Python 3 (+ `uv`), Node.js (+ `npm`), .NET 8 SDK
-- Python and Node libraries referenced in installed skills
+- Languages: Python 3 (+ `uv`), Node.js (+ `npm`)
+- Python venv at `/opt/venv` (active by default via PATH) — extend it with
+  `uv pip install <pkg>` for ad-hoc needs.
 
 ### Skills
-Domain-specific workflows live in `~/.config/opencode/skills/`.
-Read the relevant `SKILL.md` before working with PDFs, spreadsheets,
-PowerPoint, or Word documents.
+Domain-specific workflows live in `~/.config/opencode/skills/` and are
+loaded via opencode's `skill` tool. If a skill is registered for the
+task at hand, prefer it over reinventing the workflow by hand. opencode
+surfaces the list of available skills in its own system prompt, so
+check there before falling back to general tool use.
 
 ### Filesystem
 - `/workspace` — project, host-mounted, read-write. Final deliverables go here.

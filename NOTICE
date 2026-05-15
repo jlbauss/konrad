@@ -53,17 +53,7 @@ opencode-models-discovery
       for LM Studio / Ollama / llama.cpp. Resolved by opencode from npm
       at runtime; not redistributed in this repository.
 
-MiniMax skills (minimax-pdf, minimax-docx, minimax-xlsx, pptx-generator,
-gif-sticker-maker, frontend-dev, fullstack-dev)
-    Copyright (c) MiniMaxAI
-    MIT License — see each skill's frontmatter or LICENSE file under
-    image/opencode/skills/<skill>/
-
 Qwen3.6-35B-A3B (model weights, used unmodified via LM Studio,
 not redistributed in this repository)
     https://huggingface.co/Qwen/Qwen3.6-35B-A3B
     Apache License 2.0
-
-Fonts bundled in
-image/opencode/skills/frontend-dev/canvas-fonts/
-    SIL Open Font License 1.1 — see each font's accompanying *-OFL.txt

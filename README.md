@@ -1,17 +1,17 @@
 # konrad
 
-A CLI wrapper around [opencode](https://github.com/sst/opencode) that runs it inside a sandboxed Podman container preloaded with skills and instructions. Aimed at making locally hosted agent models genuinely useful out of the box.
+A CLI wrapper around [opencode](https://github.com/sst/opencode) that runs it inside a sandboxed Podman container preloaded with a curated tool set and tuned instructions. Aimed at making locally hosted agent models genuinely useful out of the box.
 
 Status: **early / experimental**. The "safe" half of the original `safe-cowork` name (egress firewall, permission ACLs) is not yet implemented — see [ROADMAP.md](ROADMAP.md).
 
 ## What konrad gives you
 
 - **A `konrad` CLI** you run from any folder on the host. It spins up the container with that folder mounted as the workspace, then drops you straight into opencode.
-- **A Debian image** with curated tools (ripgrep, fd, jq, pandoc, ffmpeg, ImageMagick, tesseract, .NET 8, uv, playwright) so the agent doesn't have to install its own toolchain.
+- **A Debian image** with a curated tool set (ripgrep, fd, jq, gh, pandoc, poppler-utils, plus Python 3 + uv with a system venv) so the agent doesn't have to install its own toolchain. Heavier tooling for specific skills lands as those skills are rebuilt.
 - **opencode prewired** to talk to LM Studio (default), Ollama, or llama.cpp on the host — zero configuration on first run.
 - **A layered config system** that lets you add any opencode-supported provider (Anthropic, OpenAI, OpenRouter, Gemini, …) via a tiny override file, without losing konrad's defaults.
 - **Base instructions** ([instructions.md](image/konrad-defaults/instructions.md)) teaching the model file-based planning (`.agent/task_plan.md` / `progress.md` / `findings.md`), a 3-strike error protocol, and conventions for the bundled tools.
-- **Seven domain skills** covering PDF, DOCX, XLSX, PPTX, GIF sticker generation, frontend, and full-stack work.
+- **A clean skill slot.** Skills are loaded via opencode's `skill` tool from `~/.config/opencode/skills/`. No skills ship in this version — a curated set is being rebuilt from scratch (see [ROADMAP.md](ROADMAP.md)).
 
 ## Requirements
 
@@ -198,7 +198,7 @@ konrad/
 │   │   └── instructions.md          # konrad's base instructions, loaded via instructions key
 │   └── opencode/                    # → ~/.config/opencode/ in the image
 │       ├── agents/                  # Built-in primary agents (konrad)
-│       └── skills/                  # Bundled skills (pdf, docx, xlsx, pptx, etc.)
+│       (no skills/ in this release — see ROADMAP)
 ├── scripts/
 │   ├── build-image.sh               # `podman build -t konrad:latest image/`
 │   └── install.sh                   # Symlinks bin/konrad into ~/.local/bin
@@ -269,6 +269,4 @@ konrad is released under the [GNU General Public License v3.0](LICENSE). The com
 
 - [opencode](https://github.com/sst/opencode) — MIT
 - [planning-with-files](https://github.com/OthmanAdi/planning-with-files) by Othman Adi — MIT — source of the file-based planning methodology baked into konrad's base instructions
-- [MiniMax skills](https://huggingface.co/MiniMaxAI) (`minimax-pdf`, `minimax-docx`, `minimax-xlsx`, `gif-sticker-maker`, `frontend-dev`, `pptx-generator`, `fullstack-dev`) — MIT
 - [Qwen3.6-35B-A3B](https://huggingface.co/Qwen/Qwen3.6-35B-A3B) weights — Apache 2.0 (used unmodified via LM Studio; not redistributed)
-- Fonts under `frontend-dev/canvas-fonts/` — SIL Open Font License 1.1

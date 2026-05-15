@@ -150,8 +150,11 @@ podman_run() {
 
   # ${user_mounts[@]+"${user_mounts[@]}"} is the empty-safe array splice —
   # under `set -u`, a bare ${arr[@]} on an empty array would error.
+  # --init: podman runs a tiny init (catatonit) as PID 1 inside the container
+  # so signals (SIGINT, SIGTERM) reach opencode cleanly and any orphaned
+  # children get reaped. Per Node Docker best-practices §5.
   exec podman run \
-    --rm -it \
+    --rm -it --init \
     --userns=keep-id:uid=1000,gid=1000 \
     -e "KONRAD_PROVIDER_EXCLUDES=${excludes}" \
     -e "KONRAD_DEBUG=${KONRAD_DEBUG}" \
