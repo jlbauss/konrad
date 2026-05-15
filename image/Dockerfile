@@ -85,12 +85,15 @@ WORKDIR /workspace
 # and before runtime. konrad never runs anything as root post-build.
 USER node
 
-# opencode itself + the model-discovery plugin we declare in
-# opencode-defaults.jsonc. Installing both at build time means the
-# konrad-npm-global named volume gets seeded from this layer on first
-# creation — opencode doesn't have to pull anything from npm at startup.
-# Updates flow through `konrad rebuild`.
-RUN npm install -g opencode-ai opencode-models-discovery
+# Update npm to latest in the user prefix (silences the "new version of
+# npm available!" notice during build, and keeps npm itself flowing
+# through `konrad rebuild` like every other package). Then install
+# opencode + the model-discovery plugin we declare in
+# opencode-defaults.jsonc. Installing all of this at build time means
+# the konrad-npm-global named volume gets seeded from this layer on
+# first creation — opencode doesn't have to pull anything from npm at
+# startup. Updates flow through `konrad rebuild`.
+RUN npm install -g npm opencode-ai opencode-models-discovery
 
 # Opencode-discoverable content (currently just the konrad primary agent;
 # skills directory was removed pending a ground-up rebuild — see ROADMAP).
