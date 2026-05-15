@@ -8,7 +8,7 @@
 
 ## ToDo
 
-- [ ] **publish image in container registry.** implement an automated ci/cd workflow each time the containerfile is edited and daily or so.
+- [ ] **Improve image.** Optimize structure and size. Follow Node best practices: https://github.com/nodejs/docker-node/blob/main/docs/BestPractices.md Include more relevant tools. Publish on gitlab container registry. implement an automated ci/cd workflow each time the containerfile is edited and daily or so.
 - [ ] **bug: Agent does not do the file-based workflow and does not use todowrite.** find out why and how to solve it.
 - [ ] **Preconfigured MCP servers.** Bake in a couple of MCP servers (fs, fetch, gh) in `opencode.jsonc` so the model has working tools the moment it boots.
 - [ ] **Skill Refactoring.** Currently, we blindly imported the minimax skills. They might be overly complex or unfunctional. Sample tasks:

@@ -1,9 +1,9 @@
-FROM node:24
+FROM node:26-trixie-slim
 
 LABEL org.opencontainers.image.title="konrad" \
-      org.opencontainers.image.description="Sandboxed opencode for local agent models, preloaded with skills and instructions." \
-      org.opencontainers.image.licenses="GPL-3.0-only" \
-      org.opencontainers.image.source="https://github.com/jan-luca-bauss/konrad"
+    org.opencontainers.image.description="Sandboxed opencode for local agent models, preloaded with skills and instructions." \
+    org.opencontainers.image.licenses="GPL-3.0-only" \
+    org.opencontainers.image.source="https://github.com/jan-luca-bauss/konrad"
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -17,8 +17,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     pandoc poppler-utils tesseract-ocr imagemagick ffmpeg \
     python3 curl ca-certificates \
     fonts-dejavu fonts-liberation fonts-noto-core \
-  && apt-get clean \
-  && rm -rf /var/lib/apt/lists/*
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
 # Debian renames fd → fdfind and bat → batcat; symlink to the canonical names.
 RUN ln -sf /usr/bin/fdfind /usr/local/bin/fd && \
@@ -34,9 +34,9 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
 ENV VIRTUAL_ENV=/opt/venv
 RUN uv venv $VIRTUAL_ENV --python /usr/bin/python3 && \
     uv pip install --no-cache \
-      reportlab pypdf matplotlib \
-      pandas openpyxl \
-      "markitdown[pptx]"
+    reportlab pypdf matplotlib \
+    pandas openpyxl \
+    "markitdown[pptx]"
 
 # Node tools for minimax-pdf (playwright/chromium) and pptx-generator (pptxgenjs).
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright-browsers
@@ -57,19 +57,19 @@ RUN curl -sSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh && 
 # (for auth.json). Without this, Podman creates these as root when
 # mounting volumes under them and opencode's runtime mkdirs hit EACCES.
 RUN mkdir -p \
-      /home/node/.npm-global \
-      /home/node/.local/share/opencode \
-      /home/node/.local/state \
-      /home/node/.local/bin \
-      /home/node/.cache/opencode \
-      /home/node/.config \
-      /home/node/.opencode-secrets \
-  && chown -R node:node \
-      /home/node/.npm-global \
-      /home/node/.local \
-      /home/node/.cache \
-      /home/node/.config \
-      /home/node/.opencode-secrets
+    /home/node/.npm-global \
+    /home/node/.local/share/opencode \
+    /home/node/.local/state \
+    /home/node/.local/bin \
+    /home/node/.cache/opencode \
+    /home/node/.config \
+    /home/node/.opencode-secrets \
+    && chown -R node:node \
+    /home/node/.npm-global \
+    /home/node/.local \
+    /home/node/.cache \
+    /home/node/.config \
+    /home/node/.opencode-secrets
 
 ENV NODE_OPTIONS=--max-old-space-size=4096 \
     NPM_CONFIG_PREFIX=/home/node/.npm-global \
