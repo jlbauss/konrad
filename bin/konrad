@@ -158,8 +158,8 @@ podman_run() {
     --userns=keep-id:uid=1000,gid=1000 \
     -e "KONRAD_PROVIDER_EXCLUDES=${excludes}" \
     -e "KONRAD_DEBUG=${KONRAD_DEBUG}" \
-    -v "${cwd}:/workspace" \
-    -v "${agent_dir}:/home/node/.local/share/opencode" \
+    -v "${cwd}:/workspace:z" \
+    -v "${agent_dir}:/home/node/.local/share/opencode:z" \
     -v "${SECRETS_VOLUME}:/home/node/.opencode-secrets:U" \
     -v "${CACHE_VOLUME}:/home/node/.cache/opencode:U" \
     -v "${NPM_GLOBAL_VOLUME}:/home/node/.npm-global:U" \
