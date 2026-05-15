@@ -34,7 +34,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git ca-certificates curl jq \
     ripgrep fd-find bat tree gh \
-    python3 pandoc poppler-utils \
+    python3 pandoc poppler-utils libgl1 libglib2.0-0 \
+    libgomp1 \
     less procps fzf zsh man-db unzip gnupg2 nano htop \
     iproute2 dnsutils \
     && apt-get clean \
@@ -54,7 +55,7 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
 # skill rebuilds add their own deps here via `uv pip install`.
 ENV VIRTUAL_ENV=/opt/venv
 RUN uv venv $VIRTUAL_ENV --python /usr/bin/python3 \
-    && uv pip install --no-cache pandas
+    && uv pip install --no-cache "docling-slim[standard]"
 
 # ── XDG-compliant home structure for the node user ──────────────────────────
 # Pre-creating these owned by node avoids the EACCES we used to hit when
@@ -94,9 +95,8 @@ USER node
 # the konrad-npm-global named volume gets seeded from this layer on
 # first creation — opencode doesn't have to pull anything from npm at
 # startup. Updates flow through `konrad rebuild`.
-RUN npm install -g npm opencode-ai opencode-models-discovery \
-    && npm cache clean --force \
-    && rm -rf /tmp/*
+RUN npm install -g npm opencode-ai \
+    && npm cache clean --force 
 
 # Opencode-discoverable content (currently just the konrad primary agent;
 # skills directory was removed pending a ground-up rebuild — see ROADMAP).
