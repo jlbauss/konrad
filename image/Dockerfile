@@ -8,7 +8,7 @@ FROM node:26-trixie-slim AS python-base
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 libgl1 libglib2.0-0 libgomp1 \
+    ca-certificates python3 libgl1 libglib2.0-0 libgomp1 \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -64,7 +64,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 #   less, procps, fzf, zsh, man-db, unzip, gnupg2, nano, htop,
 #   iproute2, dnsutils
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    git ca-certificates curl jq \
+    git curl jq \
     ripgrep fd-find bat tree gh \
     python3 pandoc poppler-utils libgl1 libglib2.0-0 \
     libgomp1 \
