@@ -58,13 +58,6 @@
       "name": "LM Studio (local)",
       "options": {
         "baseURL": "http://host.containers.internal:1234/v1"
-      },
-      "models": {
-        // Konrad's documented default. Re-declared because the discovery
-        // plugin is currently excluded for lmstudio (see plugin comment
-        // above). If you've loaded a different model in LM Studio, add it
-        // to this map in your ~/.config/konrad/opencode.jsonc override.
-        "qwen/qwen3.6-35b-a3b": { "name": "Qwen3.6 35B A3B" }
       }
     },
     "ollama": {
