@@ -47,19 +47,17 @@ RUN ln -sf /usr/bin/fdfind /usr/local/bin/fd \
     && ln -sf /usr/bin/batcat /usr/local/bin/bat
 
 # ── Python toolchain ────────────────────────────────────────────────────────
-# uv is a single static binary — drop it in /usr/local/bin from the official
-# image. Used to create the /opt/venv venv below; future skills install into it.
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
 
-# System-wide Python venv. Starts with just pandas as a useful baseline;
-# skill rebuilds add their own deps here via `uv pip install`.
-ENV VIRTUAL_ENV=/opt/venv
+ENV VIRTUAL_ENV=/opt/venv \
+    DOCLING_ARTIFACTS_PATH=/home/node/.cache/docling/models
+
 RUN uv venv $VIRTUAL_ENV --python /usr/bin/python3 \
-    && uv pip install --no-cache "docling-slim[standard]"
+    && uv pip install --no-cache \
+        --torch-backend=cpu \
+        "docling-slim[standard]"
 
 # ── XDG-compliant home structure for the node user ──────────────────────────
-# Pre-creating these owned by node avoids the EACCES we used to hit when
-# Podman creates named-volume parents as root at mount time.
 RUN mkdir -p \
     /workspace \
     /home/node/.npm-global \
@@ -67,6 +65,7 @@ RUN mkdir -p \
     /home/node/.local/state \
     /home/node/.local/bin \
     /home/node/.cache/opencode \
+    /home/node/.cache/docling/models \
     /home/node/.config \
     /home/node/.opencode-secrets \
     && chown -R node:node /workspace /home/node
@@ -86,6 +85,9 @@ WORKDIR /workspace
 # Node best-practices §6: drop privileges before installing user-space tooling
 # and before runtime. konrad never runs anything as root post-build.
 USER node
+
+# Pre-download Docling models into the same cache path used at runtime.
+RUN /opt/venv/bin/docling-tools models download
 
 # Update npm to latest in the user prefix (silences the "new version of
 # npm available!" notice during build, and keeps npm itself flowing

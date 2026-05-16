@@ -4,6 +4,8 @@ mode: primary
 color: "#3F7A57"
 temperature: 0.2
 permission:
+  external_directory:
+    "/tmp/**": allow
   edit:
     "**/.env*": deny
     "**/.git/**": deny
