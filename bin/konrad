@@ -199,6 +199,11 @@ cmd_rebuild() {
   [[ -f "$IMAGE_CONTEXT/Dockerfile" ]] \
     || die "expected Dockerfile at $IMAGE_CONTEXT/Dockerfile (is the konrad repo intact?)"
   info "building $IMAGE_NAME from $IMAGE_CONTEXT"
+  # Build intermediate stages first with stable tags so Podman's layer cache
+  # keeps them alive across prune operations. Without tags they are treated as
+  # dangling images and get collected, forcing a full model re-download next time.
+  podman build --target python-base   -t konrad-python-base:cache   "$IMAGE_CONTEXT"
+  podman build --target python-models -t konrad-python-models:cache  "$IMAGE_CONTEXT"
   podman build -t "$IMAGE_NAME" "$IMAGE_CONTEXT"
 }
 
