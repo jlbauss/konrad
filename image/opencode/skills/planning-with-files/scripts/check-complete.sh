@@ -3,9 +3,17 @@
 # Always exits 0 — uses stdout for status reporting
 # Used by Stop hook to report task completion status
 
-PLAN_FILE="${1:-task_plan.md}"
+if [ -n "${1:-}" ]; then
+    PLAN_FILE="$1"
+elif [ -f ".agent/task_plan.md" ]; then
+    PLAN_FILE=".agent/task_plan.md"
+elif [ -f "task_plan.md" ]; then
+    PLAN_FILE="task_plan.md"
+else
+    PLAN_FILE=""
+fi
 
-if [ ! -f "$PLAN_FILE" ]; then
+if [ -z "$PLAN_FILE" ] || [ ! -f "$PLAN_FILE" ]; then
     echo "[planning-with-files] No task_plan.md found — no active planning session."
     exit 0
 fi

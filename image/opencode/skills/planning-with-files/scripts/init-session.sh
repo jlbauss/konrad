@@ -276,9 +276,11 @@ if [ "$SLUG_MODE" -eq 1 ]; then
     echo "  export PLAN_ID=$PLAN_ID"
 else
     PROJECT_NAME="${PROJECT_NAME:-project}"
+    AGENT_DIR="$(pwd)/.agent"
+    mkdir -p "$AGENT_DIR"
     echo "Initializing planning files for: $PROJECT_NAME (template: $TEMPLATE)"
-    create_files_in "$(pwd)"
+    create_files_in "$AGENT_DIR"
     echo ""
     echo "Planning files initialized!"
-    echo "Files: task_plan.md, findings.md, progress.md"
+    echo "Files: .agent/task_plan.md, .agent/findings.md, .agent/progress.md"
 fi
