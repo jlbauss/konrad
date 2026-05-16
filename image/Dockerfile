@@ -10,9 +10,12 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates python3 libgl1 libglib2.0-0 libgomp1 \
     && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* /var/log/apt/* /var/log/dpkg.log
 
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
+# uv pinned to a Minor tag — patch releases (0.11.x) flow in on every rebuild
+# (incl. CVE fixes), but a 0.12 with breaking CLI/API behaviour requires a
+# deliberate bump here. See README → Configuration → "Pinning strategy".
+COPY --from=ghcr.io/astral-sh/uv:0.11 /uv /uvx /usr/local/bin/
 
 ENV VIRTUAL_ENV=/opt/venv
 
@@ -64,7 +67,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 #   less, procps, fzf, zsh, man-db, unzip, gnupg2, nano, htop,
 #   iproute2, dnsutils
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    git curl jq \
+    git curl jq ca-certificates \
     ripgrep fd-find bat tree gh \
     python3 pandoc poppler-utils libgl1 libglib2.0-0 \
     libgomp1 \
@@ -79,28 +82,29 @@ RUN ln -sf /usr/bin/fdfind /usr/local/bin/fd \
     && ln -sf /usr/bin/batcat /usr/local/bin/bat
 
 # ── Pull in the Python world from the build stages ──────────────────────────
-# venv and models are copied as root; the chown below fixes ownership of
-# the model cache. The venv stays at /opt/venv (same path as in python-base)
-# so all shebang lines and absolute references inside the venv remain valid.
-COPY --from=python-base  /opt/venv              /opt/venv
-COPY --from=python-models /opt/models           /home/node/.cache/docling/models
+# venv stays at /opt/venv (same path as in python-base) so all shebang lines
+# and absolute references inside the venv remain valid. The model cache uses
+# --chown directly so the ~2 GB of model files land with correct ownership in
+# a single layer — a subsequent `chown -R` would duplicate them in image history.
+COPY --from=python-base               /opt/venv  /opt/venv
+COPY --from=python-models --chown=node:node /opt/models  /home/node/.cache/docling/models
 
 ENV VIRTUAL_ENV=/opt/venv \
     DOCLING_ARTIFACTS_PATH=/home/node/.cache/docling/models
 
 # ── XDG-compliant home structure for the node user ──────────────────────────
-# Run after the COPY --from so chown covers the model cache too.
-RUN mkdir -p \
+# `install -d -o node -g node` creates each dir with correct ownership in one
+# step, so we never recursively chown the heavy model cache below it. The
+# model cache itself was already node-owned at COPY --chown time above.
+RUN install -d -o node -g node \
     /workspace \
     /home/node/.npm-global \
     /home/node/.local/share/opencode \
     /home/node/.local/state \
     /home/node/.local/bin \
     /home/node/.cache/opencode \
-    /home/node/.cache/docling/models \
     /home/node/.config \
-    /home/node/.opencode-secrets \
-    && chown -R node:node /workspace /home/node
+    /home/node/.opencode-secrets
 
 # ── Konrad system files (root-owned — node user can't tamper) ───────────────
 # Ordered rarest-to-change first so that editing these files invalidates as
