@@ -25,7 +25,8 @@ Status: **early / experimental**. The "safe" half of the original `safe-cowork` 
 
   For API providers (Anthropic, OpenAI, OpenRouter, etc.), also see [Configuration](#configuration).
 
-- **Recommended model class.** konrad's base instructions are tuned for **Qwen3.6-class local models** — specifically [`qwen/qwen3.6-35b-a3b`](https://lmstudio.ai/models/qwen/qwen3.6-35b-a3b) is what we test against. Other models work but may need prompt tweaks; see [Design decisions](#design-decisions) for why the agent body is sized for this class.
+- **Recommended model class.** konrad's base instructions are tuned for **30B-class local models** — specifically [`qwen/qwen3.6-27b`](https://lmstudio.ai/models/qwen/qwen3.6-35b-a3b) is what we test against. Stronger models such as Mistral Medium 3.5 or Kimi 2.6 are beneficial.
+- **Pick a vision-capable model if you'll touch images.** Anything involving photos, screenshots, scanned documents, or PDFs with visual layouts (charts, multi-column scans, image-based receipts) needs a vision model — text-only models silently fall back to descriptions of what they "see," which usually means hallucinated content rather than an honest "I can't read this." konrad does not currently warn you when a non-vision model is paired with an image-bearing task. 
 
 ## Install
 

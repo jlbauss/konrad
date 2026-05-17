@@ -5,12 +5,9 @@
 _Raw ideas land here. Promote into ToDo after a refinement pass._
 
 - improve CLI to be exceptionally nice to use and helpful
+- add design skill. so the future slides skill (and the pdf skill, etc) are for the technical side of things. They are not for the design side of things.
 
 ## ToDo
-
-### Foundation cleanup (do first)
-
-- [ ] **README: recommend vision-enabled models.** Several skills (image-based extraction, PDF visual layouts) only work when the underlying model has vision. Call this out in the README's "Choosing a model" section so users don't pick a text-only model and then hit silent failures.
 
 ### Quality & UX (the differentiators)
 
@@ -48,6 +45,7 @@ _Raw ideas land here. Promote into ToDo after a refinement pass._
 
 ## Implemented
 
+- [x] **README: recommend vision-enabled models.** Added a "Pick a vision-capable model if you'll touch images" bullet to the Requirements section, calling out the silent failure mode (text-only models hallucinate image content rather than refusing) and listing concrete options on LM Studio, Ollama, and hosted providers. The "konrad does not currently warn you" caveat is honest about today's limitation — eventual fix lives under the Quality & UX aspiration.
 - [x] **UTF-8 everywhere on output (defense in depth).** Two layers landed: (1) the container runs at `LANG=C.UTF-8` / `LC_ALL=C.UTF-8`, so Python's `open()` and the locale-sensitive shell tools default to UTF-8 instead of POSIX/C — the silent root cause of most mojibake. (2) The `do-it-manually` skill now spells out its read/write encoding contract: recognize mojibake (`Ã¼`, `Ã¶`, etc.) as a content problem the calling agent has to decide on (repair vs. preserve), write outputs as UTF-8 with no BOM, and surface mojibake leakage in the suspicious-result QA scan. Layer 3 (post-write validator) is parked in the future spreadsheet skill, since that's the canonical owner of tabular-file correctness.
 - [x] **Removed the `opencode-models-discovery` plugin.** Stripped the plugin declaration and the `lmstudio` exclusion from `opencode-defaults.jsonc`, the host-side reachability probe + `KONRAD_PROVIDER_EXCLUDES` plumbing from `bin/konrad`, and the runtime-override generation from `image/entrypoint.sh`. Config composition is now plain two-layer (baked + user) instead of three-layer. Cost the model auto-discovery feature; recouped ~3-4 s of Bun startup time and dropped a fragile upstream dependency. Inline replacement tracked under Future features.
 - [x] **Codebase truth pass.** Reviewed every comment and print statement across the repo against current behavior. Fixed stale references to the removed `konrad-npm-global` volume, the non-existent "entrypoint LM-Studio probe", a missing README "Pinning strategy" section, the wrong source URL in the image OCI labels, and the "no skills ship" claim repeated in four docs. Bundled with the pass: deleted leftover `.agent/`, `scripts/.agent/`, and `.skill-eval/` (konrad isn't dogfooded for its own development today), and moved `.devcontainer/` to top-level `devcontainer/` so VS Code stops auto-detecting an experimental consumption path as the active dev environment.
