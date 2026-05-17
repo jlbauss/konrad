@@ -112,20 +112,22 @@ COPY entrypoint.sh     /usr/local/bin/konrad-entrypoint
 COPY konrad-defaults/  /etc/konrad/
 
 ENV NODE_OPTIONS=--max-old-space-size=4096 \
-    NPM_CONFIG_PREFIX=/home/node/.npm-global \
     PATH="/opt/venv/bin:/home/node/.npm-global/bin:/home/node/.local/bin:$PATH" \
     NODE_PATH=/usr/local/lib/node_modules
 
 WORKDIR /workspace
 
-# Node best-practices §6: drop privileges before installing user-space tooling.
-USER node
+ARG CACHE_BUST=1
 
 # ── npm: install opencode ────────────────────────────────────────────────────
 # Installing at build time seeds the konrad-npm-global named volume so
 # opencode doesn't pull from npm at startup. Updates via `konrad rebuild`.
-RUN npm install -g npm opencode-ai \
+
+
+RUN npm install -g npm@latest opencode-ai@latest \
     && npm cache clean --force
+
+USER node
 
 # ── Frequently-changing content — always last ────────────────────────────────
 # opencode/ contains agents/, skills/, and instructions.md. All change often

@@ -9,7 +9,6 @@ LM_STUDIO_HOST_URL="http://localhost:1234/v1/models"
 # Shared (cross-project) named volumes.
 SECRETS_VOLUME="konrad-secrets"
 CACHE_VOLUME="konrad-cache"
-NPM_GLOBAL_VOLUME="konrad-npm-global"
 STATE_VOLUME="konrad-state"
 
 # Where the user keeps their personal konrad overrides on the host.
@@ -162,7 +161,6 @@ podman_run() {
     -v "${agent_dir}:/home/node/.local/share/opencode:z" \
     -v "${SECRETS_VOLUME}:/home/node/.opencode-secrets:U" \
     -v "${CACHE_VOLUME}:/home/node/.cache/opencode:U" \
-    -v "${NPM_GLOBAL_VOLUME}:/home/node/.npm-global:U" \
     -v "${STATE_VOLUME}:/home/node/.local/state/opencode:U" \
     ${user_mounts[@]+"${user_mounts[@]}"} \
     -w /workspace \
@@ -198,13 +196,14 @@ cmd_rebuild() {
   require_podman
   [[ -f "$IMAGE_CONTEXT/Dockerfile" ]] \
     || die "expected Dockerfile at $IMAGE_CONTEXT/Dockerfile (is the konrad repo intact?)"
+  CACHE_BUST=$(date +%s)
   info "building $IMAGE_NAME from $IMAGE_CONTEXT"
   # Build intermediate stages first with stable tags so Podman's layer cache
   # keeps them alive across prune operations. Without tags they are treated as
   # dangling images and get collected, forcing a full model re-download next time.
   podman build --target python-base   -t konrad-python-base:cache   "$IMAGE_CONTEXT"
   podman build --target python-models -t konrad-python-models:cache  "$IMAGE_CONTEXT"
-  podman build -t "$IMAGE_NAME" "$IMAGE_CONTEXT"
+  podman build --build-arg CACHE_BUST="$CACHE_BUST" -t "$IMAGE_NAME" "$IMAGE_CONTEXT"
 }
 
 cmd_clean() {
@@ -220,7 +219,7 @@ cmd_clean() {
   fi
 
   if [[ "${1:-}" == "--all" ]]; then
-    for vol in "$SECRETS_VOLUME" "$CACHE_VOLUME" "$NPM_GLOBAL_VOLUME" "$STATE_VOLUME"; do
+    for vol in "$SECRETS_VOLUME" "$CACHE_VOLUME" "$STATE_VOLUME"; do
       if podman volume exists "$vol" 2>/dev/null; then
         podman volume rm "$vol" >/dev/null
         info "removed shared volume $vol"
@@ -319,7 +318,7 @@ Usage:
   konrad shell          Open a bash shell in the container, same mounts.
   konrad rebuild        Rebuild the konrad image from this repo's image/.
   konrad clean          Remove this project's .agent/opencode/ state.
-  konrad clean --all    Also remove the shared volumes (auth, cache, npm, state).
+  konrad clean --all    Also remove the shared volumes (auth, cache, state).
   konrad config init    Copy the baked opencode.jsonc to your user override.
   konrad config path    Print the path of your user override.
   konrad config show    Diff your user override against the baked default.
