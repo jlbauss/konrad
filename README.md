@@ -11,7 +11,7 @@ Status: **early / experimental**. The "safe" half of the original `safe-cowork` 
 - **opencode prewired** to talk to LM Studio (default), Ollama, or llama.cpp on the host — zero configuration on first run.
 - **A layered config system** that lets you add any opencode-supported provider (Anthropic, OpenAI, OpenRouter, Gemini, …) via a tiny override file, without losing konrad's defaults.
 - **Base instructions** ([instructions.md](image/konrad-defaults/instructions.md)) teaching the model file-based planning (`.agent/task_plan.md` / `progress.md` / `findings.md`), a 3-strike error protocol, and conventions for the bundled tools.
-- **A clean skill slot.** Skills are loaded via opencode's `skill` tool from `~/.config/opencode/skills/`. No skills ship in this version — a curated set is being rebuilt from scratch (see [ROADMAP.md](ROADMAP.md)).
+- **A curated skill set.** Skills are loaded via opencode's `skill` tool from `~/.config/opencode/skills/`. The image ships with `planning-with-files` (file-based planning workflow), `do-it-manually` (structured-but-irregular data extraction), and `docling-document-intelligence` (PDF parsing). More on the way — see [ROADMAP.md](ROADMAP.md).
 
 ## Requirements
 
@@ -55,7 +55,7 @@ That's the whole UX: the current directory is mounted at `/workspace` inside the
 | `konrad shell`         | Opens a bash shell in the container — same mounts, no agent.          |
 | `konrad rebuild`       | Rebuilds the `konrad:latest` image from this repo's `image/`.         |
 | `konrad clean`         | Removes this project's `.agent/opencode/` (sessions, cache).          |
-| `konrad clean --all`   | Also drops the shared volumes (auth, cache, npm). Forces fresh login. |
+| `konrad clean --all`   | Also drops the shared volumes (auth, cache, opencode state). Forces fresh login. |
 | `konrad config init`   | Copies the baked default `opencode.jsonc` to your user override.      |
 | `konrad config path`   | Prints the path of your user override.                                |
 | `konrad config show`   | Diffs your user override against the baked default.                   |
@@ -175,14 +175,15 @@ konrad splits state across two tiers:
 
 **Per-project, in the workspace.** When you run `konrad` in a directory, it creates `.agent/opencode/` inside that directory and bind-mounts it as opencode's data dir. Sessions, the SQLite database, and conversation logs live there — visible to `ls`, portable with your project, gitignored automatically. The model's working-memory files (`.agent/task_plan.md`, `.agent/progress.md`, `.agent/findings.md`) sit alongside them and are **not** gitignored, so you can commit them if you want a record.
 
-**Shared, in named Podman volumes.** Four things stay out of the workspace and are shared across every project:
+**Shared, in named Podman volumes.** Three things stay out of the workspace and are shared across every project:
 
 - `konrad-secrets` — `auth.json` (`/connect` credentials). You log in once, every project reuses it. Stays out of your filesystem and can't be committed by accident.
 - `konrad-cache` — opencode's cache. Regeneratable; sharing means warm caches across projects.
-- `konrad-npm-global` — the autoupdated opencode binary. One copy, all projects.
 - `konrad-state` — opencode's `~/.local/state/opencode/` directory: last-selected model, recent models per agent, other small UI-state. Shared because these preferences are about *you*, not about the project.
 
-`konrad clean` removes the current project's `.agent/opencode/`. `konrad clean --all` *also* drops all four shared volumes (next run requires a fresh `/connect`, repopulates caches, and asks you to pick a model again).
+The opencode binary itself is **not** in a named volume — it's installed root-owned into the image at build time, so the runtime user can't mutate it. Updates flow through `konrad rebuild`.
+
+`konrad clean` removes the current project's `.agent/opencode/`. `konrad clean --all` *also* drops all three shared volumes (next run requires a fresh `/connect`, repopulates caches, and asks you to pick a model again).
 
 ## Repo layout
 
@@ -197,12 +198,12 @@ konrad/
 │   │   ├── opencode-defaults.jsonc  # Baked defaults — merged with user override at start
 │   │   └── instructions.md          # konrad's base instructions, loaded via instructions key
 │   └── opencode/                    # → ~/.config/opencode/ in the image
-│       ├── agents/                  # Built-in primary agents (konrad)
-│       (no skills/ in this release — see ROADMAP)
+│       ├── agents/                  # Built-in primary agents (konrad, manual-transformer)
+│       └── skills/                  # Bundled skills (planning-with-files, do-it-manually, docling-document-intelligence)
 ├── scripts/
 │   ├── build-image.sh               # `podman build -t konrad:latest image/`
 │   └── install.sh                   # Symlinks bin/konrad into ~/.local/bin
-└── .devcontainer/                   # Optional: VS Code entry point for working ON konrad
+└── devcontainer/                    # Experimental: VS Code entry point as a second consumption path (see ROADMAP)
     └── devcontainer.json
 ```
 
@@ -210,16 +211,16 @@ konrad/
 
 **Using konrad as a user.** Install once with the steps above. From then on, `cd` to whatever folder you want the agent to operate on and run `konrad`. The konrad repo only matters for getting the image and CLI installed; you don't open it day-to-day.
 
-**Hacking on konrad itself.** Open this repo in VS Code with the Dev Containers extension and "Reopen in Container" — that path uses [.devcontainer/devcontainer.json](.devcontainer/devcontainer.json) and builds the image from `image/Dockerfile`. After any change to the Dockerfile or `image/`, run `konrad rebuild` (or `./scripts/build-image.sh`) to refresh the `konrad:latest` tag for the CLI side. See [CONTRIBUTING.md](CONTRIBUTING.md) for the development loop.
+**Hacking on konrad itself.** Clone the repo and edit. Changes to `bin/konrad` take effect immediately; changes anywhere under `image/` need a rebuild (`konrad rebuild` or `./scripts/build-image.sh`) to land in `konrad:latest`. See [CONTRIBUTING.md](CONTRIBUTING.md) for the development loop. (The `devcontainer/` folder is an experimental second consumption path — not the recommended dev environment yet; see [ROADMAP.md](ROADMAP.md).)
 
 ## Design decisions
 
 A short, opinionated record of the load-bearing choices, so future-you can tell what's a constraint and what's a preference:
 
 - **Podman, not Docker.** Open-source, free for commercial use, ergonomic on macOS. `--userns=keep-id` lets the container's `node` user share UID with the host user, so bind-mounted files have sane ownership. Docker support is in [ROADMAP.md](ROADMAP.md).
-- **The image is the canonical artifact.** `image/Dockerfile` builds `konrad:latest`. Both `bin/konrad` and the optional `.devcontainer/devcontainer.json` are consumers of that one image.
+- **The image is the canonical artifact.** `image/Dockerfile` builds `konrad:latest`. `bin/konrad` is the primary consumer; the experimental `devcontainer/devcontainer.json` is a second consumer (see [ROADMAP.md](ROADMAP.md)).
 - **Layered config, not replacement.** konrad's baked `opencode.jsonc` is composed with the user's `~/.config/konrad/opencode.jsonc` at every container start via a self-contained Node deep-merger. Users add a provider without losing the defaults; konrad ships a new local engine and the user gets it automatically on next rebuild. The merge step is in `image/entrypoint.sh` and runs *before* opencode loads anything.
-- **Two-tier state.** Per-project workspace state in `.agent/opencode/` (visible, portable, gitignored); shared state (`auth.json`, cache, opencode binary) in named Podman volumes (out of the host filesystem, can't be committed by accident). The `auth.json`-symlink trick in `image/entrypoint.sh` is what makes these two halves coexist under one opencode data dir.
+- **Two-tier state.** Per-project workspace state in `.agent/opencode/` (visible, portable, gitignored); shared state (`auth.json`, cache, opencode's UI state) in named Podman volumes (out of the host filesystem, can't be committed by accident). The opencode binary itself is baked into the image, not a volume. The `auth.json`-symlink trick in `image/entrypoint.sh` is what makes the volume and the per-project data dir coexist under one opencode data dir.
 - **No per-project secrets in the workspace.** Auth credentials live only in the `konrad-secrets` named volume. Users who don't read `.gitignore` carefully still can't accidentally publish their tokens.
 - **`AGENTS.md` is the user's slot; `instructions` is konrad's.** opencode loads both, additively, into the system prompt. By assigning each side its own loading mechanism, we never collide.
 - **Minimal hardcoded defaults.** We avoid pre-selecting model lists where dynamic discovery can do the job — Ollama and llama.cpp providers ship empty, the plugin populates them from each engine's `/v1/models` endpoint at startup. LM Studio is the exception: a current upstream-plugin bug forces us to *declare* (but not pre-select) the documented default `qwen/qwen3.6-35b-a3b` so users have something to pick. **No top-level `"model"` is set in the baked default** — opencode prompts on first run, then remembers your choice in the `konrad-state` volume across subsequent runs. Users override or add their own provider+model in `~/.config/konrad/opencode.jsonc`.

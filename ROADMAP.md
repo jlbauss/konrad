@@ -8,7 +8,6 @@ _Raw ideas land here. Promote into ToDo after a refinement pass._
 
 ### Foundation cleanup (do first)
 
-- [ ] **Codebase truth pass.** Many inline comments and startup `echo`s in `image/`, `bin/konrad`, and the entrypoint scripts describe behavior that has since changed. Read every comment and print statement, and either update it to match the current truth or delete it. Goal: a fresh reader can trust what's written.
 - [ ] **Remove the `opencode-models-discovery` plugin.** Drop the plugin from `opencode-defaults.jsonc`, the `providers.exclude: ["lmstudio"]` workaround, and the host-side reachability probe in `bin/konrad` that compensates for it. Until we have a leaner replacement (see future features), no dynamic discovery — users pick a configured provider and that's it.
 - [ ] **UTF-8 everywhere on output.** Any file Konrad writes (CSVs especially) must be UTF-8 with no BOM. Today we've observed Latin-1-encoded CSVs leaking through (the `vorlesungen.csv` case: `EinfÃ¼hrung`, `KÃ¶Ãler`). Make this a guarantee, ideally enforced in the skills that produce tabular output rather than left to model judgement.
 - [ ] **README: recommend vision-enabled models.** Several skills (image-based extraction, PDF visual layouts) only work when the underlying model has vision. Call this out in the README's "Choosing a model" section so users don't pick a text-only model and then hit silent failures.
@@ -40,7 +39,7 @@ _Raw ideas land here. Promote into ToDo after a refinement pass._
 ## Future features
 
 - [ ] **Multi-language support.** `AGENTS.md` and the bundled skill descriptions are English-only today. Ship localized variants (German first) — likely `AGENTS.<lang>.md` plus a setting in `~/.config/konrad/` to pick the active language, so a non-English user gets responses in their language without prompting for it every time.
-- [ ] **Dev Container as a second consumption path.** `.devcontainer/devcontainer.json` exists but is minimal and out of date. Bring it up to scratch and treat it as a first-class way to _use_ Konrad (open a workspace in VS Code, get a fully-wired Konrad) alongside the host CLI — not just a tool for working _on_ Konrad itself.
+- [ ] **Dev Container as a second consumption path.** `devcontainer/devcontainer.json` exists but is minimal and out of date — currently parked at top-level (not `.devcontainer/`) so VS Code doesn't auto-detect it. Bring it up to scratch and treat it as a first-class way to _use_ Konrad (open a workspace in VS Code, get a fully-wired Konrad) alongside the host CLI — not just a tool for working _on_ Konrad itself. When promoted, rename back to `.devcontainer/`.
 - [ ] **Preconfigured MCP servers.** Ship `opencode.jsonc` with a working set of MCPs (filesystem, fetch, GitHub) wired up so the model has useful tools the moment it boots — no MCP setup tax on first-run.
 - [ ] **More skills.** `.eml` email, Markdown authoring, HTML presentations.
 - [ ] **Docker support.** Currently Podman-only because of `--userns=keep-id`. A Docker-compatible alternative `devcontainer.json` (or conditional `runArgs`) would broaden the audience.
@@ -49,6 +48,7 @@ _Raw ideas land here. Promote into ToDo after a refinement pass._
 
 ## Implemented
 
+- [x] **Codebase truth pass.** Reviewed every comment and print statement across the repo against current behavior. Fixed stale references to the removed `konrad-npm-global` volume, the non-existent "entrypoint LM-Studio probe", a missing README "Pinning strategy" section, the wrong source URL in the image OCI labels, and the "no skills ship" claim repeated in four docs. Bundled with the pass: deleted leftover `.agent/`, `scripts/.agent/`, and `.skill-eval/` (konrad isn't dogfooded for its own development today), and moved `.devcontainer/` to top-level `devcontainer/` so VS Code stops auto-detecting an experimental consumption path as the active dev environment.
 - [x] **Custom opencode agent profiles.** Use opencode's `agents/` mechanism to ship a customized Konrad prompt instead of the default build and plan agents.
 - [x] **Other providers.** Remove hard-coded lm-studio as provider.
 - [x] **Improve image.** Optimize structure and size. Follow Node best practices: https://github.com/nodejs/docker-node/blob/main/docs/BestPractices.md Include more relevant tools.

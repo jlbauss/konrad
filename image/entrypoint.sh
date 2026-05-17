@@ -106,9 +106,10 @@ if [[ -f "$USER_CFG/AGENTS.md" ]]; then
 fi
 dbg "user content layered in"
 
-# ── 3. auth.json on a named volume (unchanged from previous behaviour) ───────
-# Migrate a pre-existing real auth.json (from before this split, or
-# from a user who manually placed one) into the secrets volume once.
+# ── 3. auth.json on a named volume ───────────────────────────────────────────
+# Migrate a real auth.json sitting in the workspace's .agent/opencode/ data
+# dir (i.e. not yet on the secrets volume) into the secrets volume once, then
+# symlink the data-dir path back at the volume so opencode keeps finding it.
 if [[ -f "$OPENCODE_DATA/auth.json" && ! -L "$OPENCODE_DATA/auth.json" ]]; then
   if [[ -e "$SECRETS/auth.json" ]]; then
     say "auth.json already in secrets volume; removing stray copy from .agent/"

@@ -12,9 +12,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* /var/log/apt/* /var/log/dpkg.log
 
-# uv pinned to a Minor tag — patch releases (0.11.x) flow in on every rebuild
+# uv pinned to a minor tag — patch releases (0.11.x) flow in on every rebuild
 # (incl. CVE fixes), but a 0.12 with breaking CLI/API behaviour requires a
-# deliberate bump here. See README → Configuration → "Pinning strategy".
+# deliberate bump here.
 COPY --from=ghcr.io/astral-sh/uv:0.11 /uv /uvx /usr/local/bin/
 
 ENV VIRTUAL_ENV=/opt/venv
@@ -41,7 +41,7 @@ FROM node:26-trixie-slim
 LABEL org.opencontainers.image.title="konrad" \
     org.opencontainers.image.description="Sandboxed opencode for local agent models, preloaded with instructions and a curated tool set." \
     org.opencontainers.image.licenses="GPL-3.0-only" \
-    org.opencontainers.image.source="https://github.com/jan-luca-bauss/konrad"
+    org.opencontainers.image.source="https://gitlab.git.nrw/jbauss2/konrad"
 
 # NODE_ENV=production per Node Docker best-practices §1.
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -49,16 +49,17 @@ ENV DEBIAN_FRONTEND=noninteractive \
 
 # ── apt: tools the agent uses + comfort tools for `konrad shell` users ──────
 #
-# Required for opencode / entrypoint / the agent's daily work:
-#   git, ca-certificates, curl  → opencode internals + entrypoint LM-Studio probe
-#   jq                          → JSON tooling (entrypoint + agent)
+# Core (opencode internals + the agent's daily work):
+#   git, ca-certificates, curl  → opencode internals + outbound HTTP
+#   jq                          → JSON tooling (entrypoint config merge + agent)
 #   ripgrep, fd-find, bat, tree → opencode's grep/glob/read backends + agent UX
 #   gh                          → GitHub CLI; high-utility when working on a repo
 #
-# Skill-adjacent (kept now because the future skill rebuild will need them):
-#   python3                     → Python interpreter for skill scripts (and uv's target)
-#   pandoc                      → document conversion across skills
-#   poppler-utils               → pdftotext / pdftoppm / pdfinfo
+# Bundled skills depend on these:
+#   python3                     → Python interpreter for skill scripts
+#   poppler-utils               → pdftotext / pdftoppm / pdfinfo (PDF skill paths)
+#   pandoc                      → document conversion, kept available for skills
+#                                 that need cross-format text transforms
 #
 # Comfort tools for interactive `konrad shell` sessions only:
 #   less, procps, fzf, zsh, man-db, unzip, gnupg2, nano, htop,
@@ -120,10 +121,10 @@ WORKDIR /workspace
 ARG CACHE_BUST=1
 
 # ── npm: install opencode ────────────────────────────────────────────────────
-# Installing at build time seeds the konrad-npm-global named volume so
-# opencode doesn't pull from npm at startup. Updates via `konrad rebuild`.
-
-
+# Installed as root into /home/node/.npm-global so the runtime user can't
+# mutate it. Lands in the image layer (no named volume backs it), so updates
+# flow through `konrad rebuild`. CACHE_BUST above lets the CLI force a refresh
+# without changing any source files.
 RUN npm install -g npm@latest opencode-ai@latest \
     && npm cache clean --force
 

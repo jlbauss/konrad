@@ -25,7 +25,7 @@ There's no test suite yet. The closest things to validation are:
 | The container artifact | `image/` (Dockerfile + bundled `opencode/` config) |
 | The host-side CLI | `bin/konrad` |
 | Install / build helpers | `scripts/` |
-| VS Code Dev Containers entry point | `.devcontainer/` |
+| VS Code Dev Containers entry point (experimental, second consumption path — see ROADMAP) | `devcontainer/` |
 | Roadmap and idea backlog | `ROADMAP.md` |
 | Upstream attribution | `NOTICE` |
 
@@ -59,16 +59,19 @@ Use multi-line bodies for any change that needed a design decision. The git log 
 - A new subcommand or flag.
 - A new external dependency (e.g. a tool the user has to install on the host).
 
-## When to update AGENTS.md (`image/opencode/AGENTS.md`)
+## When to update AGENTS.md (`AGENTS.md` at the repo root)
 
-- A new tool the agent should know about.
-- A new convention the agent should follow.
-- A change to the file-based planning workflow or the `.agent/` layout.
+This is the repo-level AGENTS.md, loaded by an agent working _on_ konrad (e.g. Claude editing this codebase). Update when:
 
-Keep AGENTS.md tight — every byte competes with task context inside the model's window.
+- A new tool, file, or directory the agent should know about.
+- A new convention or constraint the agent should follow.
+- A structural change (config layering, state tiers, image stages).
+
+Konrad's _own_ model instructions live separately at `image/konrad-defaults/instructions.md` (baked into the image, loaded by opencode at runtime). Edit that one when you're tuning how konrad behaves toward its end users.
+
+Keep both tight — every byte competes with task context inside the model's window.
 
 ## Out of scope right now
 
-- Skills. None ship in this version of konrad — the previously-bundled MiniMax skills were removed pending a ground-up rebuild. New skills will live under `image/opencode/skills/` once added. See ROADMAP.md.
 - Windows host support. Podman with `--userns=keep-id` is Linux/macOS only.
 - Tests. See `ROADMAP.md` for the CI item — that's where tests would land.
