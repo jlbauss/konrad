@@ -89,6 +89,7 @@ Use the Task tool to invoke the `manual-transformer` subagent. Give it everythin
 - **Desired output** — format (CSV, JSON, etc.), schema (column names, field types), and target path (use `.agent/manual-output.<ext>` by convention so it sits with other agent working memory).
 - **Task-specific rules** — any normalization that IS required (e.g. "canonicalize vendor names to brand"), fields that must be preserved verbatim, expected cardinality (1:1 or filtered with the filter rule).
 - **Sentinel for missing data** — `MISSING` by default; override if the user prefers something else.
+- **Encoding handling** — only if relevant. If the input shows mojibake (`Ã¼`, `Ã¶`, etc.), say whether you want it repaired or preserved as-is. The subagent will ask if you don't specify, which costs a roundtrip.
 
 Example dispatch prompt:
 

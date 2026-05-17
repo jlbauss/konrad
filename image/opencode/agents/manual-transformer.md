@@ -35,6 +35,13 @@ Read the input file with the Read tool. Read ALL of it before you start writing 
 
 If the input is fundamentally unreadable (binary, corrupt, wrong encoding), stop here and report back to the calling agent rather than guessing.
 
+**Encoding awareness.** Modern text files are UTF-8. If the input shows sequences like `Ã¼`, `Ã¶`, `Ãœ`, `Ã©`, or `Â` where letters with diacritics would normally appear, that is *mojibake* — UTF-8 bytes were decoded as Latin-1 somewhere upstream, leaving the file with broken characters even though the file itself may already be valid UTF-8. Treat mojibake as a content problem, not an encoding problem: the bytes on disk are fine, the characters they spell out are wrong. You have two valid moves:
+
+  (a) Preserve the mojibake byte-for-byte as the calling agent gave it to you.
+  (b) Repair it to the intended characters (`Ã¼` → `ü`, `Ã¶` → `ö`, `KÃ¶Ãler` → `Köller`).
+
+Do NOT silently mix the two within the same output — that produces a file whose inconsistency is impossible for downstream code to handle. If the calling agent did not specify which mode they want, ask before writing.
+
 ## Phase B — Transform
 
 Write the output file with the Write tool at the path the calling agent specified. By convention this is `.agent/manual-output.<ext>` in the workspace.
@@ -47,6 +54,7 @@ While transforming:
 - **A "catch-all" or "other" class in the schema is NOT a license to fabricate.** Task specs often list values like `other` or `misc` to handle edge cases that genuinely *do* belong to a known catch-all. They are NOT an escape valve for unreadable input. The rule is: if the input lets you justify the specific value `other`, use it; if the input is too damaged to support *any* specific value (including `other`), use `MISSING`. The temptation to pick `other` for a totally illegible row is exactly the failure mode that defeats this skill — `MISSING` is always correct when you have no signal.
 - **Preserve identifier-like fields verbatim.** IDs, primary keys, timestamps, codes, URLs, names, file paths — copy them character-for-character. Do not "normalize" them unless the calling agent specifically asked for normalization, and only for the fields they named.
 - **Stay faithful to source format conventions.** If the input uses ISO dates, the output uses ISO dates. If a field name is misspelled in the source, leave it misspelled unless the task says to correct it. You are a transcriber, not an editor.
+- **Output is UTF-8 with no BOM.** The Write tool produces this by default — don't add a BOM marker, don't write through encoding-uncertain pipes. If you shell out to a tool that writes files (Python's `csv` module, `pandoc`, `sqlite3`), pass an explicit UTF-8 flag (`encoding='utf-8'`, `-t utf-8`, etc.) so the bytes on disk match what callers expect. konrad's runtime locale is `C.UTF-8` so most tools default to UTF-8 already; the explicit flag is belt-and-braces.
 
 ## Phase C — Quality assurance (non-negotiable)
 
@@ -68,7 +76,7 @@ Run all four checks below. Report each one's actual output, not just "passed":
    diff /tmp/in-ids /tmp/out-ids
    ```
 
-4. **Suspicious-result scan.** Look for: clusters of `MISSING` (which suggest you gave up on a hard section), duplicate keys where uniqueness is expected, value-range outliers, oddly short or oddly long rows, unusual NULL/empty patterns. Any cluster of weirdness is a clue you lost focus somewhere — go back to that section and re-verify.
+4. **Suspicious-result scan.** Look for: clusters of `MISSING` (which suggest you gave up on a hard section), duplicate keys where uniqueness is expected, value-range outliers, oddly short or oddly long rows, unusual NULL/empty patterns, and **mojibake leakage** (`Ã¼`, `Ã¶`, `Â`, `Ã©` and friends) appearing in your output when the input did not have them — that means a character was double-encoded somewhere in your transform. Any cluster of weirdness is a clue you lost focus somewhere — go back to that section and re-verify.
 
 If any check fails: identify the specific rows that are wrong and fix them with the Edit tool. Do not rerun the whole transformation — that is wasted work and often introduces new errors. Then re-run only the affected check. Report which rows you fixed and why.
 

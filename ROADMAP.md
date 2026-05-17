@@ -4,11 +4,12 @@
 
 _Raw ideas land here. Promote into ToDo after a refinement pass._
 
+- improve CLI to be exceptionally nice to use and helpful
+
 ## ToDo
 
 ### Foundation cleanup (do first)
 
-- [ ] **UTF-8 everywhere on output.** Any file Konrad writes (CSVs especially) must be UTF-8 with no BOM. Today we've observed Latin-1-encoded CSVs leaking through (the `vorlesungen.csv` case: `EinfÃ¼hrung`, `KÃ¶Ãler`). Make this a guarantee, ideally enforced in the skills that produce tabular output rather than left to model judgement.
 - [ ] **README: recommend vision-enabled models.** Several skills (image-based extraction, PDF visual layouts) only work when the underlying model has vision. Call this out in the README's "Choosing a model" section so users don't pick a text-only model and then hit silent failures.
 
 ### Quality & UX (the differentiators)
@@ -16,7 +17,7 @@ _Raw ideas land here. Promote into ToDo after a refinement pass._
 - [ ] **High-quality aspiration: no AI slop.** Konrad either produces a result he stands behind or tells the user he can't. Operationalize this with a QA subagent that reviews outputs against the original request before they're handed back, plus skill-level guidance for when "I can't do this cleanly" is the right answer. This is a positioning bet — the thing that separates Konrad from a generic local-agent wrapper.
 - [ ] **Understanding → planning → refinement roundtrip.** Before executing, Konrad confirms he understands the user's goal — even when the user hasn't fully articulated it. A short clarifying loop ("here's what I think you want, here's the plan, anything off?") that the user can short-circuit when they already know what they want. Pairs with the QA aspiration above.
 - [ ] **Proper PDF skill.** Designed around the file type, not around docling. Subtasks: extract text/tables/images, edit existing PDFs, generate new PDFs, fill forms. Replaces the current docling-shaped skill.
-- [ ] **Proper spreadsheet skill.** Covers `.xlsx`, `.ods`, and `.csv` with a single mental model. Read, write, transform, with UTF-8 and locale-aware number/date handling baked in.
+- [ ] **Proper spreadsheet skill.** Covers `.xlsx`, `.ods`, and `.csv` with a single mental model. Read, write, transform, with UTF-8 and locale-aware number/date handling baked in. Include the third UTF-8 defense layer here: a post-write validator that scans the output for mojibake byte sequences (`Ã¼`, `Ã¶`, `Â`, `Ã©`, U+FFFD) and aborts rather than handing back garbage. Cheap (~10 lines) and the right home for it, since this skill is the canonical owner of "the correct way to handle tabular files."
 - [ ] **Plan visibility via TodoWrite.** Integrate the `planning-with-files` skill with `TodoWrite` so the user sees the live todo list in the UI as Konrad works through a multi-step task, instead of having to ask "where are you."
 - [ ] **Font assets out of the git tree.** Whatever fonts the bundled skills need shouldn't live as binary blobs in the repo. Deliver via LFS, a release tarball, or download-on-first-use, so cloning Konrad stays light and font updates don't churn git history.
 
@@ -47,6 +48,7 @@ _Raw ideas land here. Promote into ToDo after a refinement pass._
 
 ## Implemented
 
+- [x] **UTF-8 everywhere on output (defense in depth).** Two layers landed: (1) the container runs at `LANG=C.UTF-8` / `LC_ALL=C.UTF-8`, so Python's `open()` and the locale-sensitive shell tools default to UTF-8 instead of POSIX/C — the silent root cause of most mojibake. (2) The `do-it-manually` skill now spells out its read/write encoding contract: recognize mojibake (`Ã¼`, `Ã¶`, etc.) as a content problem the calling agent has to decide on (repair vs. preserve), write outputs as UTF-8 with no BOM, and surface mojibake leakage in the suspicious-result QA scan. Layer 3 (post-write validator) is parked in the future spreadsheet skill, since that's the canonical owner of tabular-file correctness.
 - [x] **Removed the `opencode-models-discovery` plugin.** Stripped the plugin declaration and the `lmstudio` exclusion from `opencode-defaults.jsonc`, the host-side reachability probe + `KONRAD_PROVIDER_EXCLUDES` plumbing from `bin/konrad`, and the runtime-override generation from `image/entrypoint.sh`. Config composition is now plain two-layer (baked + user) instead of three-layer. Cost the model auto-discovery feature; recouped ~3-4 s of Bun startup time and dropped a fragile upstream dependency. Inline replacement tracked under Future features.
 - [x] **Codebase truth pass.** Reviewed every comment and print statement across the repo against current behavior. Fixed stale references to the removed `konrad-npm-global` volume, the non-existent "entrypoint LM-Studio probe", a missing README "Pinning strategy" section, the wrong source URL in the image OCI labels, and the "no skills ship" claim repeated in four docs. Bundled with the pass: deleted leftover `.agent/`, `scripts/.agent/`, and `.skill-eval/` (konrad isn't dogfooded for its own development today), and moved `.devcontainer/` to top-level `devcontainer/` so VS Code stops auto-detecting an experimental consumption path as the active dev environment.
 - [x] **Custom opencode agent profiles.** Use opencode's `agents/` mechanism to ship a customized Konrad prompt instead of the default build and plan agents.

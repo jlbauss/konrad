@@ -44,8 +44,15 @@ LABEL org.opencontainers.image.title="konrad" \
     org.opencontainers.image.source="https://gitlab.git.nrw/jbauss2/konrad"
 
 # NODE_ENV=production per Node Docker best-practices §1.
+# LANG/LC_ALL force a UTF-8 locale at runtime. Without this, the image
+# defaults to POSIX/C, which makes Python's open() and many shell tools
+# (awk, sort, wc -m, …) treat files as ASCII or a system-dependent encoding
+# — the silent root cause of "why did my CSV come back as mojibake". The
+# C.UTF-8 locale ships in Debian trixie without needing the locales pkg.
 ENV DEBIAN_FRONTEND=noninteractive \
-    NODE_ENV=production
+    NODE_ENV=production \
+    LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8
 
 # ── apt: tools the agent uses + comfort tools for `konrad shell` users ──────
 #
