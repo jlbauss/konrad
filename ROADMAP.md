@@ -1,43 +1,51 @@
 # Roadmap & Backlog
 
-# Inbox
+## Inbox
 
-- [ ] do a real cleanup of everything. There are a lot of commentaries and prints that do not resemble the current truth. Remove model discovery for now. Make the roadmap pretty again.
-- [ ] add to readme that vision enabled models should be used
-- [ ] establish high-quality aspiration of Konrad. Konrad does not produce ai slop. Either he produces high quality outputs or he tells the user that he is not able to do. In this context: Add quality assurance workflow, e.g. utilizing a quality assurance subagent.
-- [ ] improve build process so we always get the up-to-date packages for everything. Updates are important.
-- [ ] outputs, such as csvs, must be in utf-8 format
-- [ ] integrate planning-with-files with todowrite so the user is getting displayed the current todo list visibl
-- [ ] remove requirement to have opencode session/working state in .agent
-- [ ] i want Konrad to do an understanding-planning-task refinement roundtrip. He should make sure to understand what the user wants - even if the user does not really understand what they want in the first place
- 
+_Raw ideas land here. Promote into ToDo after a refinement pass._
+
 ## ToDo
 
-### needed before first beta shipping
+### Foundation cleanup (do first)
 
-- [ ] **Build a proper PDF skill.** Dont think from the tooling - current docling skill - but rather from the file type.
-  - [ ] subtasks: extract, edit, generate, fill
-- [ ] **build a proper spreadsheet (xlsx/ods/csv) skill**
-- [ ] **Publish on gitlab container registry.** implement an automated ci/cd workflow each time the containerfile is edited and daily or so.
-- [ ] **Preconfigured MCP servers.** Bake in a couple of MCP servers (fs, fetch, gh) in `opencode.jsonc` so the model has working tools the moment it boots.
-- [ ] **Fonts as a separate asset.** `frontend-dev/canvas-fonts/` is ~5.7M of TTFs in git. Move to LFS, a release tarball, or a download-on-first-use step.
-- [ ] **frictionless install.** A `curl … | sh` one-liner (or a Homebrew tap) that drops `konrad` on `PATH` and pulls the image, so users don't need to clone the repo.
-- [ ] **Firewall.** Set up a very simple firewall that blocks all but allow-listed domains by default
-- [ ] **Evaluate version pinning.** Right now we use auto-update: true which might lead to problems. We need to evaluate the best practices for how to handle this.
-- [ ] **local models work flawlessly**
-- [ ] **Security Audit**
-- [ ] **update and streamline all documentation**
+- [ ] **Codebase truth pass.** Many inline comments and startup `echo`s in `image/`, `bin/konrad`, and the entrypoint scripts describe behavior that has since changed. Read every comment and print statement, and either update it to match the current truth or delete it. Goal: a fresh reader can trust what's written.
+- [ ] **Remove the `opencode-models-discovery` plugin.** Drop the plugin from `opencode-defaults.jsonc`, the `providers.exclude: ["lmstudio"]` workaround, and the host-side reachability probe in `bin/konrad` that compensates for it. Until we have a leaner replacement (see future features), no dynamic discovery — users pick a configured provider and that's it.
+- [ ] **UTF-8 everywhere on output.** Any file Konrad writes (CSVs especially) must be UTF-8 with no BOM. Today we've observed Latin-1-encoded CSVs leaking through (the `vorlesungen.csv` case: `EinfÃ¼hrung`, `KÃ¶Ãler`). Make this a guarantee, ideally enforced in the skills that produce tabular output rather than left to model judgement.
+- [ ] **README: recommend vision-enabled models.** Several skills (image-based extraction, PDF visual layouts) only work when the underlying model has vision. Call this out in the README's "Choosing a model" section so users don't pick a text-only model and then hit silent failures.
 
-### future features
+### Quality & UX (the differentiators)
 
-- [ ] **Multi-language support.** Today `AGENTS.md` and the bundled skill descriptions are English-only. Ship localized variants (German first) — likely as `AGENTS.<lang>.md` files plus a setting in `~/.config/konrad/` to pick the active language, so a non-English user gets the agent talking back in their language without prompting for it every time.
-- [ ] **Potential additonal skills**
-  - [ ] Email (e.g. .eml files)
-  - [ ] Markdown
-  - [ ] html presentations?
-- [ ] **Docker support.** Currently Podman-only because of `--userns=keep-id`. A small Docker-compatible alternative `devcontainer.json` (or a conditional `runArgs`) would broaden the audience.
-- [ ] **Top-level CI.** JSON/JSONC schema validation for the opencode configs, `shellcheck` on the bundled `.sh` files, and a "image actually builds" smoke job.
-- [ ] **Replace `opencode-models-discovery` with inline discovery (startup perf).** Empirically the biggest single startup cost on konrad today: Bun spends ~3.7 s loading this external plugin from `~/.npm-global` before it does any useful work (confirmed by `konrad logs` — look for the `+3668ms loading plugin opencode-models-discovery` line). The plugin's own logic is small: probe each OpenAI-compatible provider's `/v1/models`, write the result into the config. Doing the same thing in `bin/konrad` (host-side curl) + `image/entrypoint.sh` (jq into the runtime override) is ~30 lines of bash and eliminates the plugin entirely. Trade-off: we maintain ~30 lines vs. a third-party plugin. Worth doing once the LM Studio embedding-modality issue above is also resolved (or doing both at once and dropping the plugin for good).
+- [ ] **High-quality aspiration: no AI slop.** Konrad either produces a result he stands behind or tells the user he can't. Operationalize this with a QA subagent that reviews outputs against the original request before they're handed back, plus skill-level guidance for when "I can't do this cleanly" is the right answer. This is a positioning bet — the thing that separates Konrad from a generic local-agent wrapper.
+- [ ] **Understanding → planning → refinement roundtrip.** Before executing, Konrad confirms he understands the user's goal — even when the user hasn't fully articulated it. A short clarifying loop ("here's what I think you want, here's the plan, anything off?") that the user can short-circuit when they already know what they want. Pairs with the QA aspiration above.
+- [ ] **Proper PDF skill.** Designed around the file type, not around docling. Subtasks: extract text/tables/images, edit existing PDFs, generate new PDFs, fill forms. Replaces the current docling-shaped skill.
+- [ ] **Proper spreadsheet skill.** Covers `.xlsx`, `.ods`, and `.csv` with a single mental model. Read, write, transform, with UTF-8 and locale-aware number/date handling baked in.
+- [ ] **Plan visibility via TodoWrite.** Integrate the `planning-with-files` skill with `TodoWrite` so the user sees the live todo list in the UI as Konrad works through a multi-step task, instead of having to ask "where are you."
+- [ ] **Font assets out of the git tree.** Whatever fonts the bundled skills need shouldn't live as binary blobs in the repo. Deliver via LFS, a release tarball, or download-on-first-use, so cloning Konrad stays light and font updates don't churn git history.
+
+### Build & runtime
+
+- [ ] **Always-fresh build.** Rework the image build so every rebuild picks up the latest versions of opencode, the SDK packages, and base tools. Today versions drift silently between rebuilds. Tied to the version-pinning question below — pick one strategy.
+- [ ] **Decide on version pinning.** Right now `autoupdate: false` plus unpinned npm installs means we get whatever was latest at image build time, frozen until next rebuild. Decide: pin everything and bump deliberately, or stay floating and rebuild often. Document the choice.
+- [ ] **Local models work flawlessly.** End-to-end shakedown on LM Studio, Ollama, and llama.cpp with the recommended Qwen3.6-class models. Fix whatever rough edges remain (tool-call parsing, context overflow handling, model-switch UX).
+- [ ] **Drop the `.agent` session-state requirement.** Konrad currently expects opencode session/working state inside `.agent`. Remove that coupling so the workspace doesn't get polluted with framework state.
+
+### Distribution & security
+
+- [ ] **Publish to a container registry.** GitLab CR with a CI workflow that rebuilds on Dockerfile changes and on a daily cadence. Unblocks the frictionless-install path.
+- [ ] **Frictionless install.** A `curl … | sh` one-liner (or Homebrew tap) that drops `konrad` on `PATH` and pulls the image. Users shouldn't need to clone the repo.
+- [ ] **Egress firewall.** A minimal allow-list firewall inside the container — block everything by default, allow only the configured provider endpoints and a small set of trusted hosts. Or a tiny sidecar container that does the same job at the network layer.
+- [ ] **Security audit.** End-to-end review before declaring beta: container isolation, provider credential handling, MCP tool surface, file-system access boundaries.
+- [ ] **Documentation pass.** Once the above is settled, rewrite the README and any in-repo docs so they describe the actual shipped product. Today they're partially aspirational.
+
+## Future features
+
+- [ ] **Multi-language support.** `AGENTS.md` and the bundled skill descriptions are English-only today. Ship localized variants (German first) — likely `AGENTS.<lang>.md` plus a setting in `~/.config/konrad/` to pick the active language, so a non-English user gets responses in their language without prompting for it every time.
+- [ ] **Dev Container as a second consumption path.** `.devcontainer/devcontainer.json` exists but is minimal and out of date. Bring it up to scratch and treat it as a first-class way to _use_ Konrad (open a workspace in VS Code, get a fully-wired Konrad) alongside the host CLI — not just a tool for working _on_ Konrad itself.
+- [ ] **Preconfigured MCP servers.** Ship `opencode.jsonc` with a working set of MCPs (filesystem, fetch, GitHub) wired up so the model has useful tools the moment it boots — no MCP setup tax on first-run.
+- [ ] **More skills.** `.eml` email, Markdown authoring, HTML presentations.
+- [ ] **Docker support.** Currently Podman-only because of `--userns=keep-id`. A Docker-compatible alternative `devcontainer.json` (or conditional `runArgs`) would broaden the audience.
+- [ ] **Top-level CI.** JSON/JSONC schema validation for the opencode configs, `shellcheck` on bundled shell scripts, and an "image actually builds" smoke job.
+- [ ] **Inline model discovery (replaces the dropped plugin).** Eventually replace the removed `opencode-models-discovery` plugin with ~30 lines of host-side bash in `bin/konrad` plus a small `jq` step in `image/entrypoint.sh` that writes the discovered providers as a runtime config override. Empirically the plugin cost ~3.7 s of Bun startup; doing it natively eliminates that without giving up the feature. Only worth doing once we've also resolved the LM Studio embedding-modality issue upstream (or accept the same exclusion in our inline version).
 
 ## Implemented
 
@@ -51,4 +59,4 @@
 ## Obsolete
 
 - [ ] **Specialized modes.** Add purpose-built modes — e.g. `konrad-default`, `konrad-perfectionist`.
-- [ ] **Restore LM Studio dynamic model discovery.** The [`opencode-models-discovery`](https://github.com/rivy-t/opencode-models-discovery) plugin currently emits `modalities.output: ["embedding"]` for LM Studio embedding models, which opencode's config schema rejects (only `text|audio|image|video|pdf` allowed). LM Studio is excluded from the plugin's discovery as a workaround (`providers.exclude: ["lmstudio"]` in `opencode-defaults.jsonc`); the documented default model is hard-declared. File an upstream issue, drop the exclusion when fixed.
+- [ ] **Restore LM Studio dynamic model discovery.** The [`opencode-models-discovery`](https://github.com/rivy-t/opencode-models-discovery) plugin emits `modalities.output: ["embedding"]` for LM Studio embedding models, which opencode's config schema rejects. Superseded by the decision to remove the plugin entirely (see Foundation cleanup); the inline-discovery replacement is tracked under Future features.
