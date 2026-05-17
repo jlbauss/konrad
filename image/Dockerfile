@@ -31,11 +31,8 @@ RUN uv venv $VIRTUAL_ENV --python /usr/bin/python3 \
 # =============================================================================
 FROM python-base AS python-models
 
-ENV DOCLING_ARTIFACTS_PATH=/opt/models
-
 RUN mkdir -p /opt/models \
-    && /opt/venv/bin/docling-tools models download
-
+    && /opt/venv/bin/docling-tools models download -o "/opt/models"
 # =============================================================================
 # Stage 3 — final runtime image
 # =============================================================================
