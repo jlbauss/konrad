@@ -3,6 +3,8 @@ description: Faithfully transcribes structured-irregular data (messy OCR, hand-w
 mode: subagent
 temperature: 0.1
 permission:
+  external_directory:
+    "/tmp/**": allow
   edit:
     "**/.env*": deny
     "**/.git/**": deny
