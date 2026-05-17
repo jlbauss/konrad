@@ -38,11 +38,10 @@ Multi-concern changes: prefer separate commits per concern (CONTRIBUTING.md).
 
 ## Config layering
 
-At container start, `image/entrypoint.sh` composes `~/.config/opencode/opencode.jsonc` from up to three layers via `image/merge-config.js`:
+At container start, `image/entrypoint.sh` composes `~/.config/opencode/opencode.jsonc` from up to two layers via `image/merge-config.js`:
 
 1. **Baked defaults** (`/etc/konrad/opencode-defaults.jsonc`)
-2. **Runtime override** (generated from `KONRAD_PROVIDER_EXCLUDES` env var — adds unreachable providers to discovery plugin's exclude list)
-3. **User override** (`~/.config/konrad/opencode.jsonc`, bind-mounted from host)
+2. **User override** (`~/.config/konrad/opencode.jsonc`, bind-mounted from host)
 
 Merge semantics: **objects merge recursively (user wins on conflict), arrays replace entirely.** The array-replace rule is critical — setting `instructions` in a user override would discard konrad's base instructions. That's why users should use `AGENTS.md` for additions, not the `instructions` key.
 
@@ -51,7 +50,7 @@ User-shipped agents/skills/AGENTS.md from `~/.config/konrad/` are also layered i
 ## Important constraints
 
 - **Podman only** — `--userns=keep-id` is Podman-specific. Docker support is on the roadmap.
-- **LM Studio excluded from auto-discovery** — upstream plugin bug emits invalid `modalities.output`. Pre-declared default model (`qwen/qwen3.6-35b-a3b`) works around it.
+- **No model auto-discovery.** Provider endpoints ship pre-wired but model lists ship empty — users declare their loaded models in `~/.config/konrad/opencode.jsonc`. The `opencode-models-discovery` plugin used to do this automatically; removed because of startup cost and an upstream embedding-modality bug. An inline replacement is on the roadmap.
 - **No top-level `model` key in baked defaults** — opencode prompts on first run and persists the choice in the `konrad-state` named volume.
 - **`.agent/opencode/`** is operational state (sessions, sqlite, cache) — always gitignored. `.agent/task_plan.md`, `.agent/progress.md`, `.agent/findings.md` are working memory and committable at user discretion.
 - **Python venv** at `/opt/venv` (on PATH). Extend with `uv pip install <pkg>`.

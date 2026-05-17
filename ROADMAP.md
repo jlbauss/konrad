@@ -8,7 +8,6 @@ _Raw ideas land here. Promote into ToDo after a refinement pass._
 
 ### Foundation cleanup (do first)
 
-- [ ] **Remove the `opencode-models-discovery` plugin.** Drop the plugin from `opencode-defaults.jsonc`, the `providers.exclude: ["lmstudio"]` workaround, and the host-side reachability probe in `bin/konrad` that compensates for it. Until we have a leaner replacement (see future features), no dynamic discovery — users pick a configured provider and that's it.
 - [ ] **UTF-8 everywhere on output.** Any file Konrad writes (CSVs especially) must be UTF-8 with no BOM. Today we've observed Latin-1-encoded CSVs leaking through (the `vorlesungen.csv` case: `EinfÃ¼hrung`, `KÃ¶Ãler`). Make this a guarantee, ideally enforced in the skills that produce tabular output rather than left to model judgement.
 - [ ] **README: recommend vision-enabled models.** Several skills (image-based extraction, PDF visual layouts) only work when the underlying model has vision. Call this out in the README's "Choosing a model" section so users don't pick a text-only model and then hit silent failures.
 
@@ -48,6 +47,7 @@ _Raw ideas land here. Promote into ToDo after a refinement pass._
 
 ## Implemented
 
+- [x] **Removed the `opencode-models-discovery` plugin.** Stripped the plugin declaration and the `lmstudio` exclusion from `opencode-defaults.jsonc`, the host-side reachability probe + `KONRAD_PROVIDER_EXCLUDES` plumbing from `bin/konrad`, and the runtime-override generation from `image/entrypoint.sh`. Config composition is now plain two-layer (baked + user) instead of three-layer. Cost the model auto-discovery feature; recouped ~3-4 s of Bun startup time and dropped a fragile upstream dependency. Inline replacement tracked under Future features.
 - [x] **Codebase truth pass.** Reviewed every comment and print statement across the repo against current behavior. Fixed stale references to the removed `konrad-npm-global` volume, the non-existent "entrypoint LM-Studio probe", a missing README "Pinning strategy" section, the wrong source URL in the image OCI labels, and the "no skills ship" claim repeated in four docs. Bundled with the pass: deleted leftover `.agent/`, `scripts/.agent/`, and `.skill-eval/` (konrad isn't dogfooded for its own development today), and moved `.devcontainer/` to top-level `devcontainer/` so VS Code stops auto-detecting an experimental consumption path as the active dev environment.
 - [x] **Custom opencode agent profiles.** Use opencode's `agents/` mechanism to ship a customized Konrad prompt instead of the default build and plan agents.
 - [x] **Other providers.** Remove hard-coded lm-studio as provider.
@@ -59,4 +59,4 @@ _Raw ideas land here. Promote into ToDo after a refinement pass._
 ## Obsolete
 
 - [ ] **Specialized modes.** Add purpose-built modes — e.g. `konrad-default`, `konrad-perfectionist`.
-- [ ] **Restore LM Studio dynamic model discovery.** The [`opencode-models-discovery`](https://github.com/rivy-t/opencode-models-discovery) plugin emits `modalities.output: ["embedding"]` for LM Studio embedding models, which opencode's config schema rejects. Superseded by the decision to remove the plugin entirely (see Foundation cleanup); the inline-discovery replacement is tracked under Future features.
+- [ ] **Restore LM Studio dynamic model discovery.** The [`opencode-models-discovery`](https://github.com/rivy-t/opencode-models-discovery) plugin emits `modalities.output: ["embedding"]` for LM Studio embedding models, which opencode's config schema rejects. Superseded by removing the plugin entirely (see Implemented); the inline-discovery replacement is tracked under Future features.

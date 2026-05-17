@@ -21,7 +21,7 @@ Status: **early / experimental**. The "safe" half of the original `safe-cowork` 
   - **[Ollama](https://ollama.com/)** on `localhost:11434`, or
   - **[llama.cpp](https://github.com/ggerganov/llama.cpp) server** on `localhost:8080`.
 
-  For Ollama and llama.cpp, loaded models are auto-discovered via `/v1/models` and appear in the picker without configuration. For LM Studio, konrad pre-declares the documented default (`qwen/qwen3.6-35b-a3b`); if you've loaded a different model, add it in your `~/.config/konrad/opencode.jsonc` — see [Configuration](#configuration). (LM Studio is excluded from auto-discovery as a workaround for an upstream plugin bug; tracked in [ROADMAP.md](ROADMAP.md).)
+  konrad pre-wires each provider's endpoint but ships with **no models declared**. Declare the model(s) you've loaded in `~/.config/konrad/opencode.jsonc` — see [Configuration](#configuration) for recipes. (Auto-discovery used to live here but added meaningful startup cost; an inline replacement is on the roadmap.)
 
   For API providers (Anthropic, OpenAI, OpenRouter, etc.), also see [Configuration](#configuration).
 
@@ -84,11 +84,11 @@ Layer 2 is the interesting one. It's a directory with up to four optional pieces
 
 The merge of `opencode.jsonc` is deep: **objects merge recursively, your keys win on conflict, new keys from either side come through, arrays replace.** That last one matters — see [the AGENTS.md convention](#adding-your-own-model-instructions) below.
 
-### Model discovery is automatic (mostly)
+### You declare your models
 
-konrad ships with the [`opencode-models-discovery`](https://github.com/rivy-t/opencode-models-discovery) plugin enabled for **Ollama** and **llama.cpp**. On every startup, opencode queries those endpoints' `/v1/models` and adds whatever models are *currently loaded* to the picker — no config needed.
+konrad pre-wires the local providers (LM Studio, Ollama, llama.cpp) at their default ports, but **the model list is yours to fill in**. Declare each model you intend to use in `~/.config/konrad/opencode.jsonc` — see the [Recipes](#recipes) below for the exact shape.
 
-**LM Studio is currently excluded from auto-discovery** as a workaround for an upstream plugin bug (the plugin emits a `modalities.output: ["embedding"]` value that opencode's config schema rejects, breaking every startup if you have any embedding model loaded in LM Studio). For LM Studio, konrad pre-declares one default model (`qwen/qwen3.6-35b-a3b`); add others to your `~/.config/konrad/opencode.jsonc` if needed. The exclusion will be dropped once the upstream plugin is fixed — tracked in [ROADMAP.md](ROADMAP.md).
+(Earlier versions shipped the [`opencode-models-discovery`](https://github.com/rivy-t/opencode-models-discovery) plugin to auto-populate the picker from each provider's `/v1/models` endpoint, but it added ~3-4 s of startup cost and tripped on LM Studio's embedding modality. An inline replacement is on the [roadmap](ROADMAP.md).)
 
 ### opencode Zen is disabled by default
 
@@ -223,7 +223,7 @@ A short, opinionated record of the load-bearing choices, so future-you can tell 
 - **Two-tier state.** Per-project workspace state in `.agent/opencode/` (visible, portable, gitignored); shared state (`auth.json`, cache, opencode's UI state) in named Podman volumes (out of the host filesystem, can't be committed by accident). The opencode binary itself is baked into the image, not a volume. The `auth.json`-symlink trick in `image/entrypoint.sh` is what makes the volume and the per-project data dir coexist under one opencode data dir.
 - **No per-project secrets in the workspace.** Auth credentials live only in the `konrad-secrets` named volume. Users who don't read `.gitignore` carefully still can't accidentally publish their tokens.
 - **`AGENTS.md` is the user's slot; `instructions` is konrad's.** opencode loads both, additively, into the system prompt. By assigning each side its own loading mechanism, we never collide.
-- **Minimal hardcoded defaults.** We avoid pre-selecting model lists where dynamic discovery can do the job — Ollama and llama.cpp providers ship empty, the plugin populates them from each engine's `/v1/models` endpoint at startup. LM Studio is the exception: a current upstream-plugin bug forces us to *declare* (but not pre-select) the documented default `qwen/qwen3.6-35b-a3b` so users have something to pick. **No top-level `"model"` is set in the baked default** — opencode prompts on first run, then remembers your choice in the `konrad-state` volume across subsequent runs. Users override or add their own provider+model in `~/.config/konrad/opencode.jsonc`.
+- **Minimal hardcoded defaults.** Provider endpoints ship pre-wired but model lists ship empty — users declare whichever model they've loaded in `~/.config/konrad/opencode.jsonc`. Earlier versions auto-discovered models via the `opencode-models-discovery` plugin, but the startup cost wasn't worth it; an inline replacement is on the roadmap. **No top-level `"model"` is set in the baked default** — opencode prompts on first run, then remembers your choice in the `konrad-state` volume across subsequent runs.
 - **Optimised for Qwen3.6-class local models.** The agent body in `image/opencode/agents/konrad.md` is sized and worded for a ~30B-class MoE local model — terse-but-deliberate, no Claude-style verification loops. Bigger frontier models work fine; smaller (<10B) ones may need prompt softening. The specific recommendation we test against is `qwen/qwen3.6-35b-a3b`.
 - **GPL v3.** Compatible with all bundled upstream licenses (MIT, Apache 2.0, OFL 1.1). Strong copyleft is a deliberate choice for a sandbox-style tool — if someone extends konrad for commercial use, the improvements come back to the commons.
 

@@ -31,27 +31,13 @@
   // wants it removes "opencode" from this list in their override).
   "disabled_providers": ["opencode"],
 
-  // Dynamic model discovery for Ollama / llama.cpp. The plugin queries
-  // each provider's /v1/models endpoint at startup. Each call has a 3s
-  // timeout — so an unreachable provider costs 3s of startup delay.
-  //
-  // Two things keep this fast:
-  //   1. lmstudio is excluded statically here (upstream bug — the plugin
-  //      emits "embedding" as a modality which opencode's schema rejects).
-  //   2. konrad's CLI (bin/konrad) probes ollama and llama.cpp on the host
-  //      BEFORE launching the container and dynamically adds them to
-  //      providers.exclude if they're not reachable. That layer arrives
-  //      via merge-config.js as a runtime override. See image/entrypoint.sh.
-  //
-  // No version pinned: the plugin is installed at image build time
-  // (image/Dockerfile), and updates flow through `konrad rebuild`. opencode
-  // resolves the unversioned name from the already-installed copy in
-  // /home/node/.npm-global, so no startup network call. MIT-licensed; see NOTICE.
-  "plugin": [
-    ["opencode-models-discovery", {
-      "providers": { "exclude": ["lmstudio"] }
-    }]
-  ],
+  // No dynamic model discovery. konrad previously shipped the
+  // opencode-models-discovery plugin to auto-populate the picker from each
+  // provider's /v1/models endpoint, but the plugin added ~3-4 s of Bun
+  // startup time and tripped on LM Studio's embedding modality. Until we
+  // ship an inline replacement (see ROADMAP → Future features), users
+  // declare their own models in ~/.config/konrad/opencode.jsonc — see
+  // README → Configuration → "Recipes".
 
   // Local-engine providers, pre-wired to their default ports on the host.
   // host.containers.internal resolves to the host machine from inside Podman.
