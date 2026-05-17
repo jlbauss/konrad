@@ -3,6 +3,11 @@
 # but those are committable so this ignore is scoped tightly.
 .agent/opencode/
 
+# Skill-eval workspaces: bulky test artifacts (inputs, outputs,
+# transcripts, grading) from iterating on Konrad's opencode skills.
+# Kept out of git because they regenerate on every eval pass.
+.skill-eval/
+
 # OS / editor junk
 .DS_Store
 Thumbs.db
