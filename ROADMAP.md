@@ -4,18 +4,16 @@
 
 _Raw ideas land here. Promote into ToDo after a refinement pass._
 
-- improve CLI to be exceptionally nice to use and helpful
-- add design skill. so the future slides skill (and the pdf skill, etc) are for the technical side of things. They are not for the design side of things.
-
 ## ToDo
 
 ### Quality & UX (the differentiators)
 
+- [ ] **Proper technical PDF skill.** Designed around the file type, not around docling. Subtasks: extract text/tables/images, edit existing PDFs, generate new PDFs (only the technical part, design skill comes later), fill forms. Replaces the current docling-shaped skill.
 - [ ] **High-quality aspiration: no AI slop.** Konrad either produces a result he stands behind or tells the user he can't. Operationalize this with a QA subagent that reviews outputs against the original request before they're handed back, plus skill-level guidance for when "I can't do this cleanly" is the right answer. This is a positioning bet — the thing that separates Konrad from a generic local-agent wrapper.
 - [ ] **Understanding → planning → refinement roundtrip.** Before executing, Konrad confirms he understands the user's goal — even when the user hasn't fully articulated it. A short clarifying loop ("here's what I think you want, here's the plan, anything off?") that the user can short-circuit when they already know what they want. Pairs with the QA aspiration above.
-- [ ] **Proper PDF skill.** Designed around the file type, not around docling. Subtasks: extract text/tables/images, edit existing PDFs, generate new PDFs, fill forms. Replaces the current docling-shaped skill.
 - [ ] **Proper spreadsheet skill.** Covers `.xlsx`, `.ods`, and `.csv` with a single mental model. Read, write, transform, with UTF-8 and locale-aware number/date handling baked in. Include the third UTF-8 defense layer here: a post-write validator that scans the output for mojibake byte sequences (`Ã¼`, `Ã¶`, `Â`, `Ã©`, U+FFFD) and aborts rather than handing back garbage. Cheap (~10 lines) and the right home for it, since this skill is the canonical owner of "the correct way to handle tabular files."
 - [ ] **Plan visibility via TodoWrite.** Integrate the `planning-with-files` skill with `TodoWrite` so the user sees the live todo list in the UI as Konrad works through a multi-step task, instead of having to ask "where are you."
+- [ ] **Polish the `konrad` CLI into something delightful.** Today `bin/konrad` is functional: subcommands work, help text is correct, errors print sensibly. "Exceptionally nice" is a step beyond — friendlier first-run experience (Podman missing? print the install one-liner, not just an error), progress feedback during the long `konrad rebuild` operation, shell completion for bash/zsh/fish, error messages that name the *fix* rather than just the *symptom*, and a `konrad doctor` subcommand that runs preflight diagnostics. The CLI is the first surface every user touches; it should feel cared-for.
 - [ ] **Font assets out of the git tree.** Whatever fonts the bundled skills need shouldn't live as binary blobs in the repo. Deliver via LFS, a release tarball, or download-on-first-use, so cloning Konrad stays light and font updates don't churn git history.
 
 ### Build & runtime
@@ -38,6 +36,7 @@ _Raw ideas land here. Promote into ToDo after a refinement pass._
 - [ ] **Multi-language support.** `AGENTS.md` and the bundled skill descriptions are English-only today. Ship localized variants (German first) — likely `AGENTS.<lang>.md` plus a setting in `~/.config/konrad/` to pick the active language, so a non-English user gets responses in their language without prompting for it every time.
 - [ ] **Dev Container as a second consumption path.** `devcontainer/devcontainer.json` exists but is minimal and out of date — currently parked at top-level (not `.devcontainer/`) so VS Code doesn't auto-detect it. Bring it up to scratch and treat it as a first-class way to _use_ Konrad (open a workspace in VS Code, get a fully-wired Konrad) alongside the host CLI — not just a tool for working _on_ Konrad itself. When promoted, rename back to `.devcontainer/`.
 - [ ] **Preconfigured MCP servers.** Ship `opencode.jsonc` with a working set of MCPs (filesystem, fetch, GitHub) wired up so the model has useful tools the moment it boots — no MCP setup tax on first-run.
+- [ ] **Design skill (the aesthetic side).** The technical skills (PDF, slides, future docs) cover *how* to assemble an artifact — extract, generate, fill, transform. They deliberately don't cover whether the output *looks good*. A separate design skill owns visual quality — typography, layout, color, hierarchy, brand consistency — and composes with the technical skills when the user wants polished output rather than just functional output. Open scope question: advisor that critiques drafts, generator that produces themed templates, or both. Pairs with the "no AI slop" aspiration: a deck that's structurally correct but aesthetically broken is still slop.
 - [ ] **More skills.** `.eml` email, Markdown authoring, HTML presentations.
 - [ ] **Docker support.** Currently Podman-only because of `--userns=keep-id`. A Docker-compatible alternative `devcontainer.json` (or conditional `runArgs`) would broaden the audience.
 - [ ] **Top-level CI.** JSON/JSONC schema validation for the opencode configs, `shellcheck` on bundled shell scripts, and an "image actually builds" smoke job.
