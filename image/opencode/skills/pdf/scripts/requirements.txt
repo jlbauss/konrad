@@ -1,0 +1,9 @@
+# Informational only — these are preinstalled in the konrad image's
+# /opt/venv. List here so the skill is self-describing if anyone copies
+# it into a different environment.
+pypdf
+pdfplumber
+pdf2image
+reportlab
+# Optional for EXTRACT (docling chunking with OpenAI tokenizer):
+#   docling-core[chunking-openai]

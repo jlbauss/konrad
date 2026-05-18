@@ -33,6 +33,25 @@ spreadsheets (xlsx skill — adapted from upstream minimax-xlsx)
     Copyright (c) MiniMax AI
     MIT License
 
+pdf (PDF skill — image/opencode/skills/pdf/)
+    The FILL route (forms.md plus the two scripts fill_inspect.py and
+    fill_write.py) is adapted from minimax-pdf:
+        https://github.com/MiniMax-AI/skills (skills/minimax-pdf)
+        Copyright (c) MiniMax AI
+        MIT License
+    The EXTRACT route (extract.md) inherits structure and code examples
+    from konrad's previous docling-document-intelligence skill, which in
+    turn descends from docling-project's own documentation:
+        https://github.com/docling-project/docling
+        Copyright (c) docling-project
+        MIT License
+
+docling-document-intelligence (legacy document-conversion skill —
+    superseded by the pdf skill above; retained pending removal)
+    https://github.com/docling-project/docling
+    Copyright (c) docling-project
+    MIT License
+
 OpenAgentsControl
     https://github.com/darrenhinde/OpenAgentsControl
     Copyright (c) 2025 Darren Hinde

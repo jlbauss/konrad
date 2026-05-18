@@ -22,7 +22,8 @@ ENV VIRTUAL_ENV=/opt/venv
 RUN uv venv $VIRTUAL_ENV --python /usr/bin/python3 \
     && uv pip install --no-cache \
     --torch-backend=cpu \
-    "docling-slim[standard]" openpyxl pandas
+    "docling-slim[standard]" openpyxl pandas \
+    pypdf pdfplumber pdf2image reportlab
 
 # =============================================================================
 # Stage 2 — python-models
@@ -64,7 +65,9 @@ ENV DEBIAN_FRONTEND=noninteractive \
 #
 # Bundled skills depend on these:
 #   python3                     → Python interpreter for skill scripts
-#   poppler-utils               → pdftotext / pdftoppm / pdfinfo (PDF skill paths)
+#   poppler-utils               → pdftotext / pdftoppm / pdfinfo / pdfimages
+#                                 (used by the pdf skill for rasterization and
+#                                 raw image extraction; also backs pdf2image)
 #   pandoc                      → document conversion, kept available for skills
 #                                 that need cross-format text transforms
 #
