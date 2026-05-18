@@ -1,0 +1,25 @@
+{
+  // Claude dev container — for working ON konrad.
+  //
+  // Distinct from devcontainer/ (no dot, at repo root), which is the
+  // dormant "Konrad-as-devcontainer" consumption path (ROADMAP.md,
+  // Future features). VS Code auto-detects this one because of the
+  // leading dot; the other stays parked until promoted.
+  "name": "konrad-claude-dev",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "remoteUser": "node",
+  "containerUser": "node",
+  "updateRemoteUserUID": true,
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=delegated",
+  "workspaceFolder": "/workspace",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "anthropic.claude-code",
+        "timonwong.shellcheck"
+      ]
+    }
+  }
+}

@@ -11,6 +11,12 @@ konrad rebuild                     # equivalent, if the CLI is installed
 shellcheck bin/konrad image/entrypoint.sh scripts/*.sh    # lint
 ```
 
+The repo also ships a Dev Container at `.devcontainer/` — open the
+folder in VS Code and "Reopen in Container" to get a portable
+edit-and-lint environment (shellcheck, jq, git, ripgrep, Claude Code
+extension preinstalled). Building / running the Konrad image itself
+stays on the host.
+
 There's no test suite yet. The closest things to validation are:
 
 - `bash -n <script>` — parse check.
@@ -25,7 +31,8 @@ There's no test suite yet. The closest things to validation are:
 | The container artifact | `image/` (Dockerfile + bundled `opencode/` config) |
 | The host-side CLI | `bin/konrad` |
 | Install / build helpers | `scripts/` |
-| VS Code Dev Containers entry point (experimental, second consumption path — see ROADMAP) | `devcontainer/` |
+| VS Code Dev Container for working **on** konrad (Claude Code preinstalled) | `.devcontainer/` |
+| VS Code Dev Containers entry point (dormant — future consumption path, see ROADMAP) | `devcontainer/` |
 | Roadmap and idea backlog | `ROADMAP.md` |
 | Upstream attribution | `NOTICE` |
 

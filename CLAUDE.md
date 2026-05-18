@@ -32,7 +32,8 @@ Any change to `image/` (Dockerfile, entrypoint, defaults, agents) requires a reb
 | `image/opencode/` | opencode-discoverable config (agents, skills, instructions.md) → `~/.config/opencode/` in image | Yes |
 | `bin/konrad` | Host-side CLI (bash) | No |
 | `scripts/` | Install and build helpers | No |
-| `devcontainer/` | Experimental second consumption path (VS Code) — see ROADMAP | No |
+| `.devcontainer/` | VS Code Dev Container for working **on** konrad (Claude Code preinstalled) | No |
+| `devcontainer/` | Dormant — future Konrad-as-devcontainer consumption path (see ROADMAP) | No |
 
 Multi-concern changes: prefer separate commits per concern (CONTRIBUTING.md).
 

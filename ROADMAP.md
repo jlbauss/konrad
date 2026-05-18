@@ -6,10 +6,6 @@ _Raw ideas land here. Promote into ToDo after a refinement pass._
 
 ## ToDo
 
-### Setup
-
-- create dev container for working on Konrad with a proper claude.md that all my claude agents can use.
-
 ### Quality & UX (the differentiators)
 
 - [ ] **Proper technical PDF skill.** Designed around the file type, not around docling. Subtasks: extract text/tables/images, edit existing PDFs, generate new PDFs (only the technical part, design skill comes later), fill forms. Replaces the current docling-shaped skill.
@@ -50,6 +46,7 @@ _Raw ideas land here. Promote into ToDo after a refinement pass._
 
 ## Implemented
 
+- [x] **Dev container for working on Konrad.** `.devcontainer/` ships a minimal Debian image based on `node:26-trixie-slim` (same base as Konrad's runtime image) with `shellcheck`, `jq`, `git`, `ripgrep`, `fd`, `bat`, and `sudo`; Claude Code arrives via the VS Code extension auto-installed through `devcontainer.json`. Scope is edit + lint only — building / running the Konrad image itself stays on the host (a Podman-in-container variant was rejected as too host-coupled). Renamed the repo-root `AGENTS.md` → `CLAUDE.md` so Claude Code reads it as its native instructions file; the user-slot `AGENTS.md` convention inside the Konrad container (`~/.config/konrad/AGENTS.md` and `<workspace>/AGENTS.md`) is part of opencode's discovery contract and is untouched. The parked `devcontainer/` (no dot, repo root) — the future consumption-path entry — is also untouched.
 - [x] **Spreadsheet skill — initial drop.** Bundled the upstream `minimax-xlsx` skill (MiniMax-AI/skills, MIT) into `image/opencode/skills/spreadsheets/` and recorded the attribution in `NOTICE`. README's per-component license list collapsed into a single "see NOTICE" pointer to remove duplication. The full roadmap criteria (`.csv`/`.ods` first-class paths, post-write mojibake validator, locale-aware number/date handling) are not yet delivered — these remain open under "Spreadsheet skill polish" in Future features. Calling this "done" because the canonical spreadsheet pathway exists in the image; the rest is polish, not a missing capability.
 - [x] **README: recommend vision-enabled models.** Added a "Pick a vision-capable model if you'll touch images" bullet to the Requirements section, calling out the silent failure mode (text-only models hallucinate image content rather than refusing) and listing concrete options on LM Studio, Ollama, and hosted providers. The "konrad does not currently warn you" caveat is honest about today's limitation — eventual fix lives under the Quality & UX aspiration.
 - [x] **UTF-8 everywhere on output (defense in depth).** Two layers landed: (1) the container runs at `LANG=C.UTF-8` / `LC_ALL=C.UTF-8`, so Python's `open()` and the locale-sensitive shell tools default to UTF-8 instead of POSIX/C — the silent root cause of most mojibake. (2) The `do-it-manually` skill now spells out its read/write encoding contract: recognize mojibake (`Ã¼`, `Ã¶`, etc.) as a content problem the calling agent has to decide on (repair vs. preserve), write outputs as UTF-8 with no BOM, and surface mojibake leakage in the suspicious-result QA scan. Layer 3 (post-write validator) is parked in the future spreadsheet skill, since that's the canonical owner of tabular-file correctness.
