@@ -1,0 +1,37 @@
+#!/bin/bash
+# Wrapper around /usr/bin/gio.
+#
+# GIO refuses to trash files on bind-mounted filesystems with
+# "Trashing on system internal mounts is not supported" as a
+# deliberate policy. That silently collapses VS Code's "Move to
+# Trash" UI to "Delete Permanently" for anything under /workspace,
+# because VS Code uses `gio trash` under the hood.
+#
+# trash-cli has no such restriction. This wrapper intercepts
+# `gio trash <files>` and routes it to trash-cli; every other gio
+# invocation passes through to the real binary unchanged.
+#
+# Why a real executable rather than a shell alias or function:
+# VS Code spawns `gio` via execFile + PATH lookup, which can't see
+# aliases or functions. /usr/local/bin precedes /usr/bin in the
+# default Debian PATH, so this wins by precedence.
+#
+# Why not intercept `gio trash --empty` / `--list`: VS Code only
+# invokes `gio trash <file>` for the Move-to-Trash flow. Flag-style
+# invocations fall through to the real gio so its behavior is
+# preserved for anyone calling gio directly.
+set -e
+
+if [[ "${1:-}" == "trash" && $# -ge 2 && "$2" != -* ]]; then
+    shift
+    decoded=()
+    for arg in "$@"; do
+        case "$arg" in
+            file://*) decoded+=("${arg#file://}") ;;
+            *)        decoded+=("$arg") ;;
+        esac
+    done
+    exec /usr/bin/trash "${decoded[@]}"
+fi
+
+exec /usr/bin/gio "$@"

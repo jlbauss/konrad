@@ -42,6 +42,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN ln -sf /usr/bin/fdfind /usr/local/bin/fd \
     && ln -sf /usr/bin/batcat /usr/local/bin/bat
 
+# Wrapper around /usr/bin/gio that routes `gio trash` through trash-cli.
+# See gio-shim itself for the why (GIO refuses bind mounts, breaking
+# VS Code's Move-to-Trash UI under /workspace). /usr/local/bin wins
+# over /usr/bin in PATH so VS Code's gio invocations hit this first.
+COPY --chmod=0755 gio-shim /usr/local/bin/gio
+
 # Pre-create the dirs that devcontainer.json mounts named volumes onto,
 # owned by node. Podman copies the image's directory state into an
 # empty named volume on first mount, so this seeds the volume with the
