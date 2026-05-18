@@ -21,8 +21,8 @@ ENV VIRTUAL_ENV=/opt/venv
 
 RUN uv venv $VIRTUAL_ENV --python /usr/bin/python3 \
     && uv pip install --no-cache \
-        --torch-backend=cpu \
-        "docling-slim[standard]"
+    --torch-backend=cpu \
+    "docling-slim[standard]"
 
 # =============================================================================
 # Stage 2 — python-models
@@ -75,7 +75,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git curl jq ca-certificates \
     ripgrep fd-find bat tree gh \
     python3 pandoc poppler-utils libgl1 libglib2.0-0 \
-    libgomp1 \
+    libgomp1 libreoffice-nogui \
     less procps fzf zsh man-db unzip gnupg2 nano htop \
     iproute2 dnsutils \
     && apt-get clean \
