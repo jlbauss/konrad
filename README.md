@@ -267,8 +267,4 @@ Add the ones you want as env vars in `~/.config/konrad/opencode.jsonc` (via the 
 
 ## License and attribution
 
-konrad is released under the [GNU General Public License v3.0](LICENSE). The combined work as a whole is GPL v3; bundled third-party components retain their own (GPL-compatible) licenses. See [NOTICE](NOTICE) for the full upstream list:
-
-- [opencode](https://github.com/sst/opencode) — MIT
-- [planning-with-files](https://github.com/OthmanAdi/planning-with-files) by Othman Adi — MIT — source of the file-based planning methodology baked into konrad's base instructions
-- [Qwen3.6-35B-A3B](https://huggingface.co/Qwen/Qwen3.6-35B-A3B) weights — Apache 2.0 (used unmodified via LM Studio; not redistributed)
+konrad is released under the [GNU General Public License v3.0](LICENSE). The combined work as a whole is GPL v3; bundled third-party components retain their own (GPL-compatible) licenses. See [NOTICE](NOTICE) for the full upstream list and copyright notices.

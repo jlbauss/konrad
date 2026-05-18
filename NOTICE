@@ -28,6 +28,11 @@ planning-with-files (file-based planning methodology used in AGENTS.md)
     Copyright (c) Othman Adi
     MIT License
 
+spreadsheets (xlsx skill — adapted from upstream minimax-xlsx)
+    https://github.com/MiniMax-AI/skills (skills/minimax-xlsx)
+    Copyright (c) MiniMax AI
+    MIT License
+
 OpenAgentsControl
     https://github.com/darrenhinde/OpenAgentsControl
     Copyright (c) 2025 Darren Hinde
