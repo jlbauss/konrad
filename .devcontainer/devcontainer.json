@@ -30,9 +30,18 @@
   //   .vscode-server  → installed VS Code extensions + their state
   // The names are project-scoped so they don't collide with other
   // dev containers on the same machine.
+  //
+  // Plus a bind-mount overlaying just .claude/skills/ from the host's
+  // own Claude Code skills dir. Skills are inert content (no container
+  // state) so they're safe to share across host and container — drop a
+  // skill into ~/.claude/skills/ on the host and the in-container
+  // Claude instance sees it instantly. Sessions/credentials stay on
+  // the named volume above. Host dir must exist before the container
+  // starts; create with `mkdir -p ~/.claude/skills` on the host.
   "mounts": [
     "source=konrad-claude-dev-claude,target=/home/node/.claude,type=volume",
-    "source=konrad-claude-dev-vscode-server,target=/home/node/.vscode-server,type=volume"
+    "source=konrad-claude-dev-vscode-server,target=/home/node/.vscode-server,type=volume",
+    "source=${localEnv:HOME}/.claude/skills,target=/home/node/.claude/skills,type=bind,consistency=delegated"
   ],
   "customizations": {
     "vscode": {
