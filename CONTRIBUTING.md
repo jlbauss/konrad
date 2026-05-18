@@ -59,9 +59,9 @@ Use multi-line bodies for any change that needed a design decision. The git log 
 - A new subcommand or flag.
 - A new external dependency (e.g. a tool the user has to install on the host).
 
-## When to update AGENTS.md (`AGENTS.md` at the repo root)
+## When to update CLAUDE.md (`CLAUDE.md` at the repo root)
 
-This is the repo-level AGENTS.md, loaded by an agent working _on_ konrad (e.g. Claude editing this codebase). Update when:
+This is the repo-level instructions file, loaded by Claude Code (and any other agent) working _on_ konrad. Update when:
 
 - A new tool, file, or directory the agent should know about.
 - A new convention or constraint the agent should follow.
