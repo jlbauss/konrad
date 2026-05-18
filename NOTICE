@@ -46,12 +46,6 @@ pdf (PDF skill — image/opencode/skills/pdf/)
         Copyright (c) docling-project
         MIT License
 
-docling-document-intelligence (legacy document-conversion skill —
-    superseded by the pdf skill above; retained pending removal)
-    https://github.com/docling-project/docling
-    Copyright (c) docling-project
-    MIT License
-
 OpenAgentsControl
     https://github.com/darrenhinde/OpenAgentsControl
     Copyright (c) 2025 Darren Hinde

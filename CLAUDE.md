@@ -57,7 +57,7 @@ User-shipped agents/skills/AGENTS.md from `~/.config/konrad/` are also layered i
 - **Python venv** at `/opt/venv` (on PATH). Extend with `uv pip install <pkg>`.
 - **Debian renames**: `fd` → `fdfind`, `bat` → `batcat` (symlinked to canonical names in Dockerfile).
 - **opencode Zen disabled** by default (`disabled_providers: ["opencode"]`).
-- **Bundled skills** live at `image/opencode/skills/` (currently: `planning-with-files`, `do-it-manually`, `docling-document-intelligence`). They land at `~/.config/opencode/skills/` in the image and are loaded by opencode's `skill` tool.
+- **Bundled skills** live at `image/opencode/skills/` (currently: `planning-with-files`, `do-it-manually`, `spreadsheets`, `pdf`). They land at `~/.config/opencode/skills/` in the image and are loaded by opencode's `skill` tool.
 
 ## Commit style
 
