@@ -11,9 +11,29 @@
   },
   "remoteUser": "node",
   "containerUser": "node",
-  "updateRemoteUserUID": true,
+  // --userns=keep-id (in runArgs below) handles UID/GID mapping at the
+  // namespace level, so VS Code's updateRemoteUserUID is redundant.
+  "updateRemoteUserUID": false,
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=delegated",
   "workspaceFolder": "/workspace",
+  // Podman: map container UID/GID 1000 (the `node` user) to the host
+  // user, so files in bind-mounted /workspace stay owned by the host
+  // user and are editable. Without this, rootless Podman maps node@1000
+  // to a sub-UID and edits fail. Same pattern as devcontainer/
+  // devcontainer.json. Podman-specific — Docker support is on the
+  // roadmap.
+  "runArgs": [
+    "--userns=keep-id:uid=1000,gid=1000"
+  ],
+  // Persist state across container rebuilds via named volumes:
+  //   .claude         → Claude Code credentials, sessions, projects
+  //   .vscode-server  → installed VS Code extensions + their state
+  // The names are project-scoped so they don't collide with other
+  // dev containers on the same machine.
+  "mounts": [
+    "source=konrad-claude-dev-claude,target=/home/node/.claude,type=volume",
+    "source=konrad-claude-dev-vscode-server,target=/home/node/.vscode-server,type=volume"
+  ],
   "customizations": {
     "vscode": {
       "extensions": [

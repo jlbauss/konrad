@@ -21,6 +21,10 @@ ENV DEBIAN_FRONTEND=noninteractive \
 #   git, jq, curl, sudo → daily-use
 #   ripgrep, fd-find,
 #   bat                 → match runtime image; opencode also prefers them
+#   trash-cli           → `trash` / `trash-list` / `trash-restore` etc.
+#                         so terminal deletes are recoverable.
+#   libglib2.0-bin      → provides `gio`, which VS Code uses to move
+#                         files to Trash from the file explorer on Linux.
 #
 # Claude Code itself is delivered as the VS Code extension installed
 # via devcontainer.json's customizations.vscode.extensions — no npm
@@ -29,6 +33,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         shellcheck \
         git curl jq ca-certificates sudo \
         ripgrep fd-find bat \
+        trash-cli libglib2.0-bin \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* /var/log/apt/* /var/log/dpkg.log
 
@@ -37,8 +42,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN ln -sf /usr/bin/fdfind /usr/local/bin/fd \
     && ln -sf /usr/bin/batcat /usr/local/bin/bat
 
+# Pre-create the dirs that devcontainer.json mounts named volumes onto,
+# owned by node. Podman copies the image's directory state into an
+# empty named volume on first mount, so this seeds the volume with the
+# correct ownership — without it the volume would be root-owned and
+# the node user could not write to it.
+RUN install -d -o node -g node \
+    /home/node/.claude \
+    /home/node/.vscode-server
+
 # node user (UID 1000) already exists in node:26-trixie-slim.
-# devcontainer.json's `updateRemoteUserUID` syncs it to the host UID
-# at first start, so bind-mounted files have correct ownership.
+# devcontainer.json's runArgs --userns=keep-id maps it to the host
+# user's UID/GID at namespace level, so bind-mounted files have
+# correct ownership without further intervention.
 USER node
 WORKDIR /workspace
