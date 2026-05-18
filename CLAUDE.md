@@ -62,3 +62,10 @@ User-shipped agents/skills/AGENTS.md from `~/.config/konrad/` are also layered i
 ## Commit style
 
 Conventional commits without scope prefix unless useful: `feat:`, `fix:`, `refactor:`, `docs:`, `chore:`. Multi-line body for any change involving a design decision — the git log is the project's design history.
+
+## Working agreements
+
+Durable conventions for any agent working in this repo. Written here (rather than only in per-session agent memory) so every Claude instance sees the same rules.
+
+- **Move completed ROADMAP items into `## Implemented` in the same commit.** When a change lands a bullet from `## ToDo` or `## Future features`, delete it from its current section and append a past-tense entry under `## Implemented` describing what shipped, with any scope caveats. If only partially implemented, trim the original bullet's scope, add an Implemented entry for what landed, and spin the remainder into a fresh ToDo / Future-features bullet so nothing falls off the radar. Same rule applies retroactively — if a stale ToDo item is already done in the code, flag it and move it.
+- **Important wishes from the user belong in this file.** When the user gives a durable rule, preference, or convention to apply across sessions, write it here as a Working agreements bullet (in addition to any agent-internal memory). This file travels with the repo, so every agent on every machine picks it up — agent-side memory does not.
