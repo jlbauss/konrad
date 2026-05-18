@@ -6,6 +6,8 @@ _Raw ideas land here. Promote into ToDo after a refinement pass._
 
 ## ToDo
 
+- devcontainer: ssh/git push not possible
+
 ### Quality & UX (the differentiators)
 
 - [ ] **High-quality aspiration: no AI slop.** Konrad either produces a result he stands behind or tells the user he can't. Operationalize this with a QA subagent that reviews outputs against the original request before they're handed back, plus skill-level guidance for when "I can't do this cleanly" is the right answer. This is a positioning bet — the thing that separates Konrad from a generic local-agent wrapper.
