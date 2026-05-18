@@ -30,10 +30,10 @@ ENV DEBIAN_FRONTEND=noninteractive \
 # via devcontainer.json's customizations.vscode.extensions — no npm
 # CLI needed.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        shellcheck \
-        git curl jq ca-certificates sudo \
-        ripgrep fd-find bat \
-        trash-cli libglib2.0-bin \
+    shellcheck \
+    git gh curl jq ca-certificates sudo \
+    ripgrep fd-find bat \
+    trash-cli libglib2.0-bin \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* /var/log/apt/* /var/log/dpkg.log
 
