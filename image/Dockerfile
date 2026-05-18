@@ -22,7 +22,7 @@ ENV VIRTUAL_ENV=/opt/venv
 RUN uv venv $VIRTUAL_ENV --python /usr/bin/python3 \
     && uv pip install --no-cache \
     --torch-backend=cpu \
-    "docling-slim[standard]"
+    "docling-slim[standard]" openpyxl pandas
 
 # =============================================================================
 # Stage 2 — python-models
