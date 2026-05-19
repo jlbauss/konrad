@@ -13,9 +13,9 @@ below for which ops earn it and which skip it.
 
 | Route | Op | QA |
 |---|---|---|
-| EDIT | watermark (text or file) | **Yes** — placement, opacity, legibility, clipping |
-| EDIT | highlight by coords or text | **Yes** — every match covered, no neighbours hit |
-| EDIT | FreeText / sticky note / box / line | **Yes** — coords sensible, no overlap with body |
+| ANNOTATE | highlight, blacken | **Yes** — every rect on the intended area, no neighbours hit |
+| ANNOTATE | sticky note, free-text, box, line | **Yes** — coords sensible, no overlap with body |
+| ANNOTATE | watermark | **Yes** — placement, opacity, legibility, clipping |
 | EDIT | rotate | **Yes** — affected pages right-way-up, no clip |
 | EDIT | merge | Light — page count + first/last-page spot-check |
 | EDIT | split | Light — page count of each output |
@@ -28,6 +28,36 @@ below for which ops earn it and which skip it.
 EXTRACT QA is a different loop (compare extracted text to a rasterized
 source page) and isn't covered here yet — flag it to the user if they
 want this kind of cross-check.
+
+## Progressive verification — start with one page
+
+Skill-wide rule. Applies to every visual-QA operation: EDIT, ANNOTATE,
+GENERATE, FILL.
+
+After your code produces an output:
+
+1. **Rasterize one page** — the first touched page (or page 1 for ops
+   that touch every page).
+2. **Look at it.** If it's right, expand to the rest of the touched set
+   per the "Which pages count as touched" table below. For systemic ops
+   (watermark on a long doc), expand means spot-check first / middle /
+   last.
+3. **If it's wrong**, fix the recipe / spec / inputs and re-run **before**
+   rasterizing more. Rasterizing every page of a failing output is
+   wasted vision tokens — they all fail the same way.
+
+Why this is the default:
+
+- Recipe-level mistakes (wrong color, wrong rect math, wrong page index)
+  show up identically across every touched page. One page catches them.
+- Per-page surprises (one match landed wrong while siblings landed right)
+  are second-pass concerns — find them by spot-checking after the recipe
+  is provably right.
+- Vision tokens scale linearly with rasterized pages; pre-fix full-doc
+  QA is the most expensive form of "I didn't catch the bug sooner".
+
+The "Which pages count as touched" table below is the **upper bound** —
+that's the set you expand to if and only if the first page passes.
 
 ## The post-rasterize contract (read, or declare skipped)
 
@@ -102,20 +132,20 @@ precision is needed.
 
 | Op | Touched set |
 |---|---|
-| Watermark | All pages that received the watermark (usually every page) — but for QA, sample 3: first, middle, last |
-| Highlight by coords | Just the page(s) you annotated |
-| Highlight by text-search | Every page that produced at least one match |
-| FreeText / sticky / box / line | Just the page(s) you annotated |
+| Highlight / blacken | The pages `annotate_apply.py` prints as "Touched pages" |
+| Sticky note / free-text / box / line | Just the page(s) you annotated |
+| Watermark | All pages that received the watermark (usually every page) — for QA, sample 3: first, middle, last |
 | Rotate | The page(s) you rotated |
 | Merge | First page of the merged output, and the join page between each input boundary |
 | Split | First page of each output file (one-time check that the slicing landed) |
 | GENERATE bare-bones | The only page (or all pages, if multi-page) |
-| FILL | Every page that contains a field you filled (read off the `fill_inspect.py` output to know which pages those are) |
+| FILL | Every page that contains a field you filled (read off `fill_inspect.py`) |
 
-For watermark across long PDFs, sampling 3 pages is enough — the overlay
+For watermark on long PDFs, sampling 3 pages is enough — the overlay
 is built per-page from the same template, so issues are systemic, not
-per-page. For text-search highlights across a long PDF, *every* match
-page must be checked — false positives and missed matches are per-page.
+per-page. For text-driven highlights on long PDFs where the user said
+"every X", spot-check the touched pages a script returned — false
+positives and missed matches are per-page.
 
 ## Per-operation checklists
 
@@ -129,21 +159,32 @@ verdict to render.
 - Opacity sits in "visible but content readable beneath" — not so dark
   it obscures body text, not so light it disappears.
 - For diagonal mode: cap-height passes through page centre (the
-  `-font_size * 0.35` offset in `edit.md` exists for this — verify it
-  worked).
+  `-font_size * 0.35` offset in the watermark recipe in `annotate.md`
+  exists for this — verify it worked).
 - The same watermark text appears on every sampled page (i.e. the
   rendering loop didn't skip pages).
 
-### Highlight (coords or text-search)
+### Highlight
 
 - Every overlay sits **on** the intended word/area, not next to it.
 - Overlay doesn't extend into adjacent words or trailing punctuation by
-  more than ~10% of word width. Wider bleed is a coord-flip bug.
-- Multi-line text matches: both halves are highlighted (one quad isn't
-  enough — needs a `quad_points` extension or a second annotation per
-  match).
+  more than ~10% of word width. Wider bleed is a rect-build bug.
+- Multi-line spans: every line is highlighted as a separate rect
+  (the recipes in `annotate.md` emit one rect per line specifically to
+  avoid the inter-line gutter being filled).
 - Pages with zero expected matches have zero overlays.
 - Underlying text remains readable through the highlight.
+
+### Blacken (real redaction)
+
+- Every blackened area is **fully opaque** — no text visible through it.
+- Underlying text is gone: a quick `pdfplumber.open(out).pages[0].extract_text()`
+  on a redacted page returns empty (the script rasterizes the whole
+  output when blacken is present).
+- Other pages: text is no longer selectable / searchable on any of them
+  (expected — flag it to the user as a trade-off, not a bug).
+- File size: 30–50× the input on text-heavy documents is normal; far
+  larger suggests the DPI got bumped or the input was already an image PDF.
 
 ### FreeText
 

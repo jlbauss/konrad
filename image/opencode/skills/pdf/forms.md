@@ -15,10 +15,10 @@ repo root.
 >
 > - **Annotation-style "fill"** (text laid on top of the page, viewer
 >   recognises it as an annotation that can be moved or removed): route
->   to EDIT's [Annotations section](edit.md#annotations) and use
->   `FreeText` annotations at the right coordinates per field. Good for
->   reviewable forms, casual fill-ins, scanned forms where the user just
->   needs text "next to the printed label".
+>   to ANNOTATE's [Free-text overlay section](annotate.md#free-text-overlay)
+>   and use `FreeText` annotations at the right coordinates per field. Good
+>   for reviewable forms, casual fill-ins, scanned forms where the user
+>   just needs text "next to the printed label".
 > - **Real form recreation** (build proper AcroForm widgets so the PDF
 >   becomes fillable in any viewer): out of scope for this skill — say
 >   so and suggest a dedicated tool (Acrobat Pro, LibreOffice Draw,
@@ -118,8 +118,9 @@ When the user asks to fill a form:
 
 1. Run `fill_inspect.py` and look at what came back.
 2. If `has_fields: false`, surface the trade-off described in the
-   non-fillable callout above — offer the EDIT annotations escape hatch
-   (`FreeText` at coordinates) and let the user pick before continuing.
+   non-fillable callout above — offer the ANNOTATE free-text overlay
+   escape hatch (`FreeText` at coordinates) and let the user pick before
+   continuing.
 3. Show the user the field list — names, types, and (for choice fields)
    the allowed values. This is short and worth the screen space.
 4. Ask for the values, unless the user already supplied them. For long
