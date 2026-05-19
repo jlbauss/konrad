@@ -15,6 +15,20 @@ Thumbs.db
 .vscode/
 *.swp
 
+# Python bytecode, venvs, and tool caches. The skills under image/
+# ship Python scripts; running them locally (or via verify scripts
+# under .skill-eval/) drops __pycache__ dirs and may create a uv venv.
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+
 # Freedesktop trash dirs (created by trash-cli inside the dev container
 # when files under /workspace are deleted — they live next to the
 # originals on the host filesystem so deletes survive container rebuilds).

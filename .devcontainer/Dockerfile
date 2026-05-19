@@ -31,6 +31,13 @@ ENV DEBIAN_FRONTEND=noninteractive \
 #   libglib2.0-bin      → provides `gio`, which VS Code uses to move
 #                         files to Trash from the file explorer on Linux.
 #
+# Plus `uv` (installed via the COPY below, not apt) for spinning up
+# matching Python deps when verifying skill helpers and recipes against
+# the libraries that ship in konrad's runtime /opt/venv (pdfplumber,
+# pypdf, reportlab). Skill code itself runs in konrad's image, not here
+# — this is just so we can sanity-check API assumptions locally without
+# needing the full konrad image.
+#
 # Claude Code itself is delivered as the VS Code extension installed
 # via devcontainer.json's customizations.vscode.extensions — no npm
 # CLI needed.
@@ -42,6 +49,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     trash-cli libglib2.0-bin \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* /var/log/apt/* /var/log/dpkg.log
+
+# uv: pulled from Astral's official image. uv manages its own Python
+# toolchains, so no system Python install needed alongside.
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
 
 # Debian renames fd → fdfind and bat → batcat; symlink to the canonical
 # names the agent and image/Dockerfile both expect.
