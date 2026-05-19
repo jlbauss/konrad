@@ -19,6 +19,11 @@ ENV DEBIAN_FRONTEND=noninteractive \
 #
 #   shellcheck          → lints bin/konrad, entrypoint, scripts/*.sh
 #   git, jq, curl, sudo → daily-use
+#   openssh-client      → `ssh` binary so `git push` over SSH remotes
+#                         works. VS Code forwards the host's SSH agent
+#                         via SSH_AUTH_SOCK, so no key management
+#                         needed inside the container — the host agent
+#                         serves keys transparently.
 #   ripgrep, fd-find,
 #   bat                 → match runtime image; opencode also prefers them
 #   trash-cli           → `trash` / `trash-list` / `trash-restore` etc.
@@ -32,6 +37,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 RUN apt-get update && apt-get install -y --no-install-recommends \
     shellcheck \
     git gh curl jq ca-certificates sudo \
+    openssh-client \
     ripgrep fd-find bat \
     trash-cli libglib2.0-bin \
     && apt-get clean \
