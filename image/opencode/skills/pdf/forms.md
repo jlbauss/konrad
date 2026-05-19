@@ -7,12 +7,27 @@ scripts — is adapted from
 (MIT-licensed); attribution lives in the project-level NOTICE at the
 repo root.
 
-> **Out of scope: non-fillable forms.** This skill only handles PDFs whose
-> fields are real AcroForm widgets (the ones a viewer lets you click and
-> type into). If `fill_inspect.py` reports `has_fields: false`, tell the
-> user the PDF has no fillable fields and stop. Do not try to estimate
-> coordinates and paint text onto the page — that is a different,
-> harder problem this skill deliberately doesn't take on.
+> **Non-fillable forms: the FILL route stops here, but EDIT can help.**
+> This route only handles PDFs whose fields are real AcroForm widgets
+> (the ones a viewer lets you click and type into). If `fill_inspect.py`
+> reports `has_fields: false`, FILL is done. The next move depends on
+> what the user actually needs:
+>
+> - **Annotation-style "fill"** (text laid on top of the page, viewer
+>   recognises it as an annotation that can be moved or removed): route
+>   to EDIT's [Annotations section](edit.md#annotations) and use
+>   `FreeText` annotations at the right coordinates per field. Good for
+>   reviewable forms, casual fill-ins, scanned forms where the user just
+>   needs text "next to the printed label".
+> - **Real form recreation** (build proper AcroForm widgets so the PDF
+>   becomes fillable in any viewer): out of scope for this skill — say
+>   so and suggest a dedicated tool (Acrobat Pro, LibreOffice Draw,
+>   `pdftk` `generate_fdf`).
+>
+> The annotation path is *not* a substitute for proper form filling — it
+> won't roundtrip through form-handling tools and the "field" is just
+> text painted on the page. Tell the user that trade-off before picking
+> it.
 
 ## The two steps
 
@@ -102,7 +117,9 @@ A successful run also prints a human-readable summary to stderr.
 When the user asks to fill a form:
 
 1. Run `fill_inspect.py` and look at what came back.
-2. If `has_fields: false`, say so and stop.
+2. If `has_fields: false`, surface the trade-off described in the
+   non-fillable callout above — offer the EDIT annotations escape hatch
+   (`FreeText` at coordinates) and let the user pick before continuing.
 3. Show the user the field list — names, types, and (for choice fields)
    the allowed values. This is short and worth the screen space.
 4. Ask for the values, unless the user already supplied them. For long
@@ -111,7 +128,16 @@ When the user asks to fill a form:
    block of values at once.
 5. Build the values JSON, write it to `/workspace/values.json` for
    transparency, then run `fill_write.py`.
-6. Report: output path, filled count, and anything in
+6. **Run vision QA on the filled output** — see [qa.md](qa.md). Touched
+   pages are the ones containing fields you just wrote to (the inspect
+   output identifies which page each field lives on). Verify each value
+   landed in its field, nothing overflows the visible field area, and
+   checkbox/radio states render as checked when set to true.
+   Parametric failures (text overflow at the right edge of a field) are
+   retry-eligible up to twice with a shorter value or a wrap; structural
+   failures (value in the wrong field, fields blank in the rendered
+   output despite `/NeedAppearances=true`) surface to the user.
+7. Report: output path, filled count, **QA verdict**, and anything in
    `validation_errors` or `not_found`.
 
 ## Common pitfalls

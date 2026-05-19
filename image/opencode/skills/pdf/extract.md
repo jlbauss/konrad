@@ -16,6 +16,14 @@ Use the `docling` CLI for plain conversions. Fall back to the Python API
 only when you need chunking — that's the one feature the CLI doesn't
 expose.
 
+> **No vision QA for this route.** EXTRACT produces text / markdown / JSON,
+> not a visual artifact, so the rasterize-and-look loop in [qa.md](qa.md)
+> doesn't apply. Light text-level QA (does the output have the structure
+> docling promised? did headings survive? is the body roughly the right
+> length?) is the agent's job in the moment. A source-vs-extracted
+> cross-check loop (rasterize each page, compare with the extracted
+> text) is plausible future work — flag it to the user if they want it.
+
 ## Convert via CLI
 
 The CLI accepts local paths and URLs.
