@@ -198,98 +198,245 @@ Two coordinate systems collide here:
 - **pdfplumber** word bboxes: origin at the **top-left**, units in **points**,
   with `x0, x1, top, bottom` fields where `top < bottom` numerically.
 
-Conversion (pdfplumber → PDF native):
+The skill ships a helper to do the conversion so you don't have to flip
+signs by hand — `pdf_rect_from_pdfplumber(word, page_height)` in
+`scripts/pdf_helpers.py`. The recipes below use it via the named helpers
+(`find_words`, `anchor_bands`, `highlight_rects`); reach for the
+primitive directly only when assembling a one-off rect.
+
+### Helpers cheat sheet
+
+All recipes in this section import from the same module. Repeat this
+three-line dance at the top of any annotation script — `scripts/` isn't
+on the Python path by default:
 
 ```python
-y_pdf_bottom = page.height - word["bottom"]   # lower edge in PDF coords
-y_pdf_top    = page.height - word["top"]      # upper edge in PDF coords
-rect = (word["x0"], y_pdf_bottom, word["x1"], y_pdf_top)
-```
-
-Annotations attach to a writer page by **page index** (0-based). The
-writer must be cloned from the reader so pages stay editable:
-
-```python
-from pypdf import PdfReader, PdfWriter
-
-reader = PdfReader("input.pdf")
-writer = PdfWriter(clone_from=reader)
-# ... add annotations to writer ...
-with open("/workspace/annotated.pdf", "wb") as out:
-    writer.write(out)
-```
-
-The recipes below assume that `reader` / `writer` pair is already set up.
-
-### Highlight by coordinates
-
-```python
-from pypdf.annotations import Highlight
-from pypdf.generic import ArrayObject, FloatObject
-
-x1, y1, x2, y2 = 100, 600, 300, 620   # bottom-left, top-right (PDF coords)
-quad = ArrayObject([FloatObject(v) for v in (x1, y2, x2, y2, x1, y1, x2, y1)])
-
-writer.add_annotation(
-    page_number=0,
-    annotation=Highlight(rect=(x1, y1, x2, y2), quad_points=quad),
+import sys
+sys.path.insert(0, "/home/node/.config/opencode/skills/pdf/scripts")
+from pdf_helpers import (
+    find_words,          # word-level discovery
+    anchor_bands,        # label-anchored horizontal band discovery
+    highlight_rects,     # emit Highlight annotations for a list of rects
+    pdf_rect_from_pdfplumber,  # one-off coord flip
 )
 ```
 
-`quad_points` is a flat array of 8 floats per highlighted quad: top-left,
-top-right, bottom-left, bottom-right (each as x, y). For a single
-axis-aligned rect, the four corners of `rect` in that order — that's what
-the snippet above does. To highlight multiple non-contiguous rects in one
-annotation (e.g. a word that wraps across two lines), extend `quad_points`
-with another 8 floats per additional quad.
+| Helper | Returns | When to reach for it |
+|---|---|---|
+| `find_words(pdf, predicate, *, fields=None)` | iterator of `(page_idx, page, word)` | discovery that doesn't fit a named pattern. Pass `fields=("text", "x0", "top")` for slim probe output |
+| `anchor_bands(pdf, anchor, height_above, height_below, stop_at=None, ...)` | `[(page_idx, rect)]` | horizontal bands anchored to a label or marker word |
+| `highlight_rects(src, rects, dst, color="ffff00")` | int (annotation count) | emit Highlight annotations once you have rects |
+| `pdf_rect_from_pdfplumber(word, page_height)` | `(x1, y1, x2, y2)` PDF-native | one word's bbox, primitive use |
+
+### Highlight by coordinates
+
+When you already know the rect — coordinates dictated by the user, read
+from a layout file, or computed from a structural cue — feed it straight
+to `highlight_rects`. Skip the manual writer/quad_points dance.
+
+```python
+import sys
+sys.path.insert(0, "/home/node/.config/opencode/skills/pdf/scripts")
+from pdf_helpers import highlight_rects
+
+# rect is (x1, y1, x2, y2) in PDF-native coords (bottom-left origin).
+rects = [
+    (0, (100, 600, 300, 620)),  # page 0, one rect
+]
+count = highlight_rects("input.pdf", rects, "/workspace/highlighted.pdf")
+print(f"Added {count} highlights")
+```
+
+For a word's bbox specifically: use `pdf_rect_from_pdfplumber(word,
+page.height)` to flip pdfplumber's top-left coords to PDF-native, then
+pass `[(page_idx, rect)]` into `highlight_rects`.
 
 ### Highlight by text (search + mark)
 
+`find_words` returns every word matching your predicate; convert each
+match to a rect via `pdf_rect_from_pdfplumber`; emit with
+`highlight_rects`. The whole pattern is six lines:
+
 ```python
-import pdfplumber
-from pypdf import PdfReader, PdfWriter
-from pypdf.annotations import Highlight
-from pypdf.generic import ArrayObject, FloatObject
+import sys
+sys.path.insert(0, "/home/node/.config/opencode/skills/pdf/scripts")
+from pdf_helpers import find_words, pdf_rect_from_pdfplumber, highlight_rects
 
 target = "invoice"
 src    = "input.pdf"
 
-reader = PdfReader(src)
-writer = PdfWriter(clone_from=reader)
-
-with pdfplumber.open(src) as pdf:
-    for page_index, plumb_page in enumerate(pdf.pages):
-        for word in plumb_page.extract_words():
-            if word["text"].strip(".,;:()[]").lower() != target.lower():
-                continue
-            x1, x2 = word["x0"], word["x1"]
-            y1 = plumb_page.height - word["bottom"]   # lower edge
-            y2 = plumb_page.height - word["top"]      # upper edge
-            quad = ArrayObject(
-                [FloatObject(v) for v in (x1, y2, x2, y2, x1, y1, x2, y1)]
-            )
-            writer.add_annotation(
-                page_number=page_index,
-                annotation=Highlight(
-                    rect=(x1, y1, x2, y2), quad_points=quad
-                ),
-            )
-
-with open("/workspace/highlighted.pdf", "wb") as out:
-    writer.write(out)
+rects = [
+    (page_idx, pdf_rect_from_pdfplumber(word, float(page.height)))
+    for page_idx, page, word
+    in find_words(src, lambda w: w["text"].strip(".,;:()[]").lower() == target.lower())
+]
+count = highlight_rects(src, rects, "/workspace/highlighted.pdf")
+print(f"Highlighted {count} match(es) of '{target}'")
 ```
 
 Match semantics worth surfacing to the user before running:
 
-- `extract_words()` returns whitespace-separated tokens, so this finds
-  whole-word matches only — "invoice" won't match inside "invoiced".
+- `extract_words()` (used inside `find_words`) returns whitespace-separated
+  tokens, so this finds whole-word matches only — "invoice" won't match
+  inside "invoiced".
 - Punctuation is stripped above with `.strip(".,;:()[]")`; adjust for the
   user's actual text.
-- Comparison is case-insensitive in this snippet; drop the `.lower()` calls
-  for case-sensitive matching.
+- Comparison is case-insensitive here; drop the `.lower()` calls for
+  case-sensitive matching.
 - For multi-word phrases, `extract_words()` won't span tokens — use
-  `page.search(pattern, regex=True)` (pdfplumber 0.11+) or roll a per-line
-  scan instead.
+  pdfplumber's `page.search(pattern, regex=True)` directly, or fall back
+  to a per-line scan. Tracked under Future features in ROADMAP.
+
+### Region discovery — finding what to highlight
+
+The recipes above cover the degenerate case where the rect to highlight
+**is the matched word**. The richer case — highlighting a *region*
+around the matched word — decomposes into three steps regardless of
+what the region looks like:
+
+1. **Find anchors** — words matching a predicate (text, position, font,
+   whatever's distinctive).
+2. **Expand to a region** — turn each anchor into the rect to highlight
+   (a horizontal band, a paragraph, a column, a line).
+3. **Emit** — feed the rects into `highlight_rects`.
+
+`anchor_bands` is the named primitive for step 2 when the region is a
+**horizontal band**. Before reaching for it, probe the document
+structure (next subsection) so the anchor predicate matches what's
+actually there.
+
+### Probing the structure (always do this first — it is not optional)
+
+Before reaching for `anchor_bands`, you **must** probe the document to
+see what the anchor candidates actually look like. Writing the anchor
+predicate from your head — based on what the user said the regions are —
+is the single most common failure mode for this class of task. Probe
+first, then pick the predicate from what you see.
+
+**The user's description of a region rarely matches the document's
+literal label for it.** Section headings are often coded (`§3.1`,
+`Art. IV`, `Q-7`); staff or column labels are often single characters;
+callout markers are often symbols or abbreviations. When a user asks
+to highlight "every section" / "every question" / "every chapter", the
+document's actual anchor text may be `§`, `Q:`, `Ch.`, or a single
+letter — not the descriptive word the user used. The whole point of
+probing is to discover what's there, so do not assume.
+
+Two rules for probe output:
+
+1. **Slim print.** Pass `fields=("text", "x0", "top")` to `find_words`
+   so each match yields a 3-field dict instead of the full ~10-field
+   pdfplumber word dict. About 5× smaller output per match. On a
+   document with hundreds of candidate matches, this is the difference
+   between a clean probe and a truncated one.
+2. **Stop once you've seen the pattern.** For a regular document, after
+   5–10 matches you know the cluster of anchor positions. Don't dump
+   200 rows that all say the same thing — slice the iterator or break
+   out once positions stabilize.
+
+The canonical first probe — generic enough to surface most anchor
+shapes (single-char staff labels, `Q:` / `§N` markers, "Note:" /
+"Chorus:" / "Warning:" callouts, short numeric codes):
+
+```python
+import sys
+sys.path.insert(0, "/home/node/.config/opencode/skills/pdf/scripts")
+from pdf_helpers import find_words
+
+src = "input.pdf"
+
+for page_idx, _, w in find_words(
+    src,
+    lambda w: w["x0"] < 80 and len(w["text"]) <= 12,
+    fields=("text", "x0", "top"),
+):
+    print(f"p{page_idx:2d}  {w['text']!r:>14}  x0={w['x0']:5.1f}  top={w['top']:6.1f}")
+```
+
+Run this **before** writing a narrower predicate. Look at the output.
+The labels that repeat across pages at consistent `(text, x0, top)`
+positions are your anchor candidates. The label the user *named* is
+probably **not** the label in the document — it's a description of what
+the labels point to.
+
+Adjust the filter if needed: relax `len(text) <= 12` if your expected
+labels are longer; raise `x0 < 80` if the layout puts anchors past the
+80-pt left margin; tighten one or the other if body text is leaking
+into the output.
+
+For an irregular layout (a page break that shifts everything, an
+inserted heading that moves the markers), you'll see the anomalies in
+the same print and can pick a `stop_at` predicate that adapts.
+
+Slim print is for probing only. When you move from probe to highlight,
+drop `fields=` so the yielded word has bbox info — you'll need it to
+build rects via `pdf_rect_from_pdfplumber`.
+
+### Highlight label-anchored bands
+
+`anchor_bands` builds horizontal bands anchored to each match of an
+`anchor` predicate. Per match, the band extends from
+`anchor.top - height_above` down to either `anchor.top + height_below`
+(fixed offset, when the layout is regular) or to just above the nearest
+match of an optional `stop_at` predicate below (adaptive, when the
+per-block height varies). Horizontal extent defaults to the full page
+width and can be clipped via `left` / `right`.
+
+```python
+import sys
+sys.path.insert(0, "/home/node/.config/opencode/skills/pdf/scripts")
+from pdf_helpers import anchor_bands, highlight_rects
+
+bands = anchor_bands(
+    "input.pdf",
+    anchor=lambda w: ...,           # whatever marks the start of each band
+    height_above=...,
+    height_below=...,               # fixed fallback height
+    stop_at=lambda w: ...,          # optional: clamp to nearest match below
+    stop_at_max_distance=...,       # optional: cap how far below to search
+)
+highlight_rects("input.pdf", bands, "/workspace/out.pdf")
+```
+
+Parameter notes:
+
+- **`anchor`**: a predicate over pdfplumber word dicts (`text`, `x0`,
+  `x1`, `top`, `bottom`). Combine text predicates with position filters
+  to avoid false hits in body text. The Probing subsection above is
+  how you decide what the predicate should be.
+- **`height_above` / `height_below`**: fixed offsets in points. Sufficient
+  on regular layouts; combine with `stop_at` for variable per-block height.
+- **`stop_at`**: optional. When given, the band's bottom edge is clamped
+  to just above the nearest matching word below the anchor (within
+  `stop_at_max_distance`, default 200 pt). Adapts to whatever the next
+  block actually is — the same `stop_at` works across pages where the
+  spacing differs.
+- **`left` / `right`**: horizontal clipping. Default to full page width.
+
+Some shapes this primitive covers (anchor / stop_at predicates are
+sketches — adapt to your document):
+
+| Region shape | `anchor` predicate sketch | `stop_at` predicate sketch |
+|---|---|---|
+| One band per labeled section | label text + left-margin position filter | the same label predicate (next section) |
+| One band per Q&A pair | opening marker (`"Q:"` etc.) | the same opening marker |
+| One band per callout / note | callout label | callout label, or page-edge fallback |
+| One band per row in a tagged list | tag text at known column | next tag |
+
+**Sanity-check the match count before reporting.** If the user asked
+for "every X" / "all Y" / "each Z" and `anchor_bands` returned 0, 1, or
+2 matches on a multi-page document, your anchor predicate is almost
+certainly wrong. Go back to the probe, broaden the filter, look at what
+the document actually has, pick a new predicate. Don't ship 1 highlight
+when the user asked for "every" — that's a silent failure that the user
+won't catch until they open the file. The shape you want is "32
+matches for 32 anchors", not "1 match because the literal word the user
+used appears once in the title."
+
+For region shapes that aren't horizontal bands — paragraph bboxes,
+column regions, font-anchored runs — drop down to `find_words` and
+assemble rects directly, or wait on the day-2 region-discovery helpers
+tracked in ROADMAP.
 
 ### Sticky note (Text annotation)
 

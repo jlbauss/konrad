@@ -69,10 +69,48 @@ trade-off before choosing.
 - **Working directory.** Default output dir is `/workspace` (or whichever
   path the user gives). Don't write into the skill folder itself.
 - **Script paths.** Scripts in this skill live at `scripts/` *relative to
-  this file*. Invoke them with their full path under the skill folder:
-  `python3 ~/.config/opencode/skills/pdf/scripts/fill_inspect.py …`. The
-  short form `python3 scripts/…` only works if you've cd'd into the skill
-  folder, which you usually shouldn't.
+  this file*. Two patterns, depending on the script:
+  - **CLI scripts** (`fill_inspect.py`, `fill_write.py`) — invoke with
+    the full path: `python3 ~/.config/opencode/skills/pdf/scripts/fill_inspect.py …`.
+  - **Importable helper modules** (`pdf_helpers.py`, `qa_helpers.py`) —
+    insert the scripts dir on `sys.path` first:
+    ```python
+    import sys
+    sys.path.insert(0, "/home/node/.config/opencode/skills/pdf/scripts")
+    from pdf_helpers import anchor_bands, highlight_rects
+    ```
+    Every recipe in `edit.md` / `qa.md` that uses helpers repeats this
+    three-line dance at the top — copy it.
+- **Use the shipped helpers; don't reinvent.** When a recipe says "use
+  `anchor_bands`" or "use `rasterize_touched`", reach for the helper
+  rather than reimplementing the coordinate flip / per-page iteration /
+  tempdir creation. The helpers exist because re-deriving them per task
+  is where weak models lose the thread. Drop down to raw `pdfplumber` /
+  `pypdf` / `convert_from_path` only when the recipe explicitly says so
+  or your task doesn't fit a named pattern.
+- **To *see* a PDF, rasterize. To *parse* a PDF, extract.** The agent's
+  `read` tool doesn't return useful image content for `.pdf` files — it
+  returns a stub. If you need to look at the page (layout questions,
+  annotation verification), rasterize via `rasterize_touched` from
+  `qa_helpers` and read the PNG. If you need to know what's on the page
+  (text content, word positions), use `pdfplumber.extract_words()` or
+  `find_words` from `pdf_helpers` — text extraction is dramatically
+  cheaper than rasterize-and-look.
+- **Extract before you rasterize when probing layout.** If you're trying
+  to understand a PDF's structure before working on it, start with
+  `find_words` to inspect text + positions. Only rasterize if text
+  alone doesn't tell you enough (typically: graphical-heavy documents,
+  scanned pages, music scores where labels matter but glyph soup
+  doesn't). Rasterize-then-read is the most expensive probe in this
+  skill — earn it before reaching for it.
+- **Slim-print when probing with `find_words`.** Pass
+  `fields=("text", "x0", "top")` so each match yields a 3-field dict
+  instead of the full ~10-field pdfplumber word dict. About 5× smaller
+  per-match output; matters on documents with hundreds of candidate
+  matches where the full-dict default can fill opencode's tool-output
+  buffer and force truncation. Drop `fields=` when you move from probe
+  to highlight — recipes that build rects via `pdf_rect_from_pdfplumber`
+  need the full bbox info.
 - **Visually QA outputs that have a visual deliverable.** After EDIT
   (watermark, annotations, rotate), GENERATE, or FILL produce a PDF,
   rasterize the touched pages and look at them yourself before reporting.
@@ -81,6 +119,14 @@ trade-off before choosing.
   failures), and the evidence-directory convention on failure. Skip QA
   for non-visual ops (encrypt/decrypt, metadata, EXTRACT) — qa.md lists
   the full applies/skips matrix.
+- **After `rasterize_touched`, you have exactly two acceptable next
+  moves**: (a) read each returned PNG with your image-reading tool and
+  render the verdict based on what you actually saw, or (b) say "QA
+  skipped" in the final report with a reason ("my model can't read
+  images", "user said skip", etc.). Reporting "pass" without reading
+  the PNGs is a contract violation — it's the most common dishonest QA
+  pattern this skill sees. If you didn't look, say so. See qa.md's
+  post-rasterize contract for the canonical phrasings.
 - **Report what you did.** When you produce an output file, tell the user
   the path, the page count (for PDFs), and any non-default flags you used.
   For extraction, also report whether OCR ran (the konrad image only ships

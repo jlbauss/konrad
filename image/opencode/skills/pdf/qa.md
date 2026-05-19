@@ -29,66 +29,59 @@ EXTRACT QA is a different loop (compare extracted text to a rasterized
 source page) and isn't covered here yet — flag it to the user if they
 want this kind of cross-check.
 
-## When QA can't run
+## The post-rasterize contract (read, or declare skipped)
 
-Two reasons to skip:
+Calling `rasterize_touched` is a commitment, not a checkbox. From the
+moment the helper returns paths, you have **exactly two** acceptable
+next moves:
 
-1. **No vision capability.** If you can't actually read images, you
-   can't do this QA. Say so plainly to the user — *"my model can't see
-   images, so I produced the output but didn't visually verify it"* — and
-   deliver. Do not pretend QA ran. (`README.md` documents that konrad
-   silently fails when the user runs text-only models; this is the
-   skill-level honest version.)
+1. **Read each returned PNG with your image-reading tool**, then render
+   a pass / pass-with-caveat / fail verdict based on what you actually
+   saw. This is the QA cycle as designed.
+2. **Declare QA skipped in your final answer**, with the reason —
+   "my model has no vision," "vision budget exhausted," "user said
+   skip." Honest abdication, not a verdict.
+
+Reporting "pass" without reading the PNGs is the single most common
+dishonest QA pattern this skill sees. If you didn't look, say you
+didn't look. The user can re-run with a vision-capable model, ask you
+to look harder, or accept the output unverified — but they need to
+know which.
+
+### Reasons to declare QA skipped
+
+1. **No vision capability.** Some models on the konrad image are
+   text-only or only weakly multimodal. If you can't read images
+   reliably, say so plainly — *"my model can't read images, so I
+   produced the output but didn't visually verify it"* — and deliver.
+   Do not pretend QA ran. `README.md` documents this silent failure
+   mode at the konrad level; this is the skill-level honest version.
 2. **User opted out.** If the user said "skip QA" or "just do it
    quickly", honour that. Note in the report that QA was skipped.
 
-In both cases, downgrade the closing language from *"I checked the
-output and it looks right"* to *"output produced; no visual
-verification"*.
+In both skipped cases, downgrade the closing language from *"I checked
+the output and it looks right"* to *"output produced; no visual
+verification — [reason]"*.
 
 ## Rasterize the touched pages
 
-`pdf2image` is preinstalled. Write rasterized PNGs into a tempdir so they
-don't clutter `/workspace`. Only promote to a persistent `/workspace/.qa/`
-directory on failure (see Evidence below).
+`pdf2image` is preinstalled. The skill ships `rasterize_touched()` so you
+don't roll your own — it writes PNGs into a fresh tempdir by default
+(automatic cleanup, no `/workspace` pollution), or into a persistent
+directory when you pass `persist_to=` for failure evidence.
 
 ```python
-import tempfile
-from datetime import datetime
-from pathlib import Path
-from pdf2image import convert_from_path
+import sys
+sys.path.insert(0, "/home/node/.config/opencode/skills/pdf/scripts")
+from qa_helpers import rasterize_touched
 
-
-def rasterize_touched(
-    pdf_path: str,
-    page_indices: list[int],          # 0-based
-    *,
-    dpi: int = 150,
-    persist_to: Path | None = None,
-) -> tuple[Path, list[Path]]:
-    """Rasterize selected pages to PNG.
-
-    Returns (output_dir, [paths]). If `persist_to` is None, output_dir
-    is a fresh tempdir — the caller is responsible for cleanup. If
-    `persist_to` is given (use this on QA failure to keep evidence),
-    that directory is used instead and survives the process.
-    """
-    if persist_to is None:
-        out_dir = Path(tempfile.mkdtemp(prefix="pdfqa_"))
-    else:
-        out_dir = persist_to
-        out_dir.mkdir(parents=True, exist_ok=True)
-
-    paths: list[Path] = []
-    for idx in sorted(set(page_indices)):
-        pages = convert_from_path(
-            pdf_path, dpi=dpi,
-            first_page=idx + 1, last_page=idx + 1,
-        )
-        out = out_dir / f"page_{idx + 1:03d}.png"
-        pages[0].save(out, "PNG")
-        paths.append(out)
-    return out_dir, paths
+# touched_pages is a list of 0-based page indices you just annotated.
+out_dir, paths = rasterize_touched(
+    "/workspace/annotated.pdf",
+    touched_pages,
+    # dpi=150 by default; persist_to=None means tempdir.
+)
+# `paths` is the list of PNG paths to read with your vision tool.
 ```
 
 `dpi=150` is the sweet spot — text is legible, annotations are
@@ -96,6 +89,11 @@ distinguishable, and the PNG stays small enough that vision-token cost
 is reasonable. Drop to `dpi=100` if the user explicitly wants the
 cheapest QA possible; push to `dpi=200+` only when fine detail matters
 (e.g. tightly-cropped highlights on small text).
+
+> Don't reimplement this inline. Re-rolling `convert_from_path` calls in
+> ad-hoc scripts is the most common QA-related mistake — it leaks PNGs
+> into `/workspace/`, drifts from the dpi default, and skips the
+> dedup/sort the helper does. Use the import.
 
 ### Which pages count as "touched"
 
@@ -239,6 +237,10 @@ When you escalate to the user, persist the rasterized PNGs that
 informed your verdict so the user can verify your read:
 
 ```python
+import sys
+sys.path.insert(0, "/home/node/.config/opencode/skills/pdf/scripts")
+from qa_helpers import rasterize_touched
+
 from datetime import datetime
 from pathlib import Path
 
