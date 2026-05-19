@@ -75,12 +75,18 @@ ENV DEBIAN_FRONTEND=noninteractive \
 #   less, procps, fzf, zsh, man-db, unzip, gnupg2, nano, htop,
 #   iproute2, dnsutils
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    git curl jq ca-certificates \
+    git curl jq ca-certificates xz-utils \
     ripgrep fd-find bat tree gh \
     python3 pandoc poppler-utils libgl1 libglib2.0-0 \
     libgomp1 libreoffice-nogui \
     less procps fzf zsh man-db unzip gnupg2 nano htop \
     iproute2 dnsutils \
+    fontconfig \
+    fonts-dejavu \
+    fonts-liberation \
+    fonts-noto-core \
+    fonts-noto-mono \
+    && fc-cache -f \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
     && rm -rf /var/log/apt/* /var/log/dpkg.log
@@ -88,6 +94,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Debian renames fd → fdfind and bat → batcat; symlink to canonical names.
 RUN ln -sf /usr/bin/fdfind /usr/local/bin/fd \
     && ln -sf /usr/bin/batcat /usr/local/bin/bat
+
+# Install Typst
+ARG TYPST_VERSION=v0.14.2
+ARG TARGETARCH
+
+RUN set -eux; \
+    case "$TARGETARCH" in \
+      amd64) ARCH="x86_64-unknown-linux-musl" ;; \
+      arm64) ARCH="aarch64-unknown-linux-musl" ;; \
+      *) echo "unsupported arch: $TARGETARCH" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSL "https://github.com/typst/typst/releases/download/${TYPST_VERSION}/typst-${ARCH}.tar.xz" \
+      | tar -xJ --strip-components=1 -C /usr/local/bin "typst-${ARCH}/typst"; \
+    chmod +x /usr/local/bin/typst; \
+    typst --version
 
 # ── Pull in the Python world from the build stages ──────────────────────────
 # venv stays at /opt/venv (same path as in python-base) so all shebang lines
