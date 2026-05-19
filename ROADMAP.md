@@ -6,6 +6,8 @@ _Raw ideas land here. Promote into ToDo after a refinement pass._
 
 ## ToDo
 
+- lets refactor the roadmap a bit now. I want to remove the headers that describe categories. Instead I want to differentiate "Tiers": 0 (before the repo is public - we are here now), 1 after the repo goes public as alpha, 2 after the repo goes public as beta
+
 ### Quality & UX (the differentiators)
 
 - [ ] **Self-testing: let the agent actually exercise `konrad`.** Today the agent works on konrad from inside `.devcontainer/` (the dev container at the repo root) but cannot exercise the konrad runtime image itself — `konrad rebuild` and `konrad shell` run on the host, outside the agent's reach. The result is a verification loop that always depends on the user to run smoke tests and report back, which is slow and easy to skip; it's also a recurring footgun in agent sessions (the agent forgets and tries to `python3 -c …` inside the dev container expecting the runtime venv to be there, finds it isn't, and has to course-correct). Two candidate designs: **(a)** mount the host's Podman socket into `.devcontainer/` so `podman` calls inside the container talk to the host daemon — lightweight, but raises trust-boundary questions since the agent then has full Podman control of the host. **(b)** ship a parallel "konrad-host-bridge" runner — agent emits a queued command, host runs it, results land in the workspace — slower, more moving parts, cleaner isolation. Pick one once the trade-offs are concrete. Unblocks tighter iteration on every skill, Dockerfile, agent-config, and entrypoint change.
