@@ -84,11 +84,14 @@ out_dir, paths = rasterize_touched(
 # `paths` is the list of PNG paths to read with your vision tool.
 ```
 
-`dpi=150` is the sweet spot — text is legible, annotations are
-distinguishable, and the PNG stays small enough that vision-token cost
-is reasonable. Drop to `dpi=100` if the user explicitly wants the
-cheapest QA possible; push to `dpi=200+` only when fine detail matters
-(e.g. tightly-cropped highlights on small text).
+`dpi=100` is the default — sufficient for routine placement-grade QA
+(every checklist below: highlight covers the right area, watermark
+legible, FreeText positioned, FILL value in its field). Vision-token
+cost on most APIs scales with pixel count, so the default is chosen for
+cheap-by-default routine passes. Push to `dpi=150` when annotation
+*alignment* precision matters (verifying a highlight isn't off by a
+few points, that kind of bug); `dpi=200+` only when print-grade
+precision is needed.
 
 > Don't reimplement this inline. Re-rolling `convert_from_path` calls in
 > ad-hoc scripts is the most common QA-related mistake — it leaks PNGs

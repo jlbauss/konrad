@@ -30,7 +30,7 @@ def rasterize_touched(
     pdf_path: str,
     page_indices: Iterable[int],
     *,
-    dpi: int = 150,
+    dpi: int = 100,
     persist_to: Optional[Path] = None,
 ) -> tuple[Path, list[Path]]:
     """Rasterize the selected pages of `pdf_path` to PNG.
@@ -39,9 +39,14 @@ def rasterize_touched(
         pdf_path: Path to the PDF.
         page_indices: 0-based page indices to rasterize. Duplicates are
             deduplicated; order in the returned list is ascending.
-        dpi: 150 is the sweet spot for legibility vs vision-token cost.
-            Drop to 100 for cheapest QA, push to 200+ only when fine
-            detail matters (highlight alignment on small text).
+        dpi: 100 is the default — sufficient for routine placement-grade
+            QA (highlight covers the right area, watermark legible,
+            FreeText in the right spot, FILL value in its field). Vision
+            cost on most APIs scales with pixel count, so dpi=100 vs
+            dpi=150 is roughly half the per-page token cost. Push to
+            dpi=150 when annotation alignment precision matters (off-by-
+            a-few-points coord-flip bugs); dpi=200+ only when print-grade
+            precision is needed (sub-pixel font rendering, etc.).
         persist_to: If None, a fresh tempdir is created and returned —
             the caller owns cleanup. If a Path is given, that directory
             is used (created if needed) and survives the process. Use
