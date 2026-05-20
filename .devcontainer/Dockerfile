@@ -20,12 +20,10 @@ ENV DEBIAN_FRONTEND=noninteractive \
 #   shellcheck          → lints bin/konrad, entrypoint, scripts/*.sh
 #   git, jq, curl, sudo → daily-use
 #   openssh-client      → `ssh` binary so `git push` over SSH remotes
-#                         works. The host SSH agent is reachable via
-#                         a socat bridge socket bind-mounted at
-#                         /tmp/ssh-auth-sock (see devcontainer.json:
-#                         mounts + remoteEnv.SSH_AUTH_SOCK). VS Code's
-#                         own auto-forwarding is unreliable on macOS +
-#                         podman, hence the explicit bridge.
+#                         works. VS Code forwards the host's SSH agent
+#                         via SSH_AUTH_SOCK, so no key management
+#                         needed inside the container — the host agent
+#                         serves keys transparently.
 #   ripgrep, fd-find,
 #   bat                 → match runtime image; opencode also prefers them
 #   trash-cli           → `trash` / `trash-list` / `trash-restore` etc.

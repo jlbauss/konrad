@@ -38,26 +38,11 @@
   // Claude instance sees it instantly. Sessions/credentials stay on
   // the named volume above. Host dir must exist before the container
   // starts; create with `mkdir -p ~/.claude/skills` on the host.
-  //
-  // Final bind: the host SSH-agent bridge socket. VS Code's built-in
-  // SSH_AUTH_SOCK forwarding is unreliable on macOS + podman (the
-  // macOS launchd agent socket is not directly bind-mountable from
-  // the host's userspace into the libkrun VM). Workaround: a host
-  // LaunchAgent (dev.konrad.ssh-agent-bridge) runs socat to expose
-  // the launchd agent at ~/.ssh/podman-agent.sock — a regular Unix
-  // socket that virtiofs can pass through. remoteEnv.SSH_AUTH_SOCK
-  // below points the container's ssh at that mount. Keys never leave
-  // the host agent. Run `scripts/setup-host-ssh-bridge.sh` once on
-  // macOS to install the LaunchAgent (idempotent; safe to re-run).
   "mounts": [
     "source=konrad-claude-dev-claude,target=/home/node/.claude,type=volume",
     "source=konrad-claude-dev-vscode-server,target=/home/node/.vscode-server,type=volume",
-    "source=${localEnv:HOME}/.claude/skills,target=/home/node/.claude/skills,type=bind,consistency=delegated",
-    "source=${localEnv:HOME}/.ssh/podman-agent.sock,target=/tmp/ssh-auth-sock,type=bind"
+    "source=${localEnv:HOME}/.claude/skills,target=/home/node/.claude/skills,type=bind,consistency=delegated"
   ],
-  "remoteEnv": {
-    "SSH_AUTH_SOCK": "/tmp/ssh-auth-sock"
-  },
   "customizations": {
     "vscode": {
       "extensions": [
