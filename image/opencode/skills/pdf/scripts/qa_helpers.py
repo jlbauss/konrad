@@ -14,7 +14,7 @@ Typical import dance from agent code:
 Default behavior writes PNGs into a fresh tempdir (caller is responsible
 for cleanup). Pass `persist_to=<path>` to drop the images into a known
 directory instead — used when QA fails and you want to leave evidence
-under `/workspace/.qa/<timestamp>/`.
+under `/workspace/.agent/qa/<timestamp>/` (auto-pruned >7d by konrad).
 """
 
 from __future__ import annotations

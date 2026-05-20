@@ -67,7 +67,7 @@ That's the whole UX: the current directory is mounted at `/workspace` inside the
 | `konrad`               | Default. Runs opencode against the current directory.                 |
 | `konrad shell`         | Opens a bash shell in the container — same mounts, no agent.          |
 | `konrad rebuild`       | Rebuilds the `konrad:latest` image from this repo's `image/`.         |
-| `konrad clean`         | Removes this project's `.agent/opencode/` (sessions, cache).          |
+| `konrad clean`         | Removes the central log dir at `~/.local/state/konrad/log/`.          |
 | `konrad clean --all`   | Also drops the shared volumes (auth, cache, opencode state). Forces fresh login. |
 | `konrad config init`   | Copies the baked default `opencode.jsonc` to your user override.      |
 | `konrad config path`   | Prints the path of your user override.                                |
@@ -184,19 +184,39 @@ Both are additive. Don't set `instructions` in your override unless you specific
 
 ## State and isolation
 
-konrad splits state across two tiers:
+konrad splits state across three tiers, with one rule: **`.agent/` belongs to the agent.** Framework state (opencode sessions, conversation DB, logs) lives outside the workspace so the workspace stays pristine.
 
-**Per-project, in the workspace.** When you run `konrad` in a directory, it creates `.agent/opencode/` inside that directory and bind-mounts it as opencode's data dir. Sessions, the SQLite database, and conversation logs live there — visible to `ls`, portable with your project, gitignored automatically. The model's per-task working-memory file (`.agent/task.md`) sits alongside them and is **not** gitignored, so you can commit it if you want a record.
+**Per-project, in `<workspace>/.agent/`.** The agent's working state, end-to-end. The directory is bootstrapped at every container start (so skills don't have to `mkdir -p`).
 
-**Shared, in named Podman volumes.** Three things stay out of the workspace and are shared across every project:
+| Path | What | Lifetime |
+|---|---|---|
+| `.agent/task.md` | Current task's plan + outcome (planning contract) | Overwritten next task; committable. |
+| `.agent/artifacts/` | Durable mid-task outputs (`manual-output.<ext>`, derived datasets, etc.) | Hands-off; committable. |
+| `.agent/scratch/` | Agent-written scripts, exploration code, one-off probes | Auto-pruned >7d on every launch; gitignored. |
+| `.agent/qa/<stamp>/` | QA evidence (rasterized PNGs, diff outputs) | Auto-pruned >7d on every launch; gitignored. |
+
+`konrad` auto-adds `.agent/qa/` and `.agent/scratch/` to your `.gitignore` on first run. `.agent/task.md` and `.agent/artifacts/` stay tracked because you may want to commit them.
+
+**Centralised on the host, in `~/.local/state/konrad/log/`.** opencode's structured log files (timestamped, `+Xms` deltas per line) accumulate here across all projects, alongside a `<timestamp>-session.txt` sidecar per launch that records which host workspace was active. Standard XDG state path, easy to `tail -f`, auto-pruned >7d on every launch:
+
+```sh
+ls -t ~/.local/state/konrad/log/        # newest first
+tail -f ~/.local/state/konrad/log/<file>.log
+```
+
+There's no `konrad logs` subcommand — the path is standard, and `tail`/`less`/`grep` work fine.
+
+**Shared, in named Podman volumes.** Three things are shared across every project:
 
 - `konrad-secrets` — `auth.json` (`/connect` credentials). You log in once, every project reuses it. Stays out of your filesystem and can't be committed by accident.
 - `konrad-cache` — opencode's cache. Regeneratable; sharing means warm caches across projects.
 - `konrad-state` — opencode's `~/.local/state/opencode/` directory: last-selected model, recent models per agent, other small UI-state. Shared because these preferences are about *you*, not about the project.
 
+**Ephemeral, inside the container.** opencode's `~/.local/share/opencode/` (sessions, SQLite conversation DB) lives in the container's writable layer and dies on `--rm`. Each `konrad` run is a fresh session — durable task memory is `.agent/task.md`, not the framework's conversation DB.
+
 The opencode binary itself is **not** in a named volume — it's installed root-owned into the image at build time, so the runtime user can't mutate it. Updates flow through `konrad rebuild`.
 
-`konrad clean` removes the current project's `.agent/opencode/`. `konrad clean --all` *also* drops all three shared volumes (next run requires a fresh `/connect`, repopulates caches, and asks you to pick a model again).
+`konrad clean` wipes the central log dir (`~/.local/state/konrad/log/`). `konrad clean --all` *also* drops all three shared volumes (next run requires a fresh `/connect`, repopulates caches, and asks you to pick a model again). Workspace `.agent/` is yours — konrad never deletes it (auto-prune only touches the ephemeral subdirs).
 
 ## Repo layout
 
@@ -233,7 +253,7 @@ A short, opinionated record of the load-bearing choices, so future-you can tell 
 - **Podman, not Docker.** Open-source, free for commercial use, ergonomic on macOS. `--userns=keep-id` lets the container's `node` user share UID with the host user, so bind-mounted files have sane ownership. Docker support is in [ROADMAP.md](ROADMAP.md).
 - **The image is the canonical artifact.** `image/Dockerfile` builds `konrad:latest`. `bin/konrad` is the primary consumer; the experimental `devcontainer/devcontainer.json` is a second consumer (see [ROADMAP.md](ROADMAP.md)).
 - **Layered config, not replacement.** konrad's baked `opencode.jsonc` is composed with the user's `~/.config/konrad/opencode.jsonc` at every container start via a self-contained Node deep-merger. Users add a provider without losing the defaults; konrad ships a new local engine and the user gets it automatically on next rebuild. The merge step is in `image/entrypoint.sh` and runs *before* opencode loads anything.
-- **Two-tier state.** Per-project workspace state in `.agent/opencode/` (visible, portable, gitignored); shared state (`auth.json`, cache, opencode's UI state) in named Podman volumes (out of the host filesystem, can't be committed by accident). The opencode binary itself is baked into the image, not a volume. The `auth.json`-symlink trick in `image/entrypoint.sh` is what makes the volume and the per-project data dir coexist under one opencode data dir.
+- **Three-tier state.** `.agent/` in the workspace belongs to the agent end-to-end (task plan, artifacts, scratch, QA evidence — see [State and isolation](#state-and-isolation)). Opencode logs land in `~/.local/state/konrad/log/` on the host (standard XDG path). Auth, cache, and small UI state live in three named Podman volumes shared across projects. Opencode sessions and the conversation DB are ephemeral (gone on container exit) — durable task memory is `.agent/task.md`, not the framework's history. See [docs/design/state-isolation.md](docs/design/state-isolation.md) for why.
 - **No per-project secrets in the workspace.** Auth credentials live only in the `konrad-secrets` named volume. Users who don't read `.gitignore` carefully still can't accidentally publish their tokens.
 - **`AGENTS.md` is the user's slot; `instructions` is konrad's.** opencode loads both, additively, into the system prompt. By assigning each side its own loading mechanism, we never collide.
 - **Minimal hardcoded defaults.** Provider endpoints ship pre-wired but model lists ship empty — users declare whichever model they've loaded in `~/.config/konrad/opencode.jsonc`. Earlier versions auto-discovered models via the `opencode-models-discovery` plugin, but the startup cost wasn't worth it; an inline replacement is on the roadmap. **No top-level `"model"` is set in the baked default** — opencode prompts on first run, then remembers your choice in the `konrad-state` volume across subsequent runs.
@@ -256,12 +276,14 @@ If a problem isn't listed here, run `konrad shell` to poke around inside the con
 
 ## Debugging opencode
 
-opencode writes a fresh, timestamped log file to `~/.local/share/opencode/log/` on every launch. Because konrad bind-mounts that directory to the host workspace's `.agent/opencode/`, the logs appear at **`<workspace>/.agent/opencode/log/<timestamp>.log`** — already gitignored (via `.agent/opencode/`), already at INFO level, already including `+Xms` deltas per line so a startup stall is easy to spot.
+opencode writes a fresh, timestamped log file to `~/.local/share/opencode/log/` on every launch (INFO level, `+Xms` deltas per line so a startup stall is easy to spot). konrad bind-mounts that directory to the central host path **`~/.local/state/konrad/log/`** (standard XDG state), and the container entrypoint also writes a `<timestamp>-session.txt` sidecar there recording which host workspace was active for that run.
 
 ```sh
-konrad logs                   # tail the latest log in the current workspace
-ls -t .agent/opencode/log/    # browse older runs
+ls -t ~/.local/state/konrad/log/                                  # newest first
+tail -f ~/.local/state/konrad/log/$(ls -t ~/.local/state/konrad/log/*.log | head -1)
 ```
+
+Both `*.log` and `*-session.txt` are auto-pruned >7d on every `konrad` launch, so the dir doesn't grow without bound. To wipe immediately: `konrad clean`.
 
 For deeper digging, set `KONRAD_DEBUG=1` before invoking konrad. This adds per-phase timestamps to the CLI and entrypoint, and turns on Bun's `BUN_CONFIG_VERBOSE_FETCH` so every HTTP call opencode makes appears in the log. Note: `OPENCODE_LOG_LEVEL` and `DEBUG=opencode:*` don't exist in opencode's source (don't waste time setting them); the default file log is what gives you visibility.
 

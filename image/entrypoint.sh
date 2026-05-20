@@ -6,18 +6,25 @@
 #   2. Layer in the user's own agents / skills / AGENTS.md if they ship any.
 #   3. Keep auth.json on a podman-managed volume (via a symlink) so it
 #      never lands on the host filesystem.
+#   4. Bootstrap and auto-prune the workspace's .agent/ working dirs.
+#   5. Write a per-session sidecar into the central log dir recording the
+#      host workspace path (since opencode itself only sees /workspace).
 set -euo pipefail
 
 OPENCODE_CFG=/home/node/.config/opencode
 OPENCODE_DATA=/home/node/.local/share/opencode
+OPENCODE_LOG_DIR="$OPENCODE_DATA/log"             # bound to host XDG state from bin/konrad
 SECRETS=/home/node/.opencode-secrets
+WORKSPACE_AGENT=/workspace/.agent                 # the agent's working-state root
 
 USER_CFG=/home/node/.config/konrad             # everything below comes from the host
 KONRAD_BAKED=/etc/konrad                       # everything below was shipped in the image
 
 KONRAD_DEBUG="${KONRAD_DEBUG:-0}"
+KONRAD_HOST_WORKSPACE="${KONRAD_HOST_WORKSPACE:-(unknown — KONRAD_HOST_WORKSPACE not set)}"
 
 say() { printf '[konrad container] %s\n' "$*" >&2; }
+warn() { printf '[konrad container] warning: %s\n' "$*" >&2; }
 dbg() {
   [[ "$KONRAD_DEBUG" != "1" ]] && return 0
   printf '[konrad container debug %s] %s\n' "$(date +%H:%M:%S.%3N)" "$*" >&2
@@ -25,7 +32,7 @@ dbg() {
 
 dbg "entrypoint start"
 
-mkdir -p "$OPENCODE_CFG" "$OPENCODE_DATA" "$SECRETS"
+mkdir -p "$OPENCODE_CFG" "$OPENCODE_DATA" "$OPENCODE_LOG_DIR" "$SECRETS"
 dbg "mkdir done"
 
 # ── 1. Compose opencode.jsonc (baked defaults + optional user override) ──
@@ -66,33 +73,58 @@ fi
 dbg "user content layered in"
 
 # ── 3. auth.json on a named volume ───────────────────────────────────────────
-# Migrate a real auth.json sitting in the workspace's .agent/opencode/ data
-# dir (i.e. not yet on the secrets volume) into the secrets volume once, then
-# symlink the data-dir path back at the volume so opencode keeps finding it.
-if [[ -f "$OPENCODE_DATA/auth.json" && ! -L "$OPENCODE_DATA/auth.json" ]]; then
-  if [[ -e "$SECRETS/auth.json" ]]; then
-    say "auth.json already in secrets volume; removing stray copy from .agent/"
-    rm "$OPENCODE_DATA/auth.json"
-  else
-    say "migrating auth.json into the secrets volume (one-time)"
-    mv "$OPENCODE_DATA/auth.json" "$SECRETS/auth.json"
+# Symlink the data-dir path at the secrets volume so opencode keeps finding
+# auth.json where it expects it. The legacy migration path (pulling a stray
+# auth.json out of the now-gone .agent/opencode/ workspace bind) is no longer
+# reachable since the data dir is ephemeral; users with pre-2026-05-20
+# state get a one-shot warning from `konrad clean` if they still have
+# .agent/opencode/ in a workspace.
+ln -sf "$SECRETS/auth.json" "$OPENCODE_DATA/auth.json"
+dbg "auth.json symlink ready"
+
+# ── 4. Workspace .agent/ bootstrap + auto-prune ──────────────────────────────
+# .agent/ belongs to the agent end-to-end after the 2026-05-20 state-isolation
+# change. Make the conventional subdirs upfront so skills don't have to
+# mkdir -p them, then prune ephemeral subdirs (qa/, scratch/) of anything
+# older than 7 days. Hands off task.md and artifacts/ — those are
+# user-committable working memory.
+if [[ -d /workspace ]]; then
+  mkdir -p "$WORKSPACE_AGENT/scratch" "$WORKSPACE_AGENT/artifacts" "$WORKSPACE_AGENT/qa"
+  find "$WORKSPACE_AGENT/qa" "$WORKSPACE_AGENT/scratch" \
+       -mindepth 1 -maxdepth 1 -mtime +7 -exec rm -rf {} + 2>/dev/null || true
+
+  # Orphan-detection: legacy .agent/opencode/ from a pre-2026-05-20 konrad
+  # is no longer bound to anything. Tell the user once; don't auto-delete
+  # (a pre-migration auth.json could still be in there).
+  if [[ -d /workspace/.agent/opencode ]]; then
+    warn "found orphan /workspace/.agent/opencode from a pre-2026-05-20 konrad"
+    warn "safe to 'rm -rf .agent/opencode/' once you've checked for a stray auth.json"
   fi
 fi
+dbg ".agent/ bootstrap + prune done"
 
-if [[ ! -L "$OPENCODE_DATA/auth.json" ]]; then
-  ln -sf "$SECRETS/auth.json" "$OPENCODE_DATA/auth.json"
-fi
-dbg "auth.json symlink ready"
+# ── 5. Session sidecar in the central log dir ────────────────────────────────
+# opencode names its own log file by its own timestamp, which we can't
+# predict from here. Write a sidecar file with our timestamp recording
+# the host workspace path; ls -lt in the central log dir pairs sidecars
+# with their opencode logs naturally.
+KONRAD_SESSION_TS="$(date -u +%Y-%m-%dT%H-%M-%SZ)"
+SESSION_SIDECAR="$OPENCODE_LOG_DIR/${KONRAD_SESSION_TS}-session.txt"
+{
+  printf 'konrad session\n'
+  printf 'workspace: %s\n' "$KONRAD_HOST_WORKSPACE"
+  printf 'started:   %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  printf 'image:     %s\n' "${HOSTNAME:-(unknown)}"
+} > "$SESSION_SIDECAR" 2>/dev/null || true
+dbg "session sidecar written to $SESSION_SIDECAR"
 
 dbg "entrypoint done — about to exec: $*"
 
-# opencode writes a fresh, timestamped INFO-level log file under
-# ~/.local/share/opencode/log/ on every launch, with per-line +Xms deltas
-# (the structure that makes "what took 2 seconds" easy to spot). Inside
-# konrad that path is bind-mounted to the host workspace, so the same
-# file is visible there at .agent/opencode/log/<timestamp>.log — easy
-# to tail in another shell, or via `konrad logs`.
-say "opencode logs: .agent/opencode/log/ in this workspace"
+# opencode writes a fresh, timestamped INFO-level log file on every
+# launch with per-line +Xms deltas (the structure that makes "what took
+# 2 seconds" easy to spot). The log dir is bind-mounted from the host's
+# XDG state dir, so logs accumulate centrally there — not in the workspace.
+say "opencode logs (host): \${XDG_STATE_HOME:-~/.local/state}/konrad/log/"
 say "starting opencode…"
 
 # Debug mode: ask Bun to print every fetch/http call to fd 2. This catches

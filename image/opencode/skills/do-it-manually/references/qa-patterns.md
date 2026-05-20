@@ -10,14 +10,14 @@ The simplest possible check: did you preserve the count of records?
 
 ```bash
 echo "input  records: $(($(wc -l < input.csv) - 1))"   # minus header
-echo "output records: $(($(wc -l < .agent/manual-output.csv) - 1))"
+echo "output records: $(($(wc -l < .agent/artifacts/manual-output.csv) - 1))"
 ```
 
 ### JSON array
 
 ```bash
 echo "input  records: $(jq 'length' input.json)"
-echo "output records: $(jq 'length' .agent/manual-output.json)"
+echo "output records: $(jq 'length' .agent/artifacts/manual-output.json)"
 ```
 
 ### Nested / hierarchical
@@ -26,7 +26,7 @@ For "list of objects each containing a list" structures, count at every level an
 
 ```bash
 jq '[.[] | .items | length] | add' input.json
-jq '[.[] | .items | length] | add' .agent/manual-output.json
+jq '[.[] | .items | length] | add' .agent/artifacts/manual-output.json
 ```
 
 A mismatch at the parent level is a missing object; a mismatch at the child level is a missing item within an object.
@@ -61,7 +61,7 @@ For fields that should pass through *unchanged*, verify the set of values is ide
 ```bash
 # Extract the ID column from input and output, sort, diff
 cut -d, -f1 input.csv | tail -n +2 | sort > /tmp/input-ids
-cut -d, -f1 .agent/manual-output.csv | tail -n +2 | sort > /tmp/output-ids
+cut -d, -f1 .agent/artifacts/manual-output.csv | tail -n +2 | sort > /tmp/output-ids
 diff /tmp/input-ids /tmp/output-ids
 ```
 
@@ -71,7 +71,7 @@ For JSON:
 
 ```bash
 jq -r '.[].id' input.json | sort > /tmp/input-ids
-jq -r '.[].id' .agent/manual-output.json | sort > /tmp/output-ids
+jq -r '.[].id' .agent/artifacts/manual-output.json | sort > /tmp/output-ids
 diff /tmp/input-ids /tmp/output-ids
 ```
 
@@ -84,7 +84,7 @@ Look for patterns that *suggest* something went wrong, even if no individual row
 ### Clusters of MISSING
 
 ```bash
-grep -n MISSING .agent/manual-output.csv | head -20
+grep -n MISSING .agent/artifacts/manual-output.csv | head -20
 ```
 
 A few scattered `MISSING` is fine and expected. A run of 8 consecutive `MISSING` rows means you gave up on a difficult section — go back and re-read those input rows carefully.
@@ -92,7 +92,7 @@ A few scattered `MISSING` is fine and expected. A run of 8 consecutive `MISSING`
 ### Duplicate keys
 
 ```bash
-cut -d, -f1 .agent/manual-output.csv | tail -n +2 | sort | uniq -d
+cut -d, -f1 .agent/artifacts/manual-output.csv | tail -n +2 | sort | uniq -d
 ```
 
 In a context where IDs should be unique, any output is a bug.
@@ -103,8 +103,8 @@ If a numeric column has a known range:
 
 ```bash
 # rough min/max of column 3
-awk -F, 'NR>1 {print $3}' .agent/manual-output.csv | sort -n | head -1
-awk -F, 'NR>1 {print $3}' .agent/manual-output.csv | sort -n | tail -1
+awk -F, 'NR>1 {print $3}' .agent/artifacts/manual-output.csv | sort -n | head -1
+awk -F, 'NR>1 {print $3}' .agent/artifacts/manual-output.csv | sort -n | tail -1
 ```
 
 Values outside the expected range are either real outliers in the input (preserve them) or a manual transcription error (you typo'd `100000` instead of `1000`). Spot-check the row to decide.
@@ -114,7 +114,7 @@ Values outside the expected range are either real outliers in the input (preserv
 For CSV: rows with the wrong number of commas have a structural error.
 
 ```bash
-awk -F, '{print NF}' .agent/manual-output.csv | sort | uniq -c
+awk -F, '{print NF}' .agent/artifacts/manual-output.csv | sort | uniq -c
 ```
 
 If you expect every row to have 7 fields, anything other than "all 7" rows is broken.
@@ -131,7 +131,7 @@ Check the catch-all rate. Roughly:
 
 ```bash
 # Count how many output rows land in 'other' (assuming category is the last column)
-awk -F, 'NR>1 {print $NF}' .agent/manual-output.csv | sort | uniq -c
+awk -F, 'NR>1 {print $NF}' .agent/artifacts/manual-output.csv | sort | uniq -c
 ```
 
 If `other` accounts for more than ~30 % of all rows — or, even more telling, if `other` shows up disproportionately in rows where another field is also `MISSING` — that is a fabrication smell.
@@ -140,7 +140,7 @@ Cross-tabulate with `MISSING` in other fields to catch the worst case:
 
 ```bash
 # rows where vendor is MISSING — what category did they get?
-awk -F, '$2 == "MISSING" {print $NF}' .agent/manual-output.csv | sort | uniq -c
+awk -F, '$2 == "MISSING" {print $NF}' .agent/artifacts/manual-output.csv | sort | uniq -c
 ```
 
 A receipt whose vendor is `MISSING` (because the input was illegible) cannot have a meaningful category either — unless the category was knowable from non-vendor signals like layout or amount. Any `other` (or any non-`MISSING` value) in this combination deserves a manual re-check. The right answer is almost always: if the row provides no signal for a field, that field is `MISSING`, no matter how tempting the catch-all class looks.

@@ -14,6 +14,12 @@ STATE_VOLUME="konrad-state"
 # Where the user keeps their personal konrad overrides on the host.
 USER_CFG_DIR="${HOME}/.config/konrad"
 
+# Central log directory on the host (XDG state). Holds opencode's
+# structured log files plus a per-session sidecar that records the host
+# workspace path. Shared across all projects so logs live in one
+# discoverable place; pruned (>7d) before every launch.
+KONRAD_LOG_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/konrad/log"
+
 # --- Resolve the script's source directory, even when symlinked ---
 # Lets `konrad rebuild` find image/Dockerfile no matter where bin/konrad
 # is symlinked from.
@@ -78,17 +84,24 @@ check_lm_studio() {
   fi
 }
 
-# If the cwd is inside a git repo, make sure .agent/opencode/ is
-# gitignored. Idempotent — appends only if not already present.
+# If the cwd is inside a git repo, make sure the auto-pruned subdirs of
+# .agent/ are gitignored. .agent/task.md and .agent/artifacts/ stay
+# tracked because the user may want to commit them. Idempotent —
+# appends only the entries that aren't already there.
 ensure_gitignore() {
   git -C "$(pwd -P)" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
   local gi
   gi="$(pwd -P)/.gitignore"
-  if [[ -f "$gi" ]] && grep -qE '^\.agent/opencode/?$' "$gi"; then
-    return 0
+
+  # Decide what we still need to add by reading $gi up-front (before any
+  # write), so we never read and write in the same pipeline.
+  local have_qa=0 have_scratch=0
+  if [[ -f "$gi" ]]; then
+    grep -qE '^\.agent/qa/?$' "$gi"      && have_qa=1
+    grep -qE '^\.agent/scratch/?$' "$gi" && have_scratch=1
   fi
-  # Read the trailing byte BEFORE we open $gi for append, so the read
-  # and write happen in separate pipelines.
+  [[ "$have_qa" = 1 && "$have_scratch" = 1 ]] && return 0
+
   local needs_newline=""
   if [[ -s "$gi" ]]; then
     local last_byte
@@ -97,19 +110,38 @@ ensure_gitignore() {
   fi
   {
     [[ -n "$needs_newline" ]] && printf '\n'
-    printf '# konrad operational state (sessions, sqlite) — keep out of git\n'
-    printf '.agent/opencode/\n'
+    printf '# konrad agent working state (auto-pruned >7d on every launch)\n'
+    [[ "$have_qa"      = 0 ]] && printf '.agent/qa/\n'
+    [[ "$have_scratch" = 0 ]] && printf '.agent/scratch/\n'
   } >> "$gi"
-  info "added '.agent/opencode/' to $gi"
+  info "added .agent/qa/ and .agent/scratch/ to $gi"
+}
+
+# Prune the central log dir of files older than 7 days. Runs host-side
+# before every launch so disk doesn't grow without bound. Quiet on the
+# common case; only mentions itself when it actually deletes something.
+prune_log_dir() {
+  [[ -d "$KONRAD_LOG_DIR" ]] || return 0
+  # -delete prints nothing; count what's gone for the info message.
+  local pruned
+  pruned=$(find "$KONRAD_LOG_DIR" -maxdepth 1 -type f \
+             \( -name '*.log' -o -name '*-session.txt' \) \
+             -mtime +7 -print -delete 2>/dev/null | wc -l | tr -d ' ')
+  if [[ "$pruned" -gt 0 ]]; then
+    info "pruned $pruned old log file(s) from $KONRAD_LOG_DIR"
+  fi
 }
 
 # Run a command inside the konrad container with the standard mount set.
 # All variables are quoted, so paths containing spaces are safe.
 podman_run() {
-  local cwd agent_dir
+  local cwd
   cwd="$(pwd -P)"
-  agent_dir="$cwd/.agent/opencode"
-  mkdir -p "$agent_dir"
+
+  # Central log dir on the host (XDG state). Created lazily so the bind
+  # works on the very first launch. The entrypoint writes a per-session
+  # sidecar here and opencode writes its structured log alongside.
+  mkdir -p "$KONRAD_LOG_DIR"
 
   # Optional user-config mounts. Surface anything the user keeps in
   # ~/.config/konrad/ to the container at /home/node/.config/konrad/;
@@ -131,12 +163,16 @@ podman_run() {
   # --init: podman runs a tiny init (catatonit) as PID 1 inside the container
   # so signals (SIGINT, SIGTERM) reach opencode cleanly and any orphaned
   # children get reaped. Per Node Docker best-practices §5.
+  # KONRAD_HOST_WORKSPACE is read by the entrypoint to write the
+  # workspace path into the session sidecar (opencode itself only
+  # sees /workspace and can't record the host path).
   exec podman run \
     --rm -it --init \
     --userns=keep-id:uid=1000,gid=1000 \
     -e "KONRAD_DEBUG=${KONRAD_DEBUG}" \
+    -e "KONRAD_HOST_WORKSPACE=${cwd}" \
     -v "${cwd}:/workspace:z" \
-    -v "${agent_dir}:/home/node/.local/share/opencode:z" \
+    -v "${KONRAD_LOG_DIR}:/home/node/.local/share/opencode/log:z" \
     -v "${SECRETS_VOLUME}:/home/node/.opencode-secrets:U" \
     -v "${CACHE_VOLUME}:/home/node/.cache/opencode:U" \
     -v "${STATE_VOLUME}:/home/node/.local/state/opencode:U" \
@@ -154,6 +190,7 @@ cmd_run() {
   require_image;  dbg "image OK"
   check_lm_studio; dbg "lm-studio probe done"
   ensure_gitignore; dbg "gitignore ensured"
+  prune_log_dir; dbg "log dir pruned"
   info "launching container (this can take a few seconds on first run)…"
   dbg "about to exec podman run"
   podman_run opencode
@@ -165,6 +202,7 @@ cmd_shell() {
   require_podman; dbg "podman OK"
   require_image;  dbg "image OK"
   ensure_gitignore; dbg "gitignore ensured"
+  prune_log_dir; dbg "log dir pruned"
   info "launching container…"
   dbg "about to exec podman run"
   podman_run bash
@@ -186,14 +224,23 @@ cmd_rebuild() {
 
 cmd_clean() {
   require_podman
-  local agent_dir
-  agent_dir="$(pwd -P)/.agent/opencode"
 
-  if [[ -d "$agent_dir" ]]; then
-    rm -rf "$agent_dir"
-    info "removed $agent_dir"
+  # The legacy workspace bind (.agent/opencode/) is gone. If a stale
+  # copy from a pre-2026-05-20 konrad lingers in the workspace, point
+  # the user at it but don't auto-delete (auth.json may still be there
+  # pre-secrets-volume migration; let them inspect).
+  local legacy
+  legacy="$(pwd -P)/.agent/opencode"
+  if [[ -d "$legacy" ]]; then
+    warn "found orphan $legacy from a pre-2026-05-20 konrad; safe to 'rm -rf' once you've copied out any local auth.json"
+  fi
+
+  # Wipe the central log dir wholesale — host-side, no podman needed.
+  if [[ -d "$KONRAD_LOG_DIR" ]]; then
+    rm -rf "$KONRAD_LOG_DIR"
+    info "removed $KONRAD_LOG_DIR"
   else
-    info "no project state at $agent_dir"
+    info "no logs at $KONRAD_LOG_DIR"
   fi
 
   if [[ "${1:-}" == "--all" ]]; then
@@ -205,27 +252,6 @@ cmd_clean() {
     done
     info "next run will need a fresh /connect, repopulate caches, and re-pick a model"
   fi
-}
-
-cmd_logs() {
-  local log_dir
-  log_dir="$(pwd -P)/.agent/opencode/log"
-  if [[ ! -d "$log_dir" ]]; then
-    info "no log directory yet at $log_dir"
-    info "logs are written when opencode runs in this workspace — try 'konrad' first"
-    return 0
-  fi
-  # ls -t sorts newest first; head -1 picks the latest log file
-  local latest
-  latest=$(find "$log_dir" -maxdepth 1 -name '*.log' -type f -print0 2>/dev/null \
-    | xargs -0 ls -t 2>/dev/null \
-    | head -1)
-  if [[ -z "$latest" ]]; then
-    info "no log files in $log_dir yet"
-    return 0
-  fi
-  info "tailing $latest (Ctrl-C to stop)"
-  exec tail -F -n +1 "$latest"
 }
 
 cmd_version() {
@@ -288,19 +314,18 @@ cmd_config() {
 }
 
 cmd_help() {
-  cat <<'EOF'
+  cat <<EOF
 konrad — sandboxed opencode in a Podman container.
 
 Usage:
   konrad                Run opencode against the current directory.
   konrad shell          Open a bash shell in the container, same mounts.
   konrad rebuild        Rebuild the konrad image from this repo's image/.
-  konrad clean          Remove this project's .agent/opencode/ state.
+  konrad clean          Remove the central log dir (~/.local/state/konrad/).
   konrad clean --all    Also remove the shared volumes (auth, cache, state).
   konrad config init    Copy the baked opencode.jsonc to your user override.
   konrad config path    Print the path of your user override.
   konrad config show    Diff your user override against the baked default.
-  konrad logs           Tail opencode's latest log file in this workspace.
   konrad version        Print version info.
   konrad help           Show this message.
 
@@ -309,11 +334,16 @@ Debug:
                            (CLI and container entrypoint), plus opencode set
                            to verbose. Useful for chasing startup delays.
 
-Files in the workspace:
-  .agent/opencode/      Per-project session/cache state (auto-gitignored).
-  .agent/task_plan.md   The model's working-memory files (committable).
-  .agent/progress.md
-  .agent/findings.md
+Files in the workspace (.agent/ belongs to the agent end-to-end):
+  .agent/task.md        Current task's plan + outcome (committable).
+  .agent/artifacts/     Durable mid-task outputs (committable).
+  .agent/scratch/       Agent-written scripts / exploration (auto-pruned >7d).
+  .agent/qa/<stamp>/    QA evidence (auto-pruned >7d).
+
+Files on the host (outside the workspace):
+  $KONRAD_LOG_DIR
+                        opencode logs + per-session sidecars.
+                        Pruned >7d on every launch. \`tail -f\` to read.
 
 Files in ~/.config/konrad/ (all optional):
   opencode.jsonc        Deep-merged with konrad's baked defaults at start.
@@ -331,7 +361,6 @@ case "${1:-run}" in
   rebuild)             cmd_rebuild ;;
   clean)               shift; cmd_clean "$@" ;;
   config)              shift; cmd_config "$@" ;;
-  logs)                cmd_logs ;;
   version|--version)   cmd_version ;;
   help|-h|--help)      cmd_help ;;
   *)                   die "unknown command: $1 (try: konrad help)" ;;

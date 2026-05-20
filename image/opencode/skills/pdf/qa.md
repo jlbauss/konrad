@@ -289,20 +289,19 @@ from datetime import datetime
 from pathlib import Path
 
 stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-evidence = Path(f"/workspace/.qa/{stamp}")
+evidence = Path(f"/workspace/.agent/qa/{stamp}")
 out_dir, paths = rasterize_touched(
     "/workspace/annotated.pdf",
     touched_page_indices,
     persist_to=evidence,
 )
-# Tell the user: "I saved the QA images to /workspace/.qa/<stamp>/."
+# Tell the user: "I saved the QA images to .agent/qa/<stamp>/."
 ```
 
-`/workspace/.qa/` accumulates over time. Mention the cleanup path to the
-user once: `trash /workspace/.qa/<stamp>/` for one run, or
-`trash /workspace/.qa/*` to clear all evidence. (Prefer `trash` over
-`rm` per the repo's working agreement — recoverable from
-`/workspace/.Trash-1000/`.)
+`.agent/qa/` is **auto-pruned** at every konrad launch — anything older
+than 7 days is removed by the entrypoint. You don't have to ask the user
+to clean up after every failed QA. If they want to drop a specific run
+immediately, the standard path is `rm -rf .agent/qa/<stamp>/`.
 
 ## Reporting after QA
 
@@ -314,7 +313,7 @@ Add to the normal Reporting block from each route:
 - **Pass with caveat**: name the imperfection, name the fix you didn't
   attempt, ask if the user wants you to retry.
 - **Fail (after retries)**: name what's wrong, point at
-  `/workspace/.qa/<stamp>/`, propose 1–2 concrete next moves.
+  `.agent/qa/<stamp>/`, propose 1–2 concrete next moves.
 - **QA skipped (no vision)**: *"output produced; my model can't see
   images, so I didn't visually verify it. Open the file to confirm it
   looks right."*

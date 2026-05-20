@@ -12,7 +12,7 @@ Three concrete walkthroughs of the workflow. Read these to anchor your sense of 
 
 ### Step 1 — Reality check
 
-> Switching to manual transformation for `receipts.txt`. My last three regex attempts left 28 receipts unparsed and the bug list is growing. The file has 60 distinct receipts with irregular OCR-mangled layouts — this is exactly the long-tail case the `do-it-manually` skill is for. I'll estimate the size, dispatch the `manual-transformer` subagent to produce a clean CSV at `.agent/manual-output.csv`, verify its report, and then continue computing monthly totals from the clean file.
+> Switching to manual transformation for `receipts.txt`. My last three regex attempts left 28 receipts unparsed and the bug list is growing. The file has 60 distinct receipts with irregular OCR-mangled layouts — this is exactly the long-tail case the `do-it-manually` skill is for. I'll estimate the size, dispatch the `manual-transformer` subagent to produce a clean CSV at `.agent/artifacts/manual-output.csv`, verify its report, and then continue computing monthly totals from the clean file.
 
 ### Step 2 — Estimate size
 
@@ -28,14 +28,14 @@ $ bash $CLAUDE_SKILL_DIR/scripts/estimate-tokens.sh /workspace/data/receipts.txt
 Call the Task tool with `manual-transformer` and the prompt:
 
 > Input: `/workspace/data/receipts.txt` — ~60 OCR-extracted receipts, mixed German/English, irregular layouts.
-> Output: `.agent/manual-output.csv` with columns `date,vendor,total_eur,category`.
+> Output: `.agent/artifacts/manual-output.csv` with columns `date,vendor,total_eur,category`.
 > Rules: Dates in ISO 8601. Vendor names canonicalized to brand (e.g. "EDEKA Müller Straße 12" → "Edeka"). Category from {groceries, travel, pharmacy, other}. 1:1 cardinality, no filtering. Use `MISSING` for unreadable fields. Return the standard QA report.
 
 ### Step 4 — Verify the report
 
 The subagent returns:
 
-> - Output: `/workspace/.agent/manual-output.csv` (61 lines = 60 records + header)
+> - Output: `/workspace/.agent/artifacts/manual-output.csv` (61 lines = 60 records + header)
 > - Cardinality: 60 input receipts → 60 output rows ✓
 > - Spot-check (lines 7, 42, 88, 119, 165): all matched literally except line 119 (vendor was "Penny Markt 234" → canonicalized to "Penny" per rules).
 > - Field-invariant: dates preserved verbatim (just reformatted to ISO) ✓
@@ -43,15 +43,15 @@ The subagent returns:
 > - `MISSING` rows: row 47 only.
 > - Fixes during QA: none.
 
-Looks clean. Confirm `.agent/manual-output.csv` exists, peek at it briefly, proceed.
+Looks clean. Confirm `.agent/artifacts/manual-output.csv` exists, peek at it briefly, proceed.
 
 ### Step 5 — Continue original task
 
-> The clean CSV is at `.agent/manual-output.csv` with 60 verified rows (one has `MISSING` for vendor/category — see row 47). Now computing monthly totals by category with `pandas`.
+> The clean CSV is at `.agent/artifacts/manual-output.csv` with 60 verified rows (one has `MISSING` for vendor/category — see row 47). Now computing monthly totals by category with `pandas`.
 
 ```python
 import pandas as pd
-df = pd.read_csv('.agent/manual-output.csv')
+df = pd.read_csv('.agent/artifacts/manual-output.csv')
 df = df[df['vendor'] != 'MISSING']            # drop the unreadable one
 df['month'] = pd.to_datetime(df['date']).dt.to_period('M')
 df.groupby(['month', 'category'])['total_eur'].sum()
@@ -95,11 +95,11 @@ But suppose the file were 5× bigger (~55k tokens). That's the 30 000 – 80 000
 csplit meeting-notes.md '/^# 2023/' '/^# 2024/' '/^# 2025/'
 ```
 
-Then dispatch one `manual-transformer` subagent per year, each producing `.agent/manual-output-2023.json`, `.agent/manual-output-2024.json`, etc. After all subagents return, concatenate and re-verify cardinality across the whole:
+Then dispatch one `manual-transformer` subagent per year, each producing `.agent/artifacts/manual-output-2023.json`, `.agent/artifacts/manual-output-2024.json`, etc. After all subagents return, concatenate and re-verify cardinality across the whole:
 
 ```bash
-jq -s 'add' .agent/manual-output-*.json > .agent/manual-output.json
-echo "total decisions: $(jq 'length' .agent/manual-output.json)"
+jq -s 'add' .agent/artifacts/manual-output-*.json > .agent/artifacts/manual-output.json
+echo "total decisions: $(jq 'length' .agent/artifacts/manual-output.json)"
 ```
 
 Then continue with the original task on the merged file. Use a natural boundary (year, section, source file) rather than splitting mid-record — splitting mid-record is the one way to confuse the subagent and lose data.

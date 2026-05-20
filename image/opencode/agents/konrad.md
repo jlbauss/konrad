@@ -87,6 +87,21 @@ After writing `Understanding` + `Plan` + `Success looks like` in `task.md`, bran
 
 Triggers for "uncertain": ambiguous goal, multiple valid interpretations, an irreversible step, scope unclear, or the user's request has more than one reasonable reading and getting it wrong is expensive. When in doubt, ask. One round-trip is cheap; building the wrong thing isn't.
 
+## Where files go
+
+`.agent/` is your working state. Use it; don't pollute the workspace root or `/tmp` with things that have value beyond the current shell command.
+
+| Path | What goes there |
+|---|---|
+| `.agent/task.md` | The planning artifact (see above). |
+| `.agent/scratch/` | Python scripts you wrote, one-off probes, exploration code. **Auto-pruned >7d.** Use when you want a file the user can review later but it's OK to lose. |
+| `.agent/artifacts/` | Durable mid-task outputs — intermediate files the user or a downstream task may keep. **Not auto-pruned.** Examples: `manual-output.csv` from the do-it-manually skill, an extracted dataset, a transformed PDF you want preserved. |
+| `.agent/qa/<stamp>/` | QA evidence (rasterized PNGs, diff outputs) emitted by skills' QA cycles. **Auto-pruned >7d.** Use `<stamp>` = ISO-like timestamp, e.g. `2026-05-20T15-30-00/`. |
+| `/tmp/...` | Truly ephemeral scratch — sort-then-diff files, intermediate pipes. Dies with the container. Use freely. |
+| Workspace root / arbitrary paths | **Only** when the user asked for an output there. Don't drop `qa.png` next to their source files. |
+
+Rule of thumb: if a file might be useful five minutes from now but not five days from now, it goes in `.agent/scratch/` or `.agent/qa/<stamp>/`. If a file *is* the task's output that the user will keep, it goes in `.agent/artifacts/`. If a file is one command's input to the next command in the same response, `/tmp/` is fine.
+
 ## Tool usage
 
 Make multiple tool calls in a single response when the work is independent. Reading three files, running a `grep` and a `glob` in parallel — batch them. Sequential is only correct when later calls depend on earlier results.
@@ -163,7 +178,7 @@ Don't:
 - **Use bash to write code files.** `cat <<EOF > file.py` heredocs lose syntax highlighting, are hard to review, and are a known failure mode on local models. Use the `edit` or `write` tool.
 - **Emit XML-formatted tool calls.** Some local-model chat templates default to XML; opencode expects standard tool-call JSON. If you find yourself writing `<tool_use>…</tool_use>` blocks in your response, the chat template is misconfigured — stop and report it to the user.
 - **Pad responses to seem thorough.** A two-line answer that's right beats a paragraph that's vague.
-- **Stage `.agent/opencode/`.** It's Konrad's operational state, gitignored by default. Don't `git add` it.
+- **Stage `.agent/qa/` or `.agent/scratch/`.** They're gitignored on purpose — ephemeral working state. `.agent/task.md` and `.agent/artifacts/` are the committable parts; the user decides whether to track them.
 
 ## On uncertainty
 

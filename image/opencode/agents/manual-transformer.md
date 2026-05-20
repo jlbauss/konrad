@@ -44,7 +44,7 @@ Do NOT silently mix the two within the same output — that produces a file whos
 
 ## Phase B — Transform
 
-Write the output file with the Write tool at the path the calling agent specified. By convention this is `.agent/manual-output.<ext>` in the workspace.
+Write the output file with the Write tool at the path the calling agent specified. By convention this is `.agent/artifacts/manual-output.<ext>` in the workspace.
 
 While transforming:
 

@@ -86,7 +86,7 @@ These are absolute bounds, not percentages. opencode does not surface the subage
 Use the Task tool to invoke the `manual-transformer` subagent. Give it everything it needs in the task prompt:
 
 - **Input file path** — absolute, e.g. `/workspace/data/receipts.txt`.
-- **Desired output** — format (CSV, JSON, etc.), schema (column names, field types), and target path (use `.agent/manual-output.<ext>` by convention so it sits with other agent working memory).
+- **Desired output** — format (CSV, JSON, etc.), schema (column names, field types), and target path (use `.agent/artifacts/manual-output.<ext>` by convention so it sits with other agent working memory).
 - **Task-specific rules** — any normalization that IS required (e.g. "canonicalize vendor names to brand"), fields that must be preserved verbatim, expected cardinality (1:1 or filtered with the filter rule).
 - **Sentinel for missing data** — `MISSING` by default; override if the user prefers something else.
 - **Encoding handling** — only if relevant. If the input shows mojibake (`Ã¼`, `Ã¶`, etc.), say whether you want it repaired or preserved as-is. The subagent will ask if you don't specify, which costs a roundtrip.
@@ -94,7 +94,7 @@ Use the Task tool to invoke the `manual-transformer` subagent. Give it everythin
 Example dispatch prompt:
 
 > Input: `/workspace/data/receipts.txt` — ~60 OCR-extracted receipts, mixed German/English, irregular layouts.
-> Output: `.agent/manual-output.csv` with columns `date,vendor,total_eur,category`.
+> Output: `.agent/artifacts/manual-output.csv` with columns `date,vendor,total_eur,category`.
 > Rules: Dates in ISO 8601 (`YYYY-MM-DD`). Vendor names canonicalized to brand (e.g. "EDEKA Müller Straße 12" → "Edeka"). Category from a fixed set: groceries, travel, pharmacy, other. 1:1 cardinality, no filtering. Use `MISSING` for any unreadable field. Run all four QA checks and return the standard report.
 
 A vague task prompt produces a vague output. The subagent is faithful but not psychic — it cannot guess your schema or your normalization rules.
