@@ -23,11 +23,6 @@ opencode
     Copyright (c) 2025 opencode
     MIT License
 
-planning-with-files (file-based planning methodology used in AGENTS.md)
-    https://github.com/OthmanAdi/planning-with-files
-    Copyright (c) Othman Adi
-    MIT License
-
 spreadsheets (xlsx skill — adapted from upstream minimax-xlsx)
     https://github.com/MiniMax-AI/skills (skills/minimax-xlsx)
     Copyright (c) MiniMax AI

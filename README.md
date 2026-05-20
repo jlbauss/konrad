@@ -10,8 +10,8 @@ Status: **early / experimental**. The "safe" half of the original `safe-cowork` 
 - **A Debian image** with a curated tool set (ripgrep, fd, jq, gh, pandoc, poppler-utils, plus Python 3 + uv with a system venv) so the agent doesn't have to install its own toolchain. Heavier tooling for specific skills lands as those skills are rebuilt.
 - **opencode prewired** to talk to LM Studio (default), Ollama, or llama.cpp on the host — zero configuration on first run.
 - **A layered config system** that lets you add any opencode-supported provider (Anthropic, OpenAI, OpenRouter, Gemini, …) via a tiny override file, without losing konrad's defaults.
-- **Base instructions** ([instructions.md](image/konrad-defaults/instructions.md)) teaching the model file-based planning (`.agent/task_plan.md` / `progress.md` / `findings.md`), a 3-strike error protocol, and conventions for the bundled tools.
-- **A curated skill set.** Skills are loaded via opencode's `skill` tool from `~/.config/opencode/skills/`. The image ships with `planning-with-files` (file-based planning workflow), `do-it-manually` (structured-but-irregular data extraction), and `docling-document-intelligence` (PDF parsing). More on the way — see [ROADMAP.md](ROADMAP.md).
+- **A planning contract** baked into Konrad's agent prompt ([image/opencode/agents/konrad.md](image/opencode/agents/konrad.md)): a single `.agent/task.md` file for any task with side effects (understanding, plan, success criteria, decisions, outcome), and aggressive use of opencode's `todowrite` tool for live progress visibility. See [docs/design/task-md-and-todowrite.md](docs/design/task-md-and-todowrite.md) for the rationale.
+- **A curated skill set.** Skills are loaded via opencode's `skill` tool from `~/.config/opencode/skills/`. The image ships with `do-it-manually` (structured-but-irregular data extraction), `spreadsheets` (xlsx/csv CRUD), and `pdf` (extract / edit / annotate / fill / generate). More on the way — see [ROADMAP.md](ROADMAP.md).
 
 ## Requirements
 
@@ -186,7 +186,7 @@ Both are additive. Don't set `instructions` in your override unless you specific
 
 konrad splits state across two tiers:
 
-**Per-project, in the workspace.** When you run `konrad` in a directory, it creates `.agent/opencode/` inside that directory and bind-mounts it as opencode's data dir. Sessions, the SQLite database, and conversation logs live there — visible to `ls`, portable with your project, gitignored automatically. The model's working-memory files (`.agent/task_plan.md`, `.agent/progress.md`, `.agent/findings.md`) sit alongside them and are **not** gitignored, so you can commit them if you want a record.
+**Per-project, in the workspace.** When you run `konrad` in a directory, it creates `.agent/opencode/` inside that directory and bind-mounts it as opencode's data dir. Sessions, the SQLite database, and conversation logs live there — visible to `ls`, portable with your project, gitignored automatically. The model's per-task working-memory file (`.agent/task.md`) sits alongside them and is **not** gitignored, so you can commit it if you want a record.
 
 **Shared, in named Podman volumes.** Three things stay out of the workspace and are shared across every project:
 
@@ -212,7 +212,7 @@ konrad/
 │   │   └── instructions.md          # konrad's base instructions, loaded via instructions key
 │   └── opencode/                    # → ~/.config/opencode/ in the image
 │       ├── agents/                  # Built-in primary agents (konrad, manual-transformer)
-│       └── skills/                  # Bundled skills (planning-with-files, do-it-manually, docling-document-intelligence)
+│       └── skills/                  # Bundled skills (do-it-manually, spreadsheets, pdf)
 ├── scripts/
 │   ├── build-image.sh               # `podman build -t konrad:latest image/`
 │   └── install.sh                   # Symlinks bin/konrad into ~/.local/bin

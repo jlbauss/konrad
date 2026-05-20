@@ -53,11 +53,11 @@ User-shipped agents/skills/AGENTS.md from `~/.config/konrad/` are also layered i
 - **Podman only** — `--userns=keep-id` is Podman-specific. Docker support is on the roadmap.
 - **No model auto-discovery.** Provider endpoints ship pre-wired but model lists ship empty — users declare their loaded models in `~/.config/konrad/opencode.jsonc`. The `opencode-models-discovery` plugin used to do this automatically; removed because of startup cost and an upstream embedding-modality bug. An inline replacement is on the roadmap.
 - **No top-level `model` key in baked defaults** — opencode prompts on first run and persists the choice in the `konrad-state` named volume.
-- **`.agent/opencode/`** is operational state (sessions, sqlite, cache) — always gitignored. `.agent/task_plan.md`, `.agent/progress.md`, `.agent/findings.md` are working memory and committable at user discretion.
+- **`.agent/opencode/`** is operational state (sessions, sqlite, cache) — always gitignored. `.agent/task.md` is the agent's per-task working memory (understanding, plan, success criteria, decisions/findings, outcome) and is committable at user discretion. See [docs/design/task-md-and-todowrite.md](docs/design/task-md-and-todowrite.md) for the contract.
 - **Python venv** at `/opt/venv` (on PATH). Extend with `uv pip install <pkg>`.
 - **Debian renames**: `fd` → `fdfind`, `bat` → `batcat` (symlinked to canonical names in Dockerfile).
 - **opencode Zen disabled** by default (`disabled_providers: ["opencode"]`).
-- **Bundled skills** live at `image/opencode/skills/` (currently: `planning-with-files`, `do-it-manually`, `spreadsheets`, `pdf`). They land at `~/.config/opencode/skills/` in the image and are loaded by opencode's `skill` tool.
+- **Bundled skills** live at `image/opencode/skills/` (currently: `do-it-manually`, `spreadsheets`, `pdf`). They land at `~/.config/opencode/skills/` in the image and are loaded by opencode's `skill` tool.
 
 ## Commit style
 
