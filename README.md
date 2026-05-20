@@ -25,8 +25,20 @@ Status: **early / experimental**. The "safe" half of the original `safe-cowork` 
 
   For API providers (Anthropic, OpenAI, OpenRouter, etc.), also see [Configuration](#configuration).
 
-- **Recommended model class.** konrad's base instructions are tuned for **30B-class open weight models** — specifically [`qwen/qwen3.6-27b`](https://lmstudio.ai/models/qwen/qwen3.6-35b-a3b) is what we test against. Stronger models such as Mistral Medium 3.5 or Kimi 2.6 are beneficial.
-- **Pick a vision-capable model if you'll touch images.** Anything involving photos, screenshots, scanned documents, or PDFs with visual layouts (charts, multi-column scans, image-based receipts) needs a vision model — text-only models silently fall back to descriptions of what they "see," which usually means hallucinated content rather than an honest "I can't read this." konrad does not currently warn you when a non-vision model is paired with an image-bearing task. 
+- **Recommended model class.** konrad's skills and base instructions are tuned for a specifc class of models **30B-class open weight models** with extraordinary agentic capabilities — specifically [`qwen/qwen3.6-27b`](https://lmstudio.ai/models/qwen/qwen3.6-27b) is what we test against. Stronger models are beneficial. Requirements for models:
+  - Native Vision Capability
+  - Context Window recommended >= 256k Tokens
+  - At least as strong as Qwen3.6 27B in the [Agentic Index by Artificial Analysis](https://artificialanalysis.ai/models/capabilities/agentic)
+  
+  as of May 20, 2026, the following models fulfill the requirements:
+
+  - Open Weights
+    - Qwen3.6 27B
+    - Kimi K2.6
+  - Proprietary
+    - Claude Sonnet/Opus >= 4.6
+    - GPT >= 5.4
+    - Gemini 3.5 Flash
 
 ## Install
 
