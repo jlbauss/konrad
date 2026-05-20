@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  konrad host-side SSH-agent bridge.
+
+  Installed to ~/Library/LaunchAgents/ by scripts/setup-host-ssh-bridge.sh.
+  Runs socat to expose the macOS launchd-managed ssh-agent at a regular
+  Unix socket (~/.ssh/podman-agent.sock) that virtiofs can pass through
+  to the konrad dev container — see .devcontainer/devcontainer.json
+  for the matching bind-mount + SSH_AUTH_SOCK remoteEnv.
+
+  PATH is hardcoded in the sh command so the same plist works on both
+  Apple-silicon (/opt/homebrew) and Intel (/usr/local) Homebrew layouts
+  without per-host templating.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>dev.konrad.ssh-agent-bridge</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/sh</string>
+        <string>-c</string>
+        <string>sock=$(launchctl getenv SSH_AUTH_SOCK); [ -n "$sock" ] || { echo "SSH_AUTH_SOCK not set in launchd env yet" >&amp;2; exit 1; }; rm -f "$HOME/.ssh/podman-agent.sock"; PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin" exec socat UNIX-LISTEN:"$HOME/.ssh/podman-agent.sock",fork,reuseaddr,mode=600 UNIX-CONNECT:"$sock"</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+    <key>ThrottleInterval</key>
+    <integer>5</integer>
+    <key>ProcessType</key>
+    <string>Background</string>
+    <key>StandardOutPath</key>
+    <string>/tmp/ssh-agent-bridge.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/ssh-agent-bridge.log</string>
+</dict>
+</plist>

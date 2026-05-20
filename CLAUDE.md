@@ -37,6 +37,16 @@ Any change to `image/` (Dockerfile, entrypoint, defaults, agents) requires a reb
 
 Multi-concern changes: prefer separate commits per concern (CONTRIBUTING.md).
 
+## Host setup (macOS dev container only)
+
+`.devcontainer/` needs a host-side SSH-agent bridge before `git push` over SSH works inside the container. VS Code's automatic `SSH_AUTH_SOCK` forwarding is unreliable on macOS + rootless podman (the launchd agent socket can't be bind-mounted into the libkrun VM). One-time setup on a new macOS machine:
+
+```sh
+./scripts/setup-host-ssh-bridge.sh
+```
+
+Idempotent — installs `socat` via Homebrew if missing, drops `dev.konrad.ssh-agent-bridge.plist` into `~/Library/LaunchAgents/`, loads it via `launchctl bootstrap`. `RunAtLoad` keeps it alive across reboots. The bridge exposes the host agent at `~/.ssh/podman-agent.sock`; `.devcontainer/devcontainer.json` bind-mounts that socket into the container. Linux hosts don't need this — auto-forwarding works there. See ROADMAP.md's Implemented section for the full backstory.
+
 ## Config layering
 
 At container start, `image/entrypoint.sh` composes `~/.config/opencode/opencode.jsonc` from up to two layers via `image/merge-config.js`:
