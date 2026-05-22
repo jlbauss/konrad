@@ -77,10 +77,18 @@ Surface the trade-off before choosing.
   - **CLI scripts** (`fill_inspect.py`, `fill_write.py`, `annotate_apply.py`)
     — invoke with the full path:
     `python3 ~/.config/opencode/skills/pdf/scripts/<name>.py …`.
-  - **Importable helper modules** (`pdf_helpers.py`, `qa_helpers.py`) —
+  - **Importable helper modules** (`pdf_helpers.py`, `qa_helpers.py`,
+    `font_helpers.py`) —
     `sys.path.insert(0, "/home/node/.config/opencode/skills/pdf/scripts")`
     then `from pdf_helpers import …`. Route docs repeat this three-line
     dance at the top of recipes that use helpers.
+- **For typography, use the bundled palette.** Don't hardcode
+  `setFont("Helvetica", ...)`. Call `register_font(family)` from
+  `font_helpers` to wire one of konrad's seven bundled OFL families
+  (Inter, Source Serif 4, Fraunces, JetBrains Mono, EB Garamond, IBM
+  Plex Sans, Atkinson Hyperlegible) into reportlab. See
+  [references/fonts.md](references/fonts.md) for which family to reach
+  for in which situation, and how users add their own.
 - **To *see* a PDF, rasterize. To *parse* a PDF, extract.** The agent's
   `read` tool doesn't return useful image content for `.pdf` files — it
   returns a stub. To look at a page, rasterize via `rasterize_touched`
@@ -111,3 +119,4 @@ These are preinstalled in the konrad image, so usually nothing to do:
 | `pypdfium2` | ANNOTATE — whole-PDF rasterization when blacken is present (real redaction). Transitive dep of pdfplumber | Python venv |
 | `reportlab` | ANNOTATE — overlay rendering for highlight / blacken / watermark / free-text; GENERATE — bare-bones page output | Python venv |
 | `poppler-utils` | EDIT — `pdfimages` raw image extract | apt |
+| **Bundled fonts** | ANNOTATE (watermark), GENERATE — see [references/fonts.md](references/fonts.md) for the seven-family OFL palette + user-override path | `/usr/local/share/fonts/konrad/` |

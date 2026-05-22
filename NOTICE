@@ -61,3 +61,49 @@ Qwen3.6-35B-A3B (model weights, used unmodified via LM Studio,
 not redistributed in this repository)
     https://huggingface.co/Qwen/Qwen3.6-35B-A3B
     Apache License 2.0
+
+================================================================================
+Bundled fonts
+================================================================================
+
+konrad ships a curated typographic palette at image/fonts/konrad/, baked
+into the runtime image at /usr/local/share/fonts/konrad/. All seven
+families are released under the SIL Open Font License, Version 1.1, which
+permits redistribution and modification provided the OFL terms travel
+with the font files. Per-family OFL.txt / LICENSE.txt files ship alongside
+each family in the image and in this repo.
+
+Inter
+    https://github.com/rsms/inter
+    Copyright (c) 2016 The Inter Project Authors
+    SIL Open Font License, Version 1.1
+
+Source Serif 4
+    https://github.com/adobe-fonts/source-serif
+    Copyright 2014-2023 Adobe (Reserved Font Name 'Source')
+    SIL Open Font License, Version 1.1
+
+Fraunces
+    https://github.com/undercasetype/Fraunces
+    Copyright 2018 The Fraunces Project Authors
+    SIL Open Font License, Version 1.1
+
+JetBrains Mono
+    https://github.com/JetBrains/JetBrainsMono
+    Copyright 2020 The JetBrains Mono Project Authors
+    SIL Open Font License, Version 1.1
+
+EB Garamond
+    https://github.com/octaviopardo/EBGaramond12
+    Copyright 2017 The EB Garamond Project Authors
+    SIL Open Font License, Version 1.1
+
+IBM Plex Sans
+    https://github.com/IBM/plex
+    Copyright (c) 2017 IBM Corp. (Reserved Font Name 'Plex')
+    SIL Open Font License, Version 1.1
+
+Atkinson Hyperlegible
+    https://github.com/googlefonts/atkinson-hyperlegible
+    Copyright 2020 Braille Institute of America, Inc.
+    SIL Open Font License, Version 1.1

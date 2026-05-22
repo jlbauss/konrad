@@ -30,6 +30,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
 #                         so terminal deletes are recoverable.
 #   libglib2.0-bin      → provides `gio`, which VS Code uses to move
 #                         files to Trash from the file explorer on Linux.
+#   unzip               → scripts/fetch-fonts.sh extracts upstream font
+#                         release zips (Inter, JetBrains Mono).
 #
 # Plus `uv` (installed via the COPY below, not apt) for spinning up
 # matching Python deps when verifying skill helpers and recipes against
@@ -47,6 +49,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     openssh-client \
     ripgrep fd-find bat \
     trash-cli libglib2.0-bin \
+    unzip \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* /var/log/apt/* /var/log/dpkg.log
 

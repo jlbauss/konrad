@@ -24,23 +24,40 @@ Single page, default size A4, one block of text. This is the same
 `reportlab` machinery the watermark overlay uses — no new dependencies.
 
 ```python
+import sys
+sys.path.insert(0, "/home/node/.config/opencode/skills/pdf/scripts")
+from font_helpers import register_font
+
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import cm
 from reportlab.pdfgen import canvas
 
+body = register_font("Inter")            # see references/fonts.md for the palette
+display = register_font("Source Serif 4")
+
 c = canvas.Canvas("/workspace/out.pdf", pagesize=A4)
 w, h = A4
 
-c.setFont("Helvetica-Bold", 18)
+c.setFont(f"{display}-Bold", 18)
 c.drawString(2 * cm, h - 3 * cm, "Title goes here")
 
-c.setFont("Helvetica", 11)
+c.setFont(body, 11)
 c.drawString(2 * cm, h - 4 * cm, "Body line one.")
 c.drawString(2 * cm, h - 4.5 * cm, "Body line two.")
 
 c.showPage()
 c.save()
 ```
+
+`register_font(family)` resolves a konrad-bundled or user-overlaid font
+family to a reportlab-registered name and returns the string you pass to
+`setFont()`. After registration, the per-weight variants are also addressable
+as `f"{family}-Bold"`, `f"{family}-Italic"`, `f"{family}-BoldItalic"`. See
+[references/fonts.md](references/fonts.md) for the full palette and what each
+family is good for; in short: **Inter** for UI/body sans, **Source Serif 4**
+or **EB Garamond** for body serif, **Fraunces** for display, **JetBrains
+Mono** for code, **IBM Plex Sans** as a corporate-neutral alternative,
+**Atkinson Hyperlegible** when readability outranks style.
 
 `pagesize` accepts `A4`, `letter`, `legal`, `A5`, etc. from
 `reportlab.lib.pagesizes`. Coordinates are in points (1/72 in.) with the

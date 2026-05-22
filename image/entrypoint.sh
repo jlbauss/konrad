@@ -72,6 +72,27 @@ if [[ -f "$USER_CFG/AGENTS.md" ]]; then
 fi
 dbg "user content layered in"
 
+# ── 2b. Font overlay ─────────────────────────────────────────────────────────
+# Anything the user drops into ~/.config/konrad/fonts/ on the host shows up
+# at $USER_CFG/fonts in the container (bind-mounted by bin/konrad). Symlink
+# it into ~/.local/share/fonts/, which fontconfig watches by default, and
+# refresh the cache. Symlink rather than copy so adding a font on the host
+# is picked up on the next launch without an extra step.
+USER_FONTS_DIR=/home/node/.local/share/fonts/konrad-user
+USER_FONT_COUNT=0
+if [[ -d "$USER_CFG/fonts" ]]; then
+  USER_FONT_COUNT=$(find "$USER_CFG/fonts" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null | wc -l)
+fi
+if (( USER_FONT_COUNT > 0 )); then
+  mkdir -p /home/node/.local/share/fonts
+  ln -sfn "$USER_CFG/fonts" "$USER_FONTS_DIR"
+  fc-cache -f /home/node/.local/share/fonts >/dev/null 2>&1 || true
+  dbg "user fonts overlay linked at $USER_FONTS_DIR"
+else
+  # No overlay — remove a stale symlink from a previous run.
+  [[ -L "$USER_FONTS_DIR" ]] && rm "$USER_FONTS_DIR"
+fi
+
 # ── 3. auth.json on a named volume ───────────────────────────────────────────
 # Symlink the data-dir path at the secrets volume so opencode keeps finding
 # auth.json where it expects it. The legacy migration path (pulling a stray

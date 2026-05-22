@@ -30,6 +30,7 @@ Any change to `image/` (Dockerfile, entrypoint, defaults, agents) requires a reb
 | `image/` | Container build context — the canonical artifact | Yes |
 | `image/konrad-defaults/` | Baked defaults → `/etc/konrad/` in image | Yes |
 | `image/opencode/` | opencode-discoverable config (agents, skills, instructions.md) → `~/.config/opencode/` in image | Yes |
+| `image/fonts/konrad/` | Bundled OFL font palette → `/usr/local/share/fonts/konrad/` in image. Refreshed via `./scripts/fetch-fonts.sh` (one-shot, when bumping versions) | Yes |
 | `bin/konrad` | Host-side CLI (bash) | No |
 | `scripts/` | Install and build helpers | No |
 | `.devcontainer/` | VS Code Dev Container for working **on** konrad (Claude Code preinstalled) | No |
@@ -58,6 +59,7 @@ User-shipped agents/skills/AGENTS.md from `~/.config/konrad/` are also layered i
 - **Debian renames**: `fd` → `fdfind`, `bat` → `batcat` (symlinked to canonical names in Dockerfile).
 - **opencode Zen disabled** by default (`disabled_providers: ["opencode"]`).
 - **Bundled skills** live at `image/opencode/skills/` (currently: `do-it-manually`, `spreadsheets`, `pdf`). They land at `~/.config/opencode/skills/` in the image and are loaded by opencode's `skill` tool.
+- **Bundled fonts.** Seven OFL families ship at `image/fonts/konrad/` → `/usr/local/share/fonts/konrad/` (Inter, Source Serif 4, Fraunces, JetBrains Mono, EB Garamond, IBM Plex Sans, Atkinson Hyperlegible). Fontconfig-aware tools (Typst, Playwright, LibreOffice) discover them automatically; reportlab needs `font_helpers.register_font(family)` from the pdf skill. Users add their own by dropping files into `~/.config/konrad/fonts/`. Catalogue in [image/opencode/skills/pdf/references/fonts.md](image/opencode/skills/pdf/references/fonts.md).
 
 ## Commit style
 

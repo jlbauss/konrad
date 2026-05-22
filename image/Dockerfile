@@ -82,11 +82,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     less procps fzf zsh man-db unzip gnupg2 nano htop \
     iproute2 dnsutils \
     fontconfig \
-    fonts-dejavu \
-    fonts-liberation \
     fonts-noto-core \
-    fonts-noto-mono \
-    && fc-cache -f \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
     && rm -rf /var/log/apt/* /var/log/dpkg.log
@@ -94,6 +90,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Debian renames fd → fdfind and bat → batcat; symlink to canonical names.
 RUN ln -sf /usr/bin/fdfind /usr/local/bin/fd \
     && ln -sf /usr/bin/batcat /usr/local/bin/bat
+
+# Bundled font palette (all SIL OFL 1.1). Lands in /usr/local/share/fonts/
+# so fontconfig picks it up alongside system fonts — Playwright, LibreOffice,
+# Typst, and anything else fontconfig-aware sees the same set. reportlab
+# does not read fontconfig; the registration helper at
+# image/opencode/skills/pdf/scripts/font_helpers.py resolves family names
+# to file paths under here.
+#
+# fonts-noto-core (above) stays in for broad non-Latin script coverage
+# (Arabic, Devanagari, Cyrillic, Greek, Hebrew, Thai, …); the curated
+# palette covers Latin / Cyrillic / Greek. CJK is not covered — see
+# image/opencode/skills/pdf/references/fonts.md for the user override path.
+#
+# Per-family attribution lives in image/fonts/konrad/<family>/LICENSE.txt;
+# see NOTICE for the consolidated list.
+COPY fonts/konrad/ /usr/local/share/fonts/konrad/
+RUN fc-cache -f
 
 # Install Typst
 ARG TYPST_VERSION=v0.14.2

@@ -12,6 +12,7 @@ Status: **early / experimental**. The "safe" half of the original `safe-cowork` 
 - **A layered config system** that lets you add any opencode-supported provider (Anthropic, OpenAI, OpenRouter, Gemini, …) via a tiny override file, without losing konrad's defaults.
 - **A planning contract** baked into Konrad's agent prompt ([image/opencode/agents/konrad.md](image/opencode/agents/konrad.md)): a single `.agent/task.md` file for any task with side effects (understanding, plan, success criteria, decisions, outcome), and aggressive use of opencode's `todowrite` tool for live progress visibility. See [docs/design/task-md-and-todowrite.md](docs/design/task-md-and-todowrite.md) for the rationale.
 - **A curated skill set.** Skills are loaded via opencode's `skill` tool from `~/.config/opencode/skills/`. The image ships with `do-it-manually` (structured-but-irregular data extraction), `spreadsheets` (xlsx/csv CRUD), and `pdf` (extract / edit / annotate / fill / generate). More on the way — see [ROADMAP.md](ROADMAP.md).
+- **A curated font palette.** Seven SIL OFL families baked into the image (Inter, Source Serif 4, Fraunces, JetBrains Mono, EB Garamond, IBM Plex Sans, Atkinson Hyperlegible) plus Debian's Noto core for broad non-Latin script coverage (Arabic, Devanagari, Cyrillic, Greek, Hebrew, Thai, …). Generated PDFs / slides / typeset docs look intentional out of the box. Drop your own `.ttf` / `.otf` into `~/.config/konrad/fonts/` to extend. Catalogue at [image/opencode/skills/pdf/references/fonts.md](image/opencode/skills/pdf/references/fonts.md).
 
 ## Requirements
 
@@ -92,7 +93,8 @@ Layer 2 is the interesting one. It's a directory with up to four optional pieces
 ├── opencode.jsonc      Deep-merged with the baked default at start.
 ├── agents/             Your own primary agents, layered in (filenames don't conflict).
 ├── skills/             Your own opencode skills, layered in.
-└── AGENTS.md           Personal/org model instructions, loaded on top of konrad's base.
+├── AGENTS.md           Personal/org model instructions, loaded on top of konrad's base.
+└── fonts/              .ttf / .otf / .ttc dropped here are loaded on top of the baked palette.
 ```
 
 The merge of `opencode.jsonc` is deep: **objects merge recursively, your keys win on conflict, new keys from either side come through, arrays replace.** That last one matters — see [the AGENTS.md convention](#adding-your-own-model-instructions) below.
@@ -230,11 +232,13 @@ konrad/
 │   ├── konrad-defaults/             # → /etc/konrad/ in the image (not opencode-discoverable)
 │   │   ├── opencode-defaults.jsonc  # Baked defaults — merged with user override at start
 │   │   └── instructions.md          # konrad's base instructions, loaded via instructions key
-│   └── opencode/                    # → ~/.config/opencode/ in the image
-│       ├── agents/                  # Built-in primary agents (konrad, manual-transformer)
-│       └── skills/                  # Bundled skills (do-it-manually, spreadsheets, pdf)
+│   ├── opencode/                    # → ~/.config/opencode/ in the image
+│   │   ├── agents/                  # Built-in primary agents (konrad, manual-transformer)
+│   │   └── skills/                  # Bundled skills (do-it-manually, spreadsheets, pdf)
+│   └── fonts/konrad/                # → /usr/local/share/fonts/konrad/ (seven OFL families)
 ├── scripts/
 │   ├── build-image.sh               # `podman build -t konrad:latest image/`
+│   ├── fetch-fonts.sh               # One-shot — pulls fonts from upstream when bumping versions
 │   └── install.sh                   # Symlinks bin/konrad into ~/.local/bin
 └── devcontainer/                    # Experimental: VS Code entry point as a second consumption path (see ROADMAP)
     └── devcontainer.json

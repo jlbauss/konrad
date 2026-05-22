@@ -435,11 +435,11 @@ writer.add_annotation(
     annotation=FreeText(
         text="Figure 1: revised after audit",
         rect=(100, 80, 400, 100),
-        font="Helvetica",
-        font_size="11pt",
-        font_color="000000",          # hex without leading #
-        background_color="ffffff",    # None for transparent
-        border_color=None,
+        font="Helvetica",                   # pypdf FreeText takes a PDF base-14 name
+        font_size="11pt",                   # or a name embedded in the document;
+        font_color="000000",                # the konrad font palette is for canvas-
+        background_color="ffffff",          # drawn content, not FreeText viewer-side
+        border_color=None,                  # rendering. See references/fonts.md.
     ),
 )
 with open("/workspace/captioned.pdf", "wb") as f:
@@ -504,12 +504,18 @@ Three things matter for a watermark that looks like a watermark:
 
 ```python
 import io
+import sys
+sys.path.insert(0, "/home/node/.config/opencode/skills/pdf/scripts")
+from font_helpers import register_font
+
 from pypdf import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
 from reportlab.lib.colors import Color
 
 
-def build_text_watermark(text, page_size, *, opacity=0.25, font_size=None):
+def build_text_watermark(text, page_size, *, opacity=0.25, font_size=None,
+                         family="Inter"):
+    fam = register_font(family)
     w, h = page_size
     if font_size is None:
         font_size = ((w * w + h * h) ** 0.5) / 8
@@ -518,7 +524,7 @@ def build_text_watermark(text, page_size, *, opacity=0.25, font_size=None):
     c.translate(w / 2, h / 2)
     c.rotate(45)
     c.setFillColor(Color(0.5, 0.5, 0.5, alpha=opacity))
-    c.setFont("Helvetica-Bold", font_size)
+    c.setFont(f"{fam}-Bold", font_size)
     c.drawCentredString(0, -font_size * 0.35, text)
     c.save()
     buf.seek(0)

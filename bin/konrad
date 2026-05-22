@@ -156,6 +156,8 @@ podman_run() {
       && user_mounts+=(-v "$USER_CFG_DIR/skills:/home/node/.config/konrad/skills:ro")
     [[ -f "$USER_CFG_DIR/AGENTS.md" ]] \
       && user_mounts+=(-v "$USER_CFG_DIR/AGENTS.md:/home/node/.config/konrad/AGENTS.md:ro")
+    [[ -d "$USER_CFG_DIR/fonts" ]] \
+      && user_mounts+=(-v "$USER_CFG_DIR/fonts:/home/node/.config/konrad/fonts:ro")
   fi
 
   # ${user_mounts[@]+"${user_mounts[@]}"} is the empty-safe array splice —
@@ -350,6 +352,8 @@ Files in ~/.config/konrad/ (all optional):
   agents/               Your own opencode primary agents, layered in.
   skills/               Your own opencode skills, layered in.
   AGENTS.md             Personal/org instructions, loaded on top of base.
+  fonts/                .ttf / .otf / .ttc dropped here are loaded into
+                        fontconfig on top of konrad's baked palette.
 EOF
 }
 
