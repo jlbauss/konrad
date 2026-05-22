@@ -108,6 +108,13 @@ Surface the trade-off before choosing.
   include the verdict using the canonical phrasings from the
   `quality-assurance` skill (pass / pass-with-caveat / fail /
   skipped-with-reason).
+- **Refuse rather than over-promise.** This skill ships the standard
+  docling pipeline, AcroForm-only FILL, and ANNOTATE for documents the
+  agent can locate text on. When the document falls outside that scope
+  — handwriting / formulas / dense multi-column EXTRACT, non-AcroForm
+  forms, scanned PDFs where text positions aren't recoverable — say
+  so plainly and stop. Each route doc names its own refusal points;
+  the unifying rule is don't silently retry with bigger hammers.
 
 ## Dependencies
 

@@ -388,7 +388,8 @@ python3 ~/.config/opencode/skills/pdf/scripts/annotate_apply.py spec.json
 ```
 
 The script prints the output path and the touched page indices (0-based)
-— use that for QA.
+— pass those to `rasterize_touched` when invoking the
+`quality-assurance` skill.
 
 ---
 

@@ -185,10 +185,15 @@ which.
 
 ### Per-operation checklists
 
-Per-operation checklists live in the producer skill (e.g. the PDF
-skill carries the watermark / highlight / blacken / FILL checklists
-in its route docs). The quality-assurance skill defines the cycle;
-each producer fills in what "looks correct" means for its outputs.
+Per-operation checklists live in the producer skill. For the PDF
+skill they're consolidated in `pdf/checklists.md` (watermark /
+highlight / blacken / FreeText / sticky note / box / rotate / FILL
+/ GENERATE), with each route doc cross-linking to its relevant
+anchor. Other producer skills locate theirs where best fits — inline
+in the route doc, in a sibling `checklists.md`, or as a frontmatter
+section in their `SKILL.md`. The quality-assurance skill defines the
+cycle; each producer fills in what "looks correct" means for its
+outputs.
 
 ## Language flavour
 

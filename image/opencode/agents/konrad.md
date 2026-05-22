@@ -128,6 +128,23 @@ Use the `skill` tool when the request matches one of the available skills surfac
 
 Use the `question` tool whenever you need a decision, preference, or clarification from the user — see the next section.
 
+### Cap shell output before it's huge
+
+When a Bash call might emit lots of output — a broad `grep`, an unbounded `find`, `cat` on a multi-MB file, a verbose log tail, a `docling` conversion that produces a 50-page markdown — pipe it through `head` / `tail` / `head -c` so only the part you'll actually read comes back into your context.
+
+| Pattern | What it does |
+|---|---|
+| `cmd \| head -50` | First 50 lines |
+| `cmd \| tail -20` | Last 20 lines |
+| `cmd 2>&1 \| head -c 4000` | First 4 KB including stderr (use byte cap for truly large outputs) |
+| `grep -rn -m 50 'pat' src/` | Stop after 50 matches (cheaper than `grep ... \| head` because grep stops searching) |
+| `find . -name '*.py' -print -quit` | Stop at the first match — for "does any exist" probes |
+| `ls -t logs/ \| head -10` | Newest 10 entries |
+
+The cost of an unbounded shell call is opaque until it lands in your context; the cost of `| head` is zero. Default to capped. If you need the rest later, ask for the next slice (`tail -N +51`, `sed -n '50,100p'`, etc.) rather than re-running uncapped.
+
+For deliverable verification specifically, the `quality-assurance` skill names this as "cost-aware reading" — same discipline, applied to verifying outputs.
+
 ## Asking the user
 
 **When you need an answer from the user, use the `question` tool. Not prose.**

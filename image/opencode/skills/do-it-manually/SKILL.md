@@ -24,6 +24,8 @@ You are not making progress, you are oscillating — because the input does not 
 
 This skill exists to make that approach a clean, repeatable workflow — by dispatching the `manual-transformer` subagent, which does the manual work in its own fresh context and returns a verified clean intermediate file. You then continue your original task on the clean file.
 
+The subagent's four mandatory checks (cardinality, random spot-check, field-invariant, suspicious-result scan, plus catch-all overuse) are this skill's implementation of the **language flavour** of the cross-skill **`quality-assurance`** cycle. The verdict vocabulary (pass / pass-with-caveat / fail / skipped-with-reason), the retry budget, and the post-verification contract come from the `quality-assurance` skill; the concrete patterns specific to manual data transformation live in [references/quality-assurance-patterns.md](references/quality-assurance-patterns.md).
+
 ## When to invoke
 
 Strong signals you should be using this skill RIGHT NOW:
@@ -122,6 +124,14 @@ Do not silently accept the report. Verification is part of the workflow, not opt
 You now have a clean intermediate file with verified structure. Continue with normal scripting on it — Python, awk, jq, whatever the original task needs. The dirty input is done.
 
 The intermediate file is a great artifact for the user to inspect or version-control, so leave it in place. Do not delete it when you finish.
+
+## When to refuse
+
+A few signals say "this is not the right tool" and the right move is a one-line refusal, not a heroic manual pass:
+
+- **Input is too large for one pass** (> 80 000 tokens, see Step 2's table) **and you have no clean way to split it.** Manual passes that exceed budget produce truncated outputs the verifier can't catch. Surface this and ask the user to split.
+- **Input requires domain judgement you don't have.** "Classify these into the right legal category" or "merge duplicate customers using your judgement" — the subagent will fabricate confidently. Refuse, and ask the user to either pre-classify or define the rule.
+- **Quality-assurance checks keep cascading.** If fixing one row reveals two more, or the suspicious-result scan triggers on every batch, the manual approach is not converging — the input is too pathological. Stop after one re-dispatch and surface to the user. A half-finished manual transformation is worse than admitting the approach isn't working.
 
 ## Anti-patterns
 

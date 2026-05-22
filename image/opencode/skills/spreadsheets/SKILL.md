@@ -42,7 +42,7 @@ Copy `templates/minimal_xlsx/` → edit XML directly → pack with `xlsx_pack.py
 1. **NEVER create a new `Workbook()`** for edit tasks. Always load the original file.
 2. The output MUST contain the **same sheets** as the input (same names, same data).
 3. Only modify the specific cells the task asks for — everything else must be untouched.
-4. **After saving output.xlsx, verify it**: open with `xlsx_reader.py` or `pandas` and confirm the original sheet names and a sample of original data are present. If verification fails, you wrote the wrong file — fix it before delivering.
+4. **After saving output.xlsx, verify it via the `quality-assurance` skill** — at minimum open with `xlsx_reader.py` or `pandas` and confirm the original sheet names and a sample of original data are present. The full checklist is in [§ Verification](#verification--invoke-the-quality-assurance-skill) below. If verification fails, you wrote the wrong file — fix it before delivering.
 
 Never use openpyxl round-trip on existing files (corrupts VBA, pivots, sparklines). Instead: unpack → use helper scripts → repack.
 
@@ -107,6 +107,20 @@ This is an EDIT task. Unpack → fix broken `<f>` nodes → pack. Preserve all o
 ## VALIDATE — Check formulas (read `references/validate.md` first)
 
 Run `formula_check.py` for static validation. Use `libreoffice_recalc.py` for dynamic recalculation when available.
+
+## Verification — invoke the quality-assurance skill
+
+After producing any `.xlsx` / `.csv` / `.tsv` deliverable, invoke the **`quality-assurance`** skill before reporting. The spreadsheet flavour is the **language** loop (read the deliverable, check against `task.md ## Success looks like`), not the visual loop. Spreadsheet-specific checks:
+
+- **Cardinality.** Output row count matches the spec (1:1 transforms must produce 1:1 rows; intentional filtering means counts diverge by the documented amount, not by surprise).
+- **Sheet preservation** (EDIT tasks). The output workbook contains the same sheets as the input — same names, same order — and the cells the task didn't ask to change are byte-identical. `xlsx_reader.py` against both files surfaces drift.
+- **Headers.** Column headers exactly match the spec. Watch for accidental rename (`"Date"` → `"date"`), accidental column drops, and accidental column duplication.
+- **No stringified numbers.** A value that should be numeric must render as `<v>1234</v>` in cell XML, not `<v>"1234"</v>` and not `<is>...</is>` (inline string). `formula_check.py` catches this; spot-check by reading a numeric column with pandas and confirming dtype is numeric, not object.
+- **Formulas are formulas, not values.** Every derived cell has an `<f>...</f>` element. A spec-required formula that ended up as a hardcoded number is a structural failure — surface, don't paper over.
+- **No corrupted ranges.** `formula_check.py` exit code 0 confirms no `#REF!` / `#NAME?` / circular references. Run before delivering.
+- **UTF-8 integrity.** Non-ASCII characters round-trip cleanly (no `Ã¼` / `Ã¶` mojibake in either header or body cells).
+
+Verdict vocabulary follows the `quality-assurance` skill: pass / pass-with-caveat / fail / skipped-with-reason. **Refusal affordance**: if the source file has structures the XML edit pipeline can't safely round-trip (corrupted relationships, pivot caches that don't survive unpack/pack, VBA macros the user didn't ask to touch), **say so and stop** — propose either (a) the user does the edit in Excel/LibreOffice manually, or (b) accept the structural loss explicitly. Don't ship a "fixed" file that silently lost something.
 
 ## Financial Color Standard
 

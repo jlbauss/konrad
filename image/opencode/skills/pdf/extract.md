@@ -19,12 +19,10 @@ expose.
 > **Use the language flavour of quality assurance for this route.**
 > EXTRACT produces text / markdown / JSON, not a visual artifact, so
 > the rasterize-and-look loop doesn't apply. Invoke the
-> **`quality-assurance`** skill and use its language flavour: read
-> the deliverable, check against `task.md ## Success looks like` —
-> does the output have the structure docling promised? did headings
-> survive? is the body roughly the right length? A source-vs-extracted
-> cross-check loop (rasterize each page, compare with the extracted
-> text) is plausible future work — flag it to the user if they want it.
+> **`quality-assurance`** skill and use its language flavour. The
+> concrete EXTRACT checks live in [§ Verification](#verification)
+> below; the cross-skill cycle (verdict vocabulary, retry budget,
+> post-verification contract) lives in the `quality-assurance` skill.
 
 ## Convert via CLI
 
@@ -152,23 +150,71 @@ for picture in doc.pictures:
 For a structure summary: heading tree first, then table count + figure
 count, before going into detail.
 
-## Quality checklist
+## Verification
 
-Eyeball the output for these failure modes and re-run with different
-flags if you see them. Don't iterate more than three times — instead,
-summarize what worked and what didn't.
+Invoke the **`quality-assurance`** skill (language flavour) after
+every conversion. EXTRACT-specific checks:
 
-| Symptom | Likely fix |
+- **Output exists at the expected path and is non-empty.** A zero-byte
+  output on a non-empty source is the first failure to catch — it
+  usually means OCR didn't run on a scanned document.
+- **Page count matches.** `pdf2image` or `pdfplumber` against the
+  source PDF for the page count; compare to docling's `result.pages`
+  or to the number of `===` page-separator markers in the output.
+- **Headings survived.** For markdown output, `grep -c '^#' output.md`
+  against the visible heading count in the source. Loss of all
+  headings is a structural failure (probably a wrong-pipeline issue,
+  not a parameter knob).
+- **Roughly-right length.** A 50-page document produces tens of
+  thousands of words, not a few hundred. Order-of-magnitude check
+  catches catastrophic OCR collapse.
+- **No `�` replacement-character clusters.** A few are tolerable; a
+  run of 20+ is a structural failure — the standard pipeline can't
+  recover these, surface to the user.
+- **Tables present where they're visible in the source.** For JSON
+  output, `len(doc.tables)`; for markdown, search for `|---|` patterns.
+  Missing tables that the user expected is a fail.
+
+### Cost-aware reading of the deliverable
+
+docling outputs can be **megabytes** on long documents. Don't read
+the whole file to verify structure — most failure modes show up at
+the boundaries.
+
+- **Get the size first.** `ls -lh output.md` before any read.
+- **Structural probe** before full read: `head -50 output.md` for
+  the opening, `tail -20 output.md` for the closing, `grep -c '^#'`
+  for heading count, `wc -l output.md` for line count.
+- **Spot-read** for body quality: `sed -n '5000,5050p' output.md` on
+  a known mid-document section, rather than reading sequentially.
+- **Full read** only when the spot-read surfaced something suspicious
+  and you need context, or when the file is small (under ~20 KB).
+
+The read-window discipline costs almost nothing on small docs and
+saves significant tokens on large ones — and the same set of checks
+verifies the deliverable either way.
+
+### Common failure modes and refusal points
+
+| Symptom | Likely fix or refusal |
 |---|---|
-| Output near-empty on a non-empty PDF | OCR is on by default; confirm it ran (no `--no-ocr`) and that RapidOCR is selected (`--ocr-engine rapidocr`). If the document is scanned and RapidOCR struggles, stop and surface the issue to the user. |
-| Tables missing where they're visually obvious | Drop `--no-tables` if you used it. Docling's standard table detection has known limits on dense or rotated tables; flag this honestly rather than over-promising. |
-| `�` replacement characters | The standard pipeline can't recover these. Tell the user and suggest re-OCRing the source with a different tool, or providing a born-digital version if one exists. |
-| Reading order shuffled (multi-column) | The standard pipeline doesn't reorder. Surface this and let the user decide whether to keep the output. |
-| Handwriting or formulas missed | Out of scope for the standard pipeline. Surface and stop. |
+| Output near-empty on a non-empty PDF | OCR is on by default; confirm it ran (no `--no-ocr`) and that RapidOCR is selected (`--ocr-engine rapidocr`). If the document is scanned and RapidOCR struggles, **refuse**: surface to the user, propose they re-OCR with a different tool. |
+| Tables missing where they're visually obvious | Drop `--no-tables` if you used it. Docling's standard table detection has known limits on dense or rotated tables; **flag honestly** rather than over-promising. |
+| `�` replacement characters | The standard pipeline can't recover these. **Refuse**: tell the user, suggest re-OCRing the source with a different tool, or providing a born-digital version if one exists. |
+| Reading order shuffled (multi-column) | The standard pipeline doesn't reorder. **Surface honestly** and let the user decide whether to keep the output. |
+| Handwriting or formulas missed | **Refuse**: out of scope for the standard pipeline. Surface and stop. |
 
-In short: this skill does the standard pipeline well. It does **not**
-silently retry with bigger hammers — if the standard pipeline can't
-handle the document, say so.
+The unifying rule: **this skill does the standard pipeline well; it
+does not silently retry with bigger hammers**. If the standard
+pipeline can't handle the document, the right answer is a one-line
+refusal naming what went wrong and what the user can try elsewhere.
+
+Verdict vocabulary follows the `quality-assurance` skill: pass /
+pass-with-caveat / fail / skipped-with-reason. Most EXTRACT failures
+are *structural* (wrong pipeline for the document), not parametric —
+the retry budget is therefore thin: at most one rerun with a
+different flag (e.g. `--no-tables` if the standard pipeline crashes
+on tables), then escalate.
 
 ## Edge cases
 
