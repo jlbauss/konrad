@@ -63,7 +63,7 @@ Fixed-shape skeleton, kept short — a typical file fits on a screen:
 <3–5 bullets: the path I'm taking. Not micro-steps — those go in todowrite.>
 
 ## Success looks like
-<1–2 bullets: how I'll know I'm done. The QA loop reads this later.>
+<1–2 bullets: how I'll know I'm done. The quality-assurance skill reads this later.>
 
 ## Decisions & findings
 <appended to during execution: key forks taken, things discovered>
@@ -118,11 +118,12 @@ work-shaped request.
 *where the agent is right now*. Each tool stays in its lane — no
 duplication, no sync burden, no drift.
 
-**Why does QA read the file, not `todowrite`?** QA's input is "user
-wanted X; did we deliver X?" — that's `Plan` + `Success looks like` +
-`Outcome`, all in `task.md`. The in-flight checklist isn't relevant to
-the QA judgement. This is also why the design pairs naturally with the
-ROADMAP "no AI slop" QA bullet: both rely on the same artifact.
+**Why does the quality-assurance skill read the file, not `todowrite`?**
+Verification's input is "user wanted X; did we deliver X?" — that's
+`Plan` + `Success looks like` + `Outcome`, all in `task.md`. The
+in-flight checklist isn't relevant to the verdict. This is also why
+the design pairs naturally with the ROADMAP "no AI slop" bullet: both
+rely on the same artifact.
 
 ## What got dropped from the old skill
 

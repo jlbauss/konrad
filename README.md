@@ -11,7 +11,7 @@ Status: **early / experimental**. The "safe" half of the original `safe-cowork` 
 - **opencode prewired** to talk to LM Studio (default), Ollama, or llama.cpp on the host — zero configuration on first run.
 - **A layered config system** that lets you add any opencode-supported provider (Anthropic, OpenAI, OpenRouter, Gemini, …) via a tiny override file, without losing konrad's defaults.
 - **A planning contract** baked into Konrad's agent prompt ([image/opencode/agents/konrad.md](image/opencode/agents/konrad.md)): a single `.agent/task.md` file for any task with side effects (understanding, plan, success criteria, decisions, outcome), and aggressive use of opencode's `todowrite` tool for live progress visibility. See [docs/design/task-md-and-todowrite.md](docs/design/task-md-and-todowrite.md) for the rationale.
-- **A curated skill set.** Skills are loaded via opencode's `skill` tool from `~/.config/opencode/skills/`. The image ships with `do-it-manually` (structured-but-irregular data extraction), `spreadsheets` (xlsx/csv CRUD), and `pdf` (extract / edit / annotate / fill / generate). More on the way — see [ROADMAP.md](ROADMAP.md).
+- **A curated skill set.** Skills are loaded via opencode's `skill` tool from `~/.config/opencode/skills/`. The image ships with `do-it-manually` (structured-but-irregular data extraction), `spreadsheets` (xlsx/csv CRUD), `pdf` (extract / edit / annotate / fill / generate), and `quality-assurance` (the cross-skill verification cycle every producer invokes before reporting — visual or language). More on the way — see [ROADMAP.md](ROADMAP.md).
 - **A curated font palette.** Seven SIL OFL families baked into the image (Inter, Source Serif 4, Fraunces, JetBrains Mono, EB Garamond, IBM Plex Sans, Atkinson Hyperlegible) plus Debian's Noto core for broad non-Latin script coverage (Arabic, Devanagari, Cyrillic, Greek, Hebrew, Thai, …). Generated PDFs / slides / typeset docs look intentional out of the box. Drop your own `.ttf` / `.otf` into `~/.config/konrad/fonts/` to extend. Catalogue at [image/opencode/skills/pdf/references/fonts.md](image/opencode/skills/pdf/references/fonts.md).
 
 ## Requirements
@@ -195,9 +195,9 @@ konrad splits state across three tiers, with one rule: **`.agent/` belongs to th
 | `.agent/task.md` | Current task's plan + outcome (planning contract) | Overwritten next task; committable. |
 | `.agent/artifacts/` | Durable mid-task outputs (`manual-output.<ext>`, derived datasets, etc.) | Hands-off; committable. |
 | `.agent/scratch/` | Agent-written scripts, exploration code, one-off probes | Auto-pruned >7d on every launch; gitignored. |
-| `.agent/qa/<stamp>/` | QA evidence (rasterized PNGs, diff outputs) | Auto-pruned >7d on every launch; gitignored. |
+| `.agent/quality-assurance/<stamp>/` | Quality-assurance evidence on a failed verification (rasterized PNGs, verdict notes) | Auto-pruned >7d on every launch; gitignored. |
 
-`konrad` auto-adds `.agent/qa/` and `.agent/scratch/` to your `.gitignore` on first run. `.agent/task.md` and `.agent/artifacts/` stay tracked because you may want to commit them.
+`konrad` auto-adds `.agent/quality-assurance/` and `.agent/scratch/` to your `.gitignore` on first run. `.agent/task.md` and `.agent/artifacts/` stay tracked because you may want to commit them.
 
 **Centralised on the host, in `~/.local/state/konrad/log/`.** opencode's structured log files (timestamped, `+Xms` deltas per line) accumulate here across all projects, alongside a `<timestamp>-session.txt` sidecar per launch that records which host workspace was active. Standard XDG state path, easy to `tail -f`, auto-pruned >7d on every launch:
 
@@ -234,7 +234,7 @@ konrad/
 │   │   └── instructions.md          # konrad's base instructions, loaded via instructions key
 │   ├── opencode/                    # → ~/.config/opencode/ in the image
 │   │   ├── agents/                  # Built-in primary agents (konrad, manual-transformer)
-│   │   └── skills/                  # Bundled skills (do-it-manually, spreadsheets, pdf)
+│   │   └── skills/                  # Bundled skills (do-it-manually, spreadsheets, pdf, quality-assurance)
 │   └── fonts/konrad/                # → /usr/local/share/fonts/konrad/ (seven OFL families)
 ├── scripts/
 │   ├── build-image.sh               # `podman build -t konrad:latest image/`
@@ -257,7 +257,7 @@ A short, opinionated record of the load-bearing choices, so future-you can tell 
 - **Podman, not Docker.** Open-source, free for commercial use, ergonomic on macOS. `--userns=keep-id` lets the container's `node` user share UID with the host user, so bind-mounted files have sane ownership. Docker support is in [ROADMAP.md](ROADMAP.md).
 - **The image is the canonical artifact.** `image/Dockerfile` builds `konrad:latest`. `bin/konrad` is the primary consumer; the experimental `devcontainer/devcontainer.json` is a second consumer (see [ROADMAP.md](ROADMAP.md)).
 - **Layered config, not replacement.** konrad's baked `opencode.jsonc` is composed with the user's `~/.config/konrad/opencode.jsonc` at every container start via a self-contained Node deep-merger. Users add a provider without losing the defaults; konrad ships a new local engine and the user gets it automatically on next rebuild. The merge step is in `image/entrypoint.sh` and runs *before* opencode loads anything.
-- **Three-tier state.** `.agent/` in the workspace belongs to the agent end-to-end (task plan, artifacts, scratch, QA evidence — see [State and isolation](#state-and-isolation)). Opencode logs land in `~/.local/state/konrad/log/` on the host (standard XDG path). Auth, cache, and small UI state live in three named Podman volumes shared across projects. Opencode sessions and the conversation DB are ephemeral (gone on container exit) — durable task memory is `.agent/task.md`, not the framework's history. See [docs/design/state-isolation.md](docs/design/state-isolation.md) for why.
+- **Three-tier state.** `.agent/` in the workspace belongs to the agent end-to-end (task plan, artifacts, scratch, quality-assurance evidence — see [State and isolation](#state-and-isolation)). Opencode logs land in `~/.local/state/konrad/log/` on the host (standard XDG path). Auth, cache, and small UI state live in three named Podman volumes shared across projects. Opencode sessions and the conversation DB are ephemeral (gone on container exit) — durable task memory is `.agent/task.md`, not the framework's history. See [docs/design/state-isolation.md](docs/design/state-isolation.md) for why.
 - **No per-project secrets in the workspace.** Auth credentials live only in the `konrad-secrets` named volume. Users who don't read `.gitignore` carefully still can't accidentally publish their tokens.
 - **`AGENTS.md` is the user's slot; `instructions` is konrad's.** opencode loads both, additively, into the system prompt. By assigning each side its own loading mechanism, we never collide.
 - **Minimal hardcoded defaults.** Provider endpoints ship pre-wired but model lists ship empty — users declare whichever model they've loaded in `~/.config/konrad/opencode.jsonc`. Earlier versions auto-discovered models via the `opencode-models-discovery` plugin, but the startup cost wasn't worth it; an inline replacement is on the roadmap. **No top-level `"model"` is set in the baked default** — opencode prompts on first run, then remembers your choice in the `konrad-state` volume across subsequent runs.

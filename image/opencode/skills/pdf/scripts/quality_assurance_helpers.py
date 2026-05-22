@@ -1,20 +1,24 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
 """
-qa_helpers.py — Rasterize touched pages for vision QA.
+quality_assurance_helpers.py — Rasterize touched pages for visual
+quality assurance of PDF deliverables.
 
-Importable module, not a CLI. See `qa.md` for the QA cycle this feeds.
+Importable module, not a CLI. Feeds the **`quality-assurance` skill**
+(at `~/.config/opencode/skills/quality-assurance/SKILL.md`), which
+governs the verification cycle this helper supports.
 
 Typical import dance from agent code:
 
     import sys
     sys.path.insert(0, "/home/node/.config/opencode/skills/pdf/scripts")
-    from qa_helpers import rasterize_touched
+    from quality_assurance_helpers import rasterize_touched
 
 Default behavior writes PNGs into a fresh tempdir (caller is responsible
 for cleanup). Pass `persist_to=<path>` to drop the images into a known
-directory instead — used when QA fails and you want to leave evidence
-under `/workspace/.agent/qa/<timestamp>/` (auto-pruned >7d by konrad).
+directory instead — used on verification failure to leave evidence
+under `/workspace/.agent/quality-assurance/<timestamp>/` (auto-pruned
+>7d by konrad).
 """
 
 from __future__ import annotations
@@ -40,7 +44,7 @@ def rasterize_touched(
         page_indices: 0-based page indices to rasterize. Duplicates are
             deduplicated; order in the returned list is ascending.
         dpi: 100 is the default — sufficient for routine placement-grade
-            QA (highlight covers the right area, watermark legible,
+            checks (highlight covers the right area, watermark legible,
             FreeText in the right spot, FILL value in its field). Vision
             cost on most APIs scales with pixel count, so dpi=100 vs
             dpi=150 is roughly half the per-page token cost. Push to
@@ -50,7 +54,7 @@ def rasterize_touched(
         persist_to: If None, a fresh tempdir is created and returned —
             the caller owns cleanup. If a Path is given, that directory
             is used (created if needed) and survives the process. Use
-            this on QA failure to keep evidence.
+            this on verification failure to keep evidence.
 
     Returns:
         (output_dir, [paths]) — output_dir is the directory containing

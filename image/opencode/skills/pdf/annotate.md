@@ -19,8 +19,10 @@ extract images / metadata), that's EDIT, not ANNOTATE.
 | box / line | pypdf `Rectangle` / `Line` annotation | [Box / line](#box--line) |
 | watermark | reportlab overlay merged per page | [Watermark](#watermark) |
 
-QA is **skill-wide**: see [qa.md](qa.md) for the progressive-verification
-rule (start with one page), post-rasterize contract, retry policy.
+Verification: invoke the **`quality-assurance`** skill for the cycle
+(progressive verification, post-rasterize contract, retry policy);
+see [checklists.md](checklists.md) for the per-op checks specific to
+this skill.
 
 ---
 
@@ -38,7 +40,7 @@ The script applies them with fixed visual styles:
 2. **Pick a strategy** that matches the user's wish (see [Strategies](#strategies-for-common-annotation-tasks) below).
 3. **Build the spec** by adapting the recipe's predicate to your case.
 4. **Apply** — `python3 annotate_apply.py spec.json`.
-5. **QA** — see [qa.md](qa.md). One page first; expand if it passes.
+5. **Verify** — invoke the **`quality-assurance`** skill; one page first, expand if it passes. Per-op checks in [checklists.md](checklists.md).
 
 Rect coords in the spec always use **pdfplumber's system** (top-left
 origin, y increases downward, points). The script handles the flip to
@@ -558,4 +560,4 @@ Tell the user:
 - For text-search highlights: search term + per-page match count
 - For specs **without** blacken: annotations are non-destructive — the underlying text is unchanged, the PDF still has selectable text and proper accessibility.
 - For specs **with** blacken: the output is a flattened image-only PDF — no extractable text anywhere, every page is now pixels. State this plainly so the user understands what they got. Include the file-size delta in the report (typically 30–50× the original on text-heavy documents).
-- QA verdict per qa.md's Reporting section
+- Verdict per the `quality-assurance` skill's Reporting language section

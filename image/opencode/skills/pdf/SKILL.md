@@ -77,8 +77,8 @@ Surface the trade-off before choosing.
   - **CLI scripts** (`fill_inspect.py`, `fill_write.py`, `annotate_apply.py`)
     — invoke with the full path:
     `python3 ~/.config/opencode/skills/pdf/scripts/<name>.py …`.
-  - **Importable helper modules** (`pdf_helpers.py`, `qa_helpers.py`,
-    `font_helpers.py`) —
+  - **Importable helper modules** (`pdf_helpers.py`, `font_helpers.py`,
+    `quality_assurance_helpers.py`) —
     `sys.path.insert(0, "/home/node/.config/opencode/skills/pdf/scripts")`
     then `from pdf_helpers import …`. Route docs repeat this three-line
     dance at the top of recipes that use helpers.
@@ -92,19 +92,22 @@ Surface the trade-off before choosing.
 - **To *see* a PDF, rasterize. To *parse* a PDF, extract.** The agent's
   `read` tool doesn't return useful image content for `.pdf` files — it
   returns a stub. To look at a page, rasterize via `rasterize_touched`
-  from `qa_helpers`. To know what's on a page (text, word positions),
+  from `quality_assurance_helpers`. To know what's on a page (text, word positions),
   use `pdfplumber.extract_words()` or `find_words` from `pdf_helpers` —
   dramatically cheaper than rasterize-and-look.
-- **Visually QA visual deliverables.** EDIT, ANNOTATE, GENERATE, FILL
-  all produce visual output; verify before reporting. See [qa.md](qa.md)
-  for the applies/skips matrix, the **progressive-verification rule
-  (start with one page)**, the post-rasterize contract (read PNGs or
-  declare QA skipped honestly), the retry policy, and the
-  evidence-directory convention.
+- **Verify visual deliverables.** EDIT, ANNOTATE, GENERATE, FILL all
+  produce visual output; invoke the **`quality-assurance`** skill
+  before reporting. It carries the cycle, the
+  progressive-verification rule (start with one page), the
+  post-rasterize contract (read PNGs or declare skipped honestly),
+  the retry policy, and the evidence-directory convention. The
+  per-operation checklists below tell you what "correct" looks like
+  for each pdf op.
 - **Report what you did.** Output path, page count, any non-default
-  flags. For EXTRACT, report whether OCR ran. After QA, include the
-  verdict using qa.md's canonical phrasings (pass / pass-with-caveat /
-  fail / QA skipped).
+  flags. For EXTRACT, report whether OCR ran. After verification,
+  include the verdict using the canonical phrasings from the
+  `quality-assurance` skill (pass / pass-with-caveat / fail /
+  skipped-with-reason).
 
 ## Dependencies
 
@@ -115,7 +118,7 @@ These are preinstalled in the konrad image, so usually nothing to do:
 | `docling` | EXTRACT — text / conversion / chunking / structure | Python venv |
 | `pypdf` | EDIT (merge/split/rotate/encrypt/metadata); ANNOTATE (sticky note, free-text, box, line, overlay merging); FILL | Python venv |
 | `pdfplumber` | ANNOTATE — word / line discovery for spec building (`find_words`, `find_lines`); EXTRACT — fallback table extraction | Python venv |
-| `pdf2image` | QA — rasterize touched pages for vision review | Python venv |
+| `pdf2image` | Quality assurance — rasterize touched pages for vision review | Python venv |
 | `pypdfium2` | ANNOTATE — whole-PDF rasterization when blacken is present (real redaction). Transitive dep of pdfplumber | Python venv |
 | `reportlab` | ANNOTATE — overlay rendering for highlight / blacken / watermark / free-text; GENERATE — bare-bones page output | Python venv |
 | `poppler-utils` | EDIT — `pdfimages` raw image extract | apt |

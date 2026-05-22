@@ -84,9 +84,10 @@ with open("/workspace/rotated.pdf", "wb") as out:
 
 To rotate every page by the same angle, drop the conditional.
 
-> **QA**: rotation has a visual deliverable — see [qa.md](qa.md) and
-> rasterize the rotated page(s) to verify orientation and no clipping
-> before reporting.
+> **Verify**: rotation has a visual deliverable — invoke the
+> **`quality-assurance`** skill and rasterize the rotated page(s) to
+> check orientation and no clipping before reporting. Per-op checks
+> in [checklists.md](checklists.md#rotate).
 
 ## Encrypt / decrypt
 
@@ -201,9 +202,10 @@ Keys must start with `/` and use the PDF metadata names (`/Title`,
 After each edit, tell the user:
 - Output path
 - Page count of the result
-- **QA verdict** (for ops that earn QA — see [qa.md](qa.md)'s applies
-  matrix): pass, pass-with-caveat, fail (with evidence dir), or skipped
-  (with the reason — no vision or user opt-out)
+- **Quality-assurance verdict** (for ops that earn it — see the
+  applies matrix in [checklists.md](checklists.md#when-does-pdf-earn-verification)):
+  pass, pass-with-caveat, fail (with evidence dir), or skipped (with
+  the reason — no vision or user opt-out)
 - For merges: which source files contributed in which order
 - For splits: how many files were written
 - For encryption changes: that the file is now encrypted / decrypted

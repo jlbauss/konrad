@@ -129,17 +129,19 @@ When the user asks to fill a form:
    block of values at once.
 5. Build the values JSON, write it to `/workspace/values.json` for
    transparency, then run `fill_write.py`.
-6. **Run vision QA on the filled output** — see [qa.md](qa.md). Touched
-   pages are the ones containing fields you just wrote to (the inspect
-   output identifies which page each field lives on). Verify each value
-   landed in its field, nothing overflows the visible field area, and
-   checkbox/radio states render as checked when set to true.
-   Parametric failures (text overflow at the right edge of a field) are
-   retry-eligible up to twice with a shorter value or a wrap; structural
-   failures (value in the wrong field, fields blank in the rendered
-   output despite `/NeedAppearances=true`) surface to the user.
-7. Report: output path, filled count, **QA verdict**, and anything in
-   `validation_errors` or `not_found`.
+6. **Verify the filled output** — invoke the **`quality-assurance`**
+   skill. Touched pages are the ones containing fields you just
+   wrote to (the inspect output identifies which page each field
+   lives on). Verify each value landed in its field, nothing
+   overflows the visible field area, and checkbox/radio states
+   render as checked when set to true. Per-op checks in
+   [checklists.md](checklists.md#fill). Parametric failures (text
+   overflow at the right edge of a field) are retry-eligible up to
+   twice with a shorter value or a wrap; structural failures (value
+   in the wrong field, fields blank in the rendered output despite
+   `/NeedAppearances=true`) surface to the user.
+7. Report: output path, filled count, **quality-assurance verdict**,
+   and anything in `validation_errors` or `not_found`.
 
 ## Common pitfalls
 

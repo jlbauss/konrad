@@ -1,6 +1,6 @@
-# QA Patterns for Manual Transformation
+# Quality-assurance patterns for manual transformation
 
-This file is a deeper toolbox for Phase 4 of `do-it-manually`. SKILL.md lists the four mandatory checks; this file shows concrete patterns for executing them, plus optional checks for higher-stakes work.
+This file is a deeper toolbox for Phase 4 of `do-it-manually`. SKILL.md lists the four mandatory checks; this file shows concrete patterns for executing them, plus optional checks for higher-stakes work. These checks are this skill's contribution to the cross-skill `quality-assurance` cycle (the language flavour): you read the deliverable, compare it to the spec in `task.md`, and render a verdict.
 
 ## 1 — Cardinality check
 
@@ -52,7 +52,7 @@ Then for each line N: `sed -n "${N}p" input.csv` to see the input row, and find 
 - **Cleaned text fields**: semantic equivalence. "John  Smith " → "John Smith" is correct; "John Smith" → "Jon Smith" is a hallucination.
 - **Reformatted fields** (e.g. date `12/3/2024` → `2024-12-03`): the underlying value must match. Use your judgment on the transformation rules you committed to.
 
-Report the 5 line numbers you checked, what you found, and any fixes you applied. A clean spot-check log is the strongest evidence the user has that QA actually happened.
+Report the 5 line numbers you checked, what you found, and any fixes you applied. A clean spot-check log is the strongest evidence the user has that verification actually happened.
 
 ## 3 — Field-invariant check
 

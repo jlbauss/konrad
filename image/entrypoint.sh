@@ -106,12 +106,12 @@ dbg "auth.json symlink ready"
 # ── 4. Workspace .agent/ bootstrap + auto-prune ──────────────────────────────
 # .agent/ belongs to the agent end-to-end after the 2026-05-20 state-isolation
 # change. Make the conventional subdirs upfront so skills don't have to
-# mkdir -p them, then prune ephemeral subdirs (qa/, scratch/) of anything
-# older than 7 days. Hands off task.md and artifacts/ — those are
-# user-committable working memory.
+# mkdir -p them, then prune ephemeral subdirs (quality-assurance/, scratch/)
+# of anything older than 7 days. Hands off task.md and artifacts/ — those
+# are user-committable working memory.
 if [[ -d /workspace ]]; then
-  mkdir -p "$WORKSPACE_AGENT/scratch" "$WORKSPACE_AGENT/artifacts" "$WORKSPACE_AGENT/qa"
-  find "$WORKSPACE_AGENT/qa" "$WORKSPACE_AGENT/scratch" \
+  mkdir -p "$WORKSPACE_AGENT/scratch" "$WORKSPACE_AGENT/artifacts" "$WORKSPACE_AGENT/quality-assurance"
+  find "$WORKSPACE_AGENT/quality-assurance" "$WORKSPACE_AGENT/scratch" \
        -mindepth 1 -maxdepth 1 -mtime +7 -exec rm -rf {} + 2>/dev/null || true
 
   # Orphan-detection: legacy .agent/opencode/ from a pre-2026-05-20 konrad
@@ -120,6 +120,14 @@ if [[ -d /workspace ]]; then
   if [[ -d /workspace/.agent/opencode ]]; then
     warn "found orphan /workspace/.agent/opencode from a pre-2026-05-20 konrad"
     warn "safe to 'rm -rf .agent/opencode/' once you've checked for a stray auth.json"
+  fi
+
+  # Orphan-detection: legacy .agent/qa/ from before the 2026-05-22 rename
+  # to .agent/quality-assurance/. Same one-shot warning shape.
+  if [[ -d /workspace/.agent/qa ]]; then
+    warn "found orphan /workspace/.agent/qa from before the quality-assurance rename"
+    warn "evidence (if any) lives at /workspace/.agent/quality-assurance/ now"
+    warn "safe to 'rm -rf .agent/qa/' once you've moved anything you want to keep"
   fi
 fi
 dbg ".agent/ bootstrap + prune done"

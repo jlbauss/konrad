@@ -33,12 +33,12 @@ there. Layout:
   task.md             # planning artifact (see task-md-and-todowrite.md)
   scratch/            # python scripts the agent wrote, exploration code
   artifacts/          # durable mid-task outputs (manual-output.<ext>, etc.)
-  qa/<stamp>/         # QA evidence (PNGs etc.) — bounded retention
+  quality-assurance/<stamp>/   # quality-assurance evidence on a fail — bounded retention
 ```
 
 Auto-pruning: `image/entrypoint.sh` deletes anything in
-`.agent/qa/*` and `.agent/scratch/*` older than 7 days at every
-container start. `artifacts/` and `task.md` are hands-off — the user
+`.agent/quality-assurance/*` and `.agent/scratch/*` older than 7
+days at every container start. `artifacts/` and `task.md` are hands-off — the user
 may want to commit them or pick them up later.
 
 **Opencode session state is ephemeral.** `~/.local/share/opencode/`
@@ -99,7 +99,7 @@ count unchanged at three.
 
 ## Cleanup story
 
-- **Workspace `.agent/qa/` and `.agent/scratch/`**: auto-pruned at
+- **Workspace `.agent/quality-assurance/` and `.agent/scratch/`**: auto-pruned at
   every container start (>7d), in the entrypoint.
 - **Central log dir**: auto-pruned at every `bin/konrad` launch (>7d),
   host-side. `konrad clean --all` also wipes it.
@@ -153,5 +153,5 @@ location grows without bound. The user never has to remember.
 - CLI mount topology + pre-launch host-side prune: [bin/konrad](../../bin/konrad)
 - Entrypoint sidecar write + workspace-side prune + legacy warning: [image/entrypoint.sh](../../image/entrypoint.sh)
 - Agent prompt's `.agent/` layout conventions: [image/opencode/agents/konrad.md](../../image/opencode/agents/konrad.md)
-- PDF skill QA path updated to `.agent/qa/<stamp>/`: [image/opencode/skills/pdf/qa.md](../../image/opencode/skills/pdf/qa.md)
+- Evidence path under the quality-assurance skill is `.agent/quality-assurance/<stamp>/`: [image/opencode/skills/quality-assurance/SKILL.md](../../image/opencode/skills/quality-assurance/SKILL.md)
 - do-it-manually skill artifact path updated to `.agent/artifacts/manual-output.<ext>`: [image/opencode/skills/do-it-manually/](../../image/opencode/skills/do-it-manually/)

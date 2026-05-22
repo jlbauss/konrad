@@ -95,12 +95,12 @@ ensure_gitignore() {
 
   # Decide what we still need to add by reading $gi up-front (before any
   # write), so we never read and write in the same pipeline.
-  local have_qa=0 have_scratch=0
+  local have_quality_assurance=0 have_scratch=0
   if [[ -f "$gi" ]]; then
-    grep -qE '^\.agent/qa/?$' "$gi"      && have_qa=1
-    grep -qE '^\.agent/scratch/?$' "$gi" && have_scratch=1
+    grep -qE '^\.agent/quality-assurance/?$' "$gi" && have_quality_assurance=1
+    grep -qE '^\.agent/scratch/?$' "$gi"           && have_scratch=1
   fi
-  [[ "$have_qa" = 1 && "$have_scratch" = 1 ]] && return 0
+  [[ "$have_quality_assurance" = 1 && "$have_scratch" = 1 ]] && return 0
 
   local needs_newline=""
   if [[ -s "$gi" ]]; then
@@ -111,10 +111,10 @@ ensure_gitignore() {
   {
     [[ -n "$needs_newline" ]] && printf '\n'
     printf '# konrad agent working state (auto-pruned >7d on every launch)\n'
-    [[ "$have_qa"      = 0 ]] && printf '.agent/qa/\n'
-    [[ "$have_scratch" = 0 ]] && printf '.agent/scratch/\n'
+    [[ "$have_quality_assurance" = 0 ]] && printf '.agent/quality-assurance/\n'
+    [[ "$have_scratch"           = 0 ]] && printf '.agent/scratch/\n'
   } >> "$gi"
-  info "added .agent/qa/ and .agent/scratch/ to $gi"
+  info "added .agent/quality-assurance/ and .agent/scratch/ to $gi"
 }
 
 # Prune the central log dir of files older than 7 days. Runs host-side
@@ -340,7 +340,7 @@ Files in the workspace (.agent/ belongs to the agent end-to-end):
   .agent/task.md        Current task's plan + outcome (committable).
   .agent/artifacts/     Durable mid-task outputs (committable).
   .agent/scratch/       Agent-written scripts / exploration (auto-pruned >7d).
-  .agent/qa/<stamp>/    QA evidence (auto-pruned >7d).
+  .agent/quality-assurance/<stamp>/    Quality-assurance evidence on a fail (auto-pruned >7d).
 
 Files on the host (outside the workspace):
   $KONRAD_LOG_DIR

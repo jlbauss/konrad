@@ -29,7 +29,7 @@ Call the Task tool with `manual-transformer` and the prompt:
 
 > Input: `/workspace/data/receipts.txt` — ~60 OCR-extracted receipts, mixed German/English, irregular layouts.
 > Output: `.agent/artifacts/manual-output.csv` with columns `date,vendor,total_eur,category`.
-> Rules: Dates in ISO 8601. Vendor names canonicalized to brand (e.g. "EDEKA Müller Straße 12" → "Edeka"). Category from {groceries, travel, pharmacy, other}. 1:1 cardinality, no filtering. Use `MISSING` for unreadable fields. Return the standard QA report.
+> Rules: Dates in ISO 8601. Vendor names canonicalized to brand (e.g. "EDEKA Müller Straße 12" → "Edeka"). Category from {groceries, travel, pharmacy, other}. 1:1 cardinality, no filtering. Use `MISSING` for unreadable fields. Return the standard quality-assurance report.
 
 ### Step 4 — Verify the report
 
@@ -41,7 +41,7 @@ The subagent returns:
 > - Field-invariant: dates preserved verbatim (just reformatted to ISO) ✓
 > - Suspicious-result scan: 1 row with `MISSING` for vendor + category (line 47, fully illegible OCR). No clusters.
 > - `MISSING` rows: row 47 only.
-> - Fixes during QA: none.
+> - Fixes during quality assurance: none.
 
 Looks clean. Confirm `.agent/artifacts/manual-output.csv` exists, peek at it briefly, proceed.
 

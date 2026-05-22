@@ -67,12 +67,13 @@ origin at the **bottom-left** of the page. `cm` and `inch` from
 For multi-page output, call `c.showPage()` between pages and lay out each
 page's content before the next `showPage()`.
 
-> **QA**: generated output needs visual verification — see [qa.md](qa.md).
-> Rasterize the page(s) and check text fits, no clipping at right or
-> bottom edges, fonts render (not tofu/boxes), and layout matches what
-> the user asked for. Parametric failures (text overruns the page) are
-> retry-eligible up to twice; structural failures (wrong content) go
-> straight to the user.
+> **Verify**: generated output needs visual verification — invoke
+> the **`quality-assurance`** skill. Rasterize the page(s) and check
+> text fits, no clipping at right or bottom edges, fonts render (not
+> tofu/boxes), and layout matches what the user asked for. Parametric
+> failures (text overruns the page) are retry-eligible up to twice;
+> structural failures (wrong content) go straight to the user.
+> Per-op checks in [checklists.md](checklists.md#generate-bare-bones-page).
 
 ## What this route deliberately does not do
 
@@ -92,7 +93,7 @@ After generating a PDF, tell the user:
 - Output path
 - Page count
 - Page size used (A4, Letter, etc.) if it wasn't the default
-- **QA verdict** (see [qa.md](qa.md)): pass, pass-with-caveat, fail
-  (with evidence dir), or skipped
+- **Quality-assurance verdict** (see the `quality-assurance` skill):
+  pass, pass-with-caveat, fail (with evidence dir), or skipped
 - That the page is bare-bones — no design — and that polished output is on
   the roadmap, not in this skill today

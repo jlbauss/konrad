@@ -1,6 +1,6 @@
 ---
 name: do-it-manually
-description: A reality-check for data-transformation and cleanup tasks better solved by reading and rewriting than by coding. TRIGGER when you have spent 3+ iterations writing or debugging code (Python scripts, regex, parsers, scrapers) on the same problem without converging; when input data is "structured-irregular" — each item a different special case rather than uniform; when the data lives in a long tail of formatting pathologies no single parser can fully handle; when you catch yourself thinking "if I could just look at this myself, I'd be done in 5 minutes." The skill dispatches a dedicated `manual-transformer` subagent that reads the input in fresh context, writes a clean intermediate output, and runs mandatory QA (cardinality, spot-checks, no-fabrication). You then continue your original task with the verified clean intermediate. Use this skill whenever you would otherwise reach for the Nth regex patch.
+description: A reality-check for data-transformation and cleanup tasks better solved by reading and rewriting than by coding. TRIGGER when you have spent 3+ iterations writing or debugging code (Python scripts, regex, parsers, scrapers) on the same problem without converging; when input data is "structured-irregular" — each item a different special case rather than uniform; when the data lives in a long tail of formatting pathologies no single parser can fully handle; when you catch yourself thinking "if I could just look at this myself, I'd be done in 5 minutes." The skill dispatches a dedicated `manual-transformer` subagent that reads the input in fresh context, writes a clean intermediate output, and runs mandatory quality-assurance checks (cardinality, spot-checks, no-fabrication). You then continue your original task with the verified clean intermediate. Use this skill whenever you would otherwise reach for the Nth regex patch.
 user-invocable: true
 allowed-tools: "Read Write Edit Bash Glob Grep Task"
 ---
@@ -79,7 +79,7 @@ Use the result to decide whether one subagent can handle it, or whether you need
 | 30 000 – 80 000 | Dispatch directly. Mention the size in the dispatch prompt so the subagent knows it has a tight budget for working room. |
 | > 80 000 | Split the input externally — by year, section, file, or any natural boundary — and dispatch one subagent per chunk. Concatenate results and re-verify cardinality across the whole. |
 
-These are absolute bounds, not percentages. opencode does not surface the subagent's remaining budget to you or to the subagent, so we treat ~128 000 tokens as the typical local-model context window and reserve ~48 000 for working room, output, and the QA artifacts. Konrad targets 30B-class local models — these bounds are conservative for that class.
+These are absolute bounds, not percentages. opencode does not surface the subagent's remaining budget to you or to the subagent, so we treat ~128 000 tokens as the typical local-model context window and reserve ~48 000 for working room, output, and the quality-assurance artifacts. Konrad targets 30B-class local models — these bounds are conservative for that class.
 
 ### Step 3 — Dispatch the `manual-transformer` subagent
 
@@ -95,7 +95,7 @@ Example dispatch prompt:
 
 > Input: `/workspace/data/receipts.txt` — ~60 OCR-extracted receipts, mixed German/English, irregular layouts.
 > Output: `.agent/artifacts/manual-output.csv` with columns `date,vendor,total_eur,category`.
-> Rules: Dates in ISO 8601 (`YYYY-MM-DD`). Vendor names canonicalized to brand (e.g. "EDEKA Müller Straße 12" → "Edeka"). Category from a fixed set: groceries, travel, pharmacy, other. 1:1 cardinality, no filtering. Use `MISSING` for any unreadable field. Run all four QA checks and return the standard report.
+> Rules: Dates in ISO 8601 (`YYYY-MM-DD`). Vendor names canonicalized to brand (e.g. "EDEKA Müller Straße 12" → "Edeka"). Category from a fixed set: groceries, travel, pharmacy, other. 1:1 cardinality, no filtering. Use `MISSING` for any unreadable field. Run all four quality-assurance checks and return the standard report.
 
 A vague task prompt produces a vague output. The subagent is faithful but not psychic — it cannot guess your schema or your normalization rules.
 

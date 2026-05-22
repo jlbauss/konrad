@@ -99,9 +99,10 @@ the best-matching Noto face.
 
 If a generated document has tofu boxes where a script should be, that's
 the diagnosis — the script isn't in either the curated palette or
-`fonts-noto-core`. QA's `rasterize_touched` + vision check catches this
-reliably; the watermark / FreeText / annotation per-op checklists in
-[qa.md](../qa.md) name "fonts render — not boxes, not tofu" explicitly.
+`fonts-noto-core`. The `quality-assurance` skill's `rasterize_touched`
++ vision-check cycle catches this reliably; the watermark / FreeText /
+annotation per-op checklists in [checklists.md](../checklists.md)
+name "fonts render — not boxes, not tofu" explicitly.
 
 ## Adding your own fonts
 
