@@ -19,11 +19,17 @@ COPY --from=ghcr.io/astral-sh/uv:0.11 /uv /uvx /usr/local/bin/
 
 ENV VIRTUAL_ENV=/opt/venv
 
+# onnxruntime is rapidocr's inference engine. docling-slim[standard]
+# pulls in rapidocr>=3.8, which leaves the engine choice to the installer
+# (RapidOCR 3.x supports ONNX Runtime / OpenVINO / PaddleOCR / PyTorch).
+# Without onnxruntime the EXTRACT route's --ocr-engine rapidocr path
+# raises "onnxruntime not installed" the first time OCR is needed.
 RUN uv venv $VIRTUAL_ENV --python /usr/bin/python3 \
     && uv pip install --no-cache \
     --torch-backend=cpu \
     "docling-slim[standard]" openpyxl pandas \
-    pypdf pdfplumber pdf2image reportlab
+    pypdf pdfplumber pdf2image reportlab \
+    onnxruntime
 
 # =============================================================================
 # Stage 2 — python-models
