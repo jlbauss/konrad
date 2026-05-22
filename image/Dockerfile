@@ -41,7 +41,7 @@ FROM node:26-trixie-slim
 
 LABEL org.opencontainers.image.title="konrad" \
     org.opencontainers.image.description="Sandboxed opencode for local agent models, preloaded with instructions and a curated tool set." \
-    org.opencontainers.image.licenses="GPL-3.0-only" \
+    org.opencontainers.image.licenses="AGPL-3.0-only" \
     org.opencontainers.image.source="https://gitlab.git.nrw/jbauss2/konrad"
 
 # NODE_ENV=production per Node Docker best-practices §1.

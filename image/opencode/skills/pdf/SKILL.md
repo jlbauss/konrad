@@ -14,7 +14,7 @@ description: >
   intent even when the file extension is not spelled out — "the report
   attached", "this scanned document", "the form they sent me" all count
   when context makes the PDF obvious.
-license: GPL-3.0-only
+license: AGPL-3.0-only
 compatibility: >
   Requires Python 3.10+. pypdf, pdfplumber, pdf2image, reportlab, and
   docling-slim[standard] are preinstalled in the konrad image's

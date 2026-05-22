@@ -258,7 +258,7 @@ A short, opinionated record of the load-bearing choices, so future-you can tell 
 - **`AGENTS.md` is the user's slot; `instructions` is konrad's.** opencode loads both, additively, into the system prompt. By assigning each side its own loading mechanism, we never collide.
 - **Minimal hardcoded defaults.** Provider endpoints ship pre-wired but model lists ship empty — users declare whichever model they've loaded in `~/.config/konrad/opencode.jsonc`. Earlier versions auto-discovered models via the `opencode-models-discovery` plugin, but the startup cost wasn't worth it; an inline replacement is on the roadmap. **No top-level `"model"` is set in the baked default** — opencode prompts on first run, then remembers your choice in the `konrad-state` volume across subsequent runs.
 - **Optimised for Qwen3.6-class local models.** The agent body in `image/opencode/agents/konrad.md` is sized and worded for a ~30B-class MoE local model — terse-but-deliberate, no Claude-style verification loops. Bigger frontier models work fine; smaller (<10B) ones may need prompt softening. The specific recommendation we test against is `qwen/qwen3.6-35b-a3b`.
-- **GPL v3.** Compatible with all bundled upstream licenses (MIT, Apache 2.0, OFL 1.1). Strong copyleft is a deliberate choice for a sandbox-style tool — if someone extends konrad for commercial use, the improvements come back to the commons.
+- **AGPL v3.** Compatible with all bundled upstream licenses (MIT, Apache 2.0, OFL 1.1). Strong copyleft is a deliberate choice for a sandbox-style tool — if someone extends konrad or runs it as a hosted service, the improvements come back to the commons. AGPL's network-use clause closes the SaaS loophole left open by plain GPL: a fork offered as a remote agent over an API still has to publish its source.
 
 ## Troubleshooting
 
@@ -301,4 +301,4 @@ Add the ones you want as env vars in `~/.config/konrad/opencode.jsonc` (via the 
 
 ## License and attribution
 
-konrad is released under the [GNU General Public License v3.0](LICENSE). The combined work as a whole is GPL v3; bundled third-party components retain their own (GPL-compatible) licenses. See [NOTICE](NOTICE) for the full upstream list and copyright notices.
+konrad is released under the [GNU Affero General Public License v3.0](LICENSE). The combined work as a whole is AGPL v3; bundled third-party components retain their own (AGPL-compatible) licenses. See [NOTICE](NOTICE) for the full upstream list and copyright notices.

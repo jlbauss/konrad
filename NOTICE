@@ -2,8 +2,8 @@ konrad
 Copyright (C) 2026 Jan-Luca Bauß
 
 This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
+it under the terms of the GNU Affero General Public License as published
+by the Free Software Foundation, either version 3 of the License, or
 (at your option) any later version. See LICENSE for the full text.
 
 This program is distributed in the hope that it will be useful,
@@ -15,8 +15,9 @@ Third-party components
 ================================================================================
 
 konrad bundles or builds on software released under licenses compatible
-with GPL v3. Those components retain their original licenses; only konrad's
-own contributions and the combined work as a whole are licensed under GPL v3.
+with AGPL v3. Those components retain their original licenses; only
+konrad's own contributions and the combined work as a whole are licensed
+under AGPL v3.
 
 opencode
     https://github.com/sst/opencode
