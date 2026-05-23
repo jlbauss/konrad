@@ -339,7 +339,7 @@ konrad/
 
 **Using konrad as a user.** Install once with the steps above. From then on, `cd` to whatever folder you want the agent to operate on and run `konrad`. The konrad repo only matters for getting the image and CLI installed; you don't open it day-to-day.
 
-**Hacking on konrad itself.** Clone the repo and edit. Changes to `bin/konrad` take effect immediately; changes anywhere under `image/` need a rebuild (`konrad rebuild` or `./scripts/build-image.sh`) to land in `konrad:latest`. See [CONTRIBUTING.md](CONTRIBUTING.md) for the development loop. (The `devcontainer/` folder is an experimental second consumption path — not the recommended dev environment yet; see [ROADMAP.md](ROADMAP.md).)
+**Hacking on konrad itself.** Clone the repo and edit. Changes to `bin/konrad` take effect immediately; changes anywhere under `image/` need a rebuild (`konrad rebuild`) which writes to `konrad:local` — distinct from `konrad:latest` so your dev build doesn't clobber the published image. Run it with `KONRAD_IMAGE=konrad:local konrad`. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full development loop, including branching, PRs, and the versioning rules. (The `devcontainer/` folder is an experimental second consumption path — not the recommended dev environment yet; see [ROADMAP.md](ROADMAP.md).)
 
 ## Design decisions
 

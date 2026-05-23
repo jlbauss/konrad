@@ -39,6 +39,13 @@ on:
       - 'scripts/smoke-test.sh'
       - '.github/workflows/build-image.yml'
       - 'VERSION'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'image/**'
+      - 'scripts/smoke-test.sh'
+      - '.github/workflows/build-image.yml'
+      - 'VERSION'
   schedule:
     # Daily at 02:00 UTC = 03:00/04:00 in NRW depending on DST.
     # Cron format: minute hour day-of-month month day-of-week.
@@ -158,10 +165,22 @@ jobs:
   # Publish — only runs if smoke passed. `imagetools create -t newtag oldtag`
   # retags without re-pulling/re-pushing layers; copies the manifest to
   # each public tag in one fast operation per tag.
+  #
+  # Tag list depends on the trigger:
+  #   - push to main / schedule / workflow_dispatch → :<ver>.<date>, :<ver>,
+  #                                                    :latest, :<sha>
+  #   - pull_request from same repo  → :pr-<num> only (transient, replaced
+  #                                     on every push to the PR branch)
+  #   - pull_request from a fork     → SKIPPED (GITHUB_TOKEN is read-only
+  #                                     on fork PRs; can't write to ghcr.io).
+  #                                     Smoke still ran in the smoke job, so
+  #                                     reviewers have that signal.
   # ---------------------------------------------------------------------------
   publish:
     needs: [build, smoke]
     runs-on: ubuntu-latest
+    # Skip from fork PRs (no registry write access from the default token).
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false
     permissions:
       contents: read
       packages: write
@@ -181,10 +200,17 @@ jobs:
           DATE: ${{ needs.build.outputs.build-date }}
           SHA: ${{ needs.build.outputs.short-sha }}
           IMG: ${{ needs.build.outputs.transient-tag }}
+          PR_NUM: ${{ github.event.pull_request.number }}
+          EVENT: ${{ github.event_name }}
         run: |
           # Strip the :ci-${run_id} suffix to get the registry path
           BASE="${IMG%:*}"
-          for TAG in "$VER.$DATE" "$VER" latest "$SHA"; do
+          if [ "$EVENT" = "pull_request" ]; then
+            TAGS="pr-$PR_NUM"
+          else
+            TAGS="$VER.$DATE $VER latest $SHA"
+          fi
+          for TAG in $TAGS; do
             docker buildx imagetools create \
               --tag "$BASE:$TAG" \
               "$TRANSIENT"
