@@ -2,9 +2,13 @@
 # konrad — sandboxed opencode in a Podman container. See `konrad help`.
 set -euo pipefail
 
-KONRAD_VERSION="0.1.0"
 IMAGE_NAME="konrad:latest"
 LM_STUDIO_HOST_URL="http://localhost:1234/v1/models"
+
+# Registry coordinates — where CI publishes the prebuilt image and where
+# the CLI pulls from by default. `:latest` always points at the newest
+# build that passed the smoke gate (see .gitlab-ci.yml).
+REGISTRY_IMAGE="registry.gitlab.git.nrw/jbauss2/konrad:latest"
 
 # Shared (cross-project) named volumes.
 SECRETS_VOLUME="konrad-secrets"
@@ -32,6 +36,16 @@ done
 SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 IMAGE_CONTEXT="$REPO_ROOT/image"
+
+# CLI version comes from the VERSION file at repo root. When `bin/konrad`
+# is symlinked from a clone (the only install path today), VERSION is
+# always present. Future install paths (curl|sh tarball) may strip it,
+# so we tolerate its absence with a "dev" fallback.
+if [[ -f "$REPO_ROOT/VERSION" ]]; then
+  KONRAD_VERSION="$(cat "$REPO_ROOT/VERSION")"
+else
+  KONRAD_VERSION="dev"
+fi
 
 # --- Output helpers (all go to stderr; stdout is reserved for tool output) ---
 
@@ -72,10 +86,21 @@ EOF
 }
 
 require_image() {
-  if ! podman image exists "$IMAGE_NAME"; then
-    info "image '$IMAGE_NAME' not found locally — building it now (one-time, ~5 min)."
-    cmd_rebuild
+  if podman image exists "$IMAGE_NAME"; then
+    return 0
   fi
+  # First-run path: try the registry before falling back to a local build.
+  # Pull is ~30 s + ~800 MB; local build is ~5 min + ~2 GB of model
+  # download. Registry should be the default user experience.
+  info "image '$IMAGE_NAME' not found locally — pulling $REGISTRY_IMAGE…"
+  if podman pull "$REGISTRY_IMAGE" >/dev/null 2>&1; then
+    podman tag "$REGISTRY_IMAGE" "$IMAGE_NAME"
+    info "pulled and tagged as $IMAGE_NAME"
+    return 0
+  fi
+  warn "registry pull failed (offline? registry unreachable?)"
+  info "falling back to local build — this takes ~5 minutes and ~2 GB of model download."
+  cmd_rebuild
 }
 
 check_lm_studio() {
@@ -215,13 +240,41 @@ cmd_rebuild() {
   [[ -f "$IMAGE_CONTEXT/Dockerfile" ]] \
     || die "expected Dockerfile at $IMAGE_CONTEXT/Dockerfile (is the konrad repo intact?)"
   CACHE_BUST=$(date +%s)
-  info "building $IMAGE_NAME from $IMAGE_CONTEXT"
+  local git_sha
+  git_sha="$(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || printf 'unknown')"
+  info "building $IMAGE_NAME from $IMAGE_CONTEXT (konrad=$KONRAD_VERSION sha=$git_sha)"
   # Build intermediate stages first with stable tags so Podman's layer cache
   # keeps them alive across prune operations. Without tags they are treated as
   # dangling images and get collected, forcing a full model re-download next time.
   podman build --target python-base   -t konrad-python-base:cache   "$IMAGE_CONTEXT"
   podman build --target python-models -t konrad-python-models:cache  "$IMAGE_CONTEXT"
-  podman build --build-arg CACHE_BUST="$CACHE_BUST" -t "$IMAGE_NAME" "$IMAGE_CONTEXT"
+  podman build \
+    --build-arg KONRAD_VERSION="$KONRAD_VERSION" \
+    --build-arg GIT_SHA="$git_sha" \
+    --build-arg CACHE_BUST="$CACHE_BUST" \
+    -t "$IMAGE_NAME" "$IMAGE_CONTEXT"
+}
+
+cmd_update() {
+  require_podman
+  info "pulling $REGISTRY_IMAGE…"
+  if ! podman pull "$REGISTRY_IMAGE"; then
+    die "registry pull failed (offline? registry unreachable?)"
+  fi
+  podman tag "$REGISTRY_IMAGE" "$IMAGE_NAME"
+  info "updated $IMAGE_NAME"
+  # Summarize what just landed by reading the OCI labels — no need to
+  # start a container.
+  local ver date
+  ver="$(podman image inspect "$IMAGE_NAME" \
+         --format '{{index .Labels "org.opencontainers.image.version"}}' 2>/dev/null || printf 'unknown')"
+  date="$(podman image inspect "$IMAGE_NAME" \
+          --format '{{index .Labels "org.opencontainers.image.created"}}' 2>/dev/null || printf '')"
+  if [[ -n "$date" ]]; then
+    info "now running konrad image $ver (built $date)"
+  else
+    info "now running konrad image $ver"
+  fi
 }
 
 cmd_clean() {
@@ -257,18 +310,31 @@ cmd_clean() {
 }
 
 cmd_version() {
-  printf 'konrad %s\n' "$KONRAD_VERSION"
-  if command -v podman >/dev/null 2>&1 && podman info >/dev/null 2>&1; then
-    if podman image exists "$IMAGE_NAME"; then
-      local digest
-      digest=$(podman image inspect "$IMAGE_NAME" --format '{{.Id}}' 2>/dev/null \
-        || printf 'unknown')
-      printf 'image:  %s (%s)\n' "$IMAGE_NAME" "${digest:0:19}"
-    else
-      printf 'image:  %s (not built — run: konrad rebuild)\n' "$IMAGE_NAME"
-    fi
-  else
+  printf 'konrad CLI %s\n' "$KONRAD_VERSION"
+  if ! command -v podman >/dev/null 2>&1 || ! podman info >/dev/null 2>&1; then
     printf 'image:  (cannot inspect — podman unavailable)\n'
+    return 0
+  fi
+  if ! podman image exists "$IMAGE_NAME"; then
+    printf 'image:  %s (not pulled — run: konrad update)\n' "$IMAGE_NAME"
+    return 0
+  fi
+  local digest image_ver image_rev
+  digest="$(podman image inspect "$IMAGE_NAME" --format '{{.Id}}' 2>/dev/null \
+            || printf 'unknown')"
+  image_ver="$(podman image inspect "$IMAGE_NAME" \
+               --format '{{index .Labels "org.opencontainers.image.version"}}' 2>/dev/null || printf 'unknown')"
+  image_rev="$(podman image inspect "$IMAGE_NAME" \
+               --format '{{index .Labels "org.opencontainers.image.revision"}}' 2>/dev/null || printf 'unknown')"
+  printf 'image:  %s (%s)\n' "$IMAGE_NAME" "${digest:0:19}"
+  printf '        version=%s revision=%s\n' "$image_ver" "$image_rev"
+
+  # --manifest dumps the full build-manifest.json — apt/npm/pip snapshots
+  # plus build metadata. One container start; only on explicit request.
+  if [[ "${1:-}" == "--manifest" ]]; then
+    printf '\nbuild manifest (from /etc/konrad/build-manifest.json):\n'
+    podman run --rm --entrypoint cat "$IMAGE_NAME" \
+      /etc/konrad/build-manifest.json | jq .
   fi
 }
 
@@ -322,13 +388,16 @@ konrad — sandboxed opencode in a Podman container.
 Usage:
   konrad                Run opencode against the current directory.
   konrad shell          Open a bash shell in the container, same mounts.
-  konrad rebuild        Rebuild the konrad image from this repo's image/.
+  konrad update         Pull the latest konrad image from the registry.
+  konrad rebuild        Rebuild from local image/ (for working ON konrad).
   konrad clean          Remove the central log dir (~/.local/state/konrad/).
   konrad clean --all    Also remove the shared volumes (auth, cache, state).
   konrad config init    Copy the baked opencode.jsonc to your user override.
   konrad config path    Print the path of your user override.
   konrad config show    Diff your user override against the baked default.
-  konrad version        Print version info.
+  konrad version        Print CLI + image version info.
+  konrad version --manifest
+                        Dump the full build manifest (apt/npm/pip snapshot).
   konrad help           Show this message.
 
 Debug:
@@ -362,10 +431,11 @@ EOF
 case "${1:-run}" in
   run|"")              cmd_run ;;
   shell)               cmd_shell ;;
+  update|pull)         cmd_update ;;
   rebuild)             cmd_rebuild ;;
   clean)               shift; cmd_clean "$@" ;;
   config)              shift; cmd_config "$@" ;;
-  version|--version)   cmd_version ;;
+  version|--version)   shift; cmd_version "$@" ;;
   help|-h|--help)      cmd_help ;;
   *)                   die "unknown command: $1 (try: konrad help)" ;;
 esac

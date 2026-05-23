@@ -20,11 +20,19 @@ CTX="$REPO_ROOT/image"
 command -v podman >/dev/null 2>&1 \
   || { printf 'konrad-build: podman is not installed.\n' >&2; exit 1; }
 
+# Build metadata baked into the image manifest + OCI labels.
+KONRAD_VERSION="$(cat "$REPO_ROOT/VERSION" 2>/dev/null || printf 'dev')"
+GIT_SHA="$(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || printf 'unknown')"
+
 printf 'konrad-build: building python-base (Python venv + docling-slim)…\n'
 podman build --target python-base  -t konrad-python-base:cache  "$CTX"
 
 printf 'konrad-build: building python-models (Docling model download)…\n'
 podman build --target python-models -t konrad-python-models:cache "$CTX"
 
-printf 'konrad-build: building final runtime image…\n'
-exec podman build -t konrad:latest "$CTX"
+printf 'konrad-build: building final runtime image (konrad=%s sha=%s)…\n' \
+  "$KONRAD_VERSION" "$GIT_SHA"
+exec podman build \
+  --build-arg "KONRAD_VERSION=$KONRAD_VERSION" \
+  --build-arg "GIT_SHA=$GIT_SHA" \
+  -t konrad:latest "$CTX"

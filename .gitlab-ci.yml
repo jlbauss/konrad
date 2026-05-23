@@ -1,0 +1,148 @@
+# =============================================================================
+# konrad CI — build, smoke-test, publish the container image.
+#
+# Trigger model:
+#   - push to default branch when image/, Dockerfile, scripts/smoke-test.sh,
+#     or VERSION changes  → build + smoke + publish
+#   - daily schedule       → same pipeline, but with --no-cache + --pull-always
+#                            so floating pins re-resolve and the base image
+#                            CVE fixes flow in (this is what makes "always
+#                            fresh" true)
+#   - manual run (web UI)  → same as push
+#
+# The smoke-gated publish is the safety net: if the smoke job fails, the
+# publish stage never runs and :latest stays pointed at the last good build.
+# Users on `:latest` are never exposed to broken builds.
+#
+# Tag scheme (all pushed by every successful pipeline):
+#   :<ver>.<date>      immutable; e.g. 0.1.2026-05-23 — the rollback handle
+#   :<ver>             rolling; latest passing build on the current VERSION
+#   :latest            rolling alias for the newest <ver> passing build
+#   :<short-sha>       immutable; for bisecting
+#
+# When VERSION bumps (e.g. 0.1 → 0.2), the previous version line stops
+# getting new daily rebuilds. Users on `:0.1` stay on their last good build
+# until they upgrade. Pre-1.0 simplicity — revisit at 1.0.
+# =============================================================================
+
+stages:
+  - build
+  - smoke
+  - publish
+
+variables:
+  # CI_REGISTRY / CI_REGISTRY_IMAGE / CI_REGISTRY_USER / CI_REGISTRY_PASSWORD
+  # are provided by GitLab automatically for the project's container registry.
+  IMAGE: "${CI_REGISTRY_IMAGE}"
+
+.podman-base: &podman-base
+  image: quay.io/podman/stable:latest
+  before_script:
+    # Resolve build metadata once. KONRAD_VERSION drives the tag scheme;
+    # GIT_SHA + BUILD_DATE end up baked into the image's build-manifest.json.
+    - export KONRAD_VERSION="$(cat VERSION)"
+    - export BUILD_DATE="$(date -u +%Y-%m-%d)"
+    - export GIT_SHA="${CI_COMMIT_SHORT_SHA:-$(git rev-parse --short HEAD)}"
+    - export FULL_TAG="${KONRAD_VERSION}.${BUILD_DATE}"
+    # Scheduled (daily) pipelines force a full re-resolve of floating pins;
+    # push pipelines reuse the layer cache for speed.
+    - |
+      if [ "$CI_PIPELINE_SOURCE" = "schedule" ]; then
+        export BUILD_FLAGS="--no-cache --pull-always"
+        echo "scheduled rebuild — forcing fresh base + cache miss"
+      else
+        export BUILD_FLAGS=""
+      fi
+    - echo "konrad ${KONRAD_VERSION} @ ${GIT_SHA} (build ${BUILD_DATE})"
+    - podman --version
+    - podman login -u "${CI_REGISTRY_USER}" -p "${CI_REGISTRY_PASSWORD}" "${CI_REGISTRY}"
+
+# -----------------------------------------------------------------------------
+# Build — one job per arch. Each pushes its arch-specific image to the
+# registry under a transient pipeline-scoped tag so the publish job can
+# stitch them into a multi-arch manifest list.
+# -----------------------------------------------------------------------------
+
+.build-template: &build-template
+  <<: *podman-base
+  stage: build
+  script:
+    - |
+      # shellcheck disable=SC2086  # BUILD_FLAGS is intentionally word-split
+      podman build $BUILD_FLAGS \
+        --platform "linux/${ARCH}" \
+        --build-arg "KONRAD_VERSION=${KONRAD_VERSION}" \
+        --build-arg "GIT_SHA=${GIT_SHA}" \
+        --tag "${IMAGE}:build-${CI_PIPELINE_ID}-${ARCH}" \
+        image/
+    - podman push "${IMAGE}:build-${CI_PIPELINE_ID}-${ARCH}"
+
+build:amd64:
+  <<: *build-template
+  tags: [amd64]
+  variables:
+    ARCH: "amd64"
+
+# Requires an arm64-tagged runner on the GitLab instance. If none is
+# available, remove this job and the arm64 reference in publish: below;
+# users on Apple Silicon will run via QEMU emulation (slower).
+build:arm64:
+  <<: *build-template
+  tags: [arm64]
+  variables:
+    ARCH: "arm64"
+
+# -----------------------------------------------------------------------------
+# Smoke — run the smoke suite against the amd64 build. Single-arch is
+# enough; the script tests "things are installed and importable," which
+# doesn't vary by arch. Failure here blocks publish.
+# -----------------------------------------------------------------------------
+
+smoke:
+  <<: *podman-base
+  stage: smoke
+  tags: [amd64]
+  needs: [build:amd64]
+  script:
+    - podman pull "${IMAGE}:build-${CI_PIPELINE_ID}-amd64"
+    - podman tag  "${IMAGE}:build-${CI_PIPELINE_ID}-amd64" konrad:latest
+    - ./scripts/smoke-test.sh konrad:latest
+
+# -----------------------------------------------------------------------------
+# Publish — only runs if smoke passed. Stitches the per-arch images into
+# a multi-arch manifest list and pushes it under every tag we ship.
+# -----------------------------------------------------------------------------
+
+publish:
+  <<: *podman-base
+  stage: publish
+  tags: [amd64]
+  needs: [build:amd64, build:arm64, smoke]
+  script:
+    - |
+      for TAG in "${FULL_TAG}" "${KONRAD_VERSION}" "latest" "${GIT_SHA}"; do
+        podman manifest create "${IMAGE}:${TAG}" \
+          "docker://${IMAGE}:build-${CI_PIPELINE_ID}-amd64" \
+          "docker://${IMAGE}:build-${CI_PIPELINE_ID}-arm64"
+        podman manifest push --all "${IMAGE}:${TAG}" \
+          "docker://${IMAGE}:${TAG}"
+        echo "published ${IMAGE}:${TAG}"
+      done
+
+# -----------------------------------------------------------------------------
+# Workflow — when each pipeline shape runs.
+# -----------------------------------------------------------------------------
+
+workflow:
+  rules:
+    # Daily scheduled rebuild (configure in GitLab → Schedules)
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+    # Push to default branch when image-relevant files change
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      changes:
+        - image/**/*
+        - scripts/smoke-test.sh
+        - .gitlab-ci.yml
+        - VERSION
+    # Manual trigger via the GitLab web UI
+    - if: '$CI_PIPELINE_SOURCE == "web"'

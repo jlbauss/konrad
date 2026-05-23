@@ -1,9 +1,31 @@
 # =============================================================================
+# Pinning surface — the only versions you should ever need to bump by hand.
+# Everything else floats and gets the latest on every rebuild; the daily
+# CI rebuild + smoke-gated publish is the safety net. See README
+# "Pinning strategy" for the full rationale.
+#
+# When you add or remove a pin, update both this block *and* the README
+# table so the two stay in sync.
+# =============================================================================
+ARG BASE_IMAGE=node:26-trixie-slim
+# ^ Debian/Node LTS track. Major bumps (trixie → forky, node 26 → 28) are
+#   deliberate events: rebuild against the new tag locally, run the smoke
+#   test, then bump here. Patch updates flow in for free on every daily
+#   CI rebuild that re-pulls the base image.
+#
+# Floating (no pin — daily rebuild + smoke catches breakage):
+#   - uv                (ghcr.io/astral-sh/uv:latest)
+#   - typst             (resolved from GitHub releases API at build time)
+#   - opencode-ai, npm  (@latest)
+#   - Python deps       (docling-slim[standard], pypdf, pdfplumber, …)
+#   - apt packages      (whatever Debian trixie currently ships)
+
+# =============================================================================
 # Stage 1 — python-base
 # Installs the Python toolchain and docling into /opt/venv.
 # No repo files. Invalidated only when Python deps change.
 # =============================================================================
-FROM node:26-trixie-slim AS python-base
+FROM ${BASE_IMAGE} AS python-base
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -12,10 +34,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* /var/log/apt/* /var/log/dpkg.log
 
-# uv pinned to a minor tag — patch releases (0.11.x) flow in on every rebuild
-# (incl. CVE fixes), but a 0.12 with breaking CLI/API behaviour requires a
-# deliberate bump here.
-COPY --from=ghcr.io/astral-sh/uv:0.11 /uv /uvx /usr/local/bin/
+# uv floats — daily CI rebuild picks up the latest release; the smoke test
+# gate is the safety net for any breaking change. Pin a major (`:0`) only
+# if a future uv 1.0 introduces a breaking-change cadence we want to opt
+# into deliberately.
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
 
 ENV VIRTUAL_ENV=/opt/venv
 
@@ -43,12 +66,22 @@ RUN mkdir -p /opt/models \
 # =============================================================================
 # Stage 3 — final runtime image
 # =============================================================================
-FROM node:26-trixie-slim
+FROM ${BASE_IMAGE}
 
 LABEL org.opencontainers.image.title="konrad" \
     org.opencontainers.image.description="Sandboxed opencode for local agent models, preloaded with instructions and a curated tool set." \
     org.opencontainers.image.licenses="AGPL-3.0-only" \
     org.opencontainers.image.source="https://gitlab.git.nrw/jbauss2/konrad"
+
+# Version + revision labels are set by --build-arg from bin/konrad / CI.
+# These are the cheap source for `konrad version` — readable from
+# `podman image inspect` without starting a container. The full build
+# manifest (apt/npm/python snapshots) lives at /etc/konrad/build-manifest.json
+# inside the image for the rare deep-dive (`konrad version --manifest`).
+ARG KONRAD_VERSION=dev
+ARG GIT_SHA=unknown
+LABEL org.opencontainers.image.version="${KONRAD_VERSION}" \
+    org.opencontainers.image.revision="${GIT_SHA}"
 
 # NODE_ENV=production per Node Docker best-practices §1.
 # LANG/LC_ALL force a UTF-8 locale at runtime. Without this, the image
@@ -114,8 +147,11 @@ RUN ln -sf /usr/bin/fdfind /usr/local/bin/fd \
 COPY fonts/konrad/ /usr/local/share/fonts/konrad/
 RUN fc-cache -f
 
-# Install Typst
-ARG TYPST_VERSION=v0.14.2
+# Install Typst — version resolved from GitHub at build time so daily CI
+# rebuilds pick up the latest release. Typst is pre-1.0 (so minor bumps
+# can carry breaking changes), but we don't ship any .typ templates in
+# this repo — the agent generates Typst from scratch each time. Breakage
+# would surface in the CI smoke test before publish.
 ARG TARGETARCH
 
 RUN set -eux; \
@@ -124,6 +160,9 @@ RUN set -eux; \
       arm64) ARCH="aarch64-unknown-linux-musl" ;; \
       *) echo "unsupported arch: $TARGETARCH" >&2; exit 1 ;; \
     esac; \
+    TYPST_VERSION=$(curl -fsSL https://api.github.com/repos/typst/typst/releases/latest | jq -r .tag_name); \
+    [ -n "$TYPST_VERSION" ] && [ "$TYPST_VERSION" != "null" ] \
+      || { echo "could not resolve latest Typst version from GitHub API" >&2; exit 1; }; \
     curl -fsSL "https://github.com/typst/typst/releases/download/${TYPST_VERSION}/typst-${ARCH}.tar.xz" \
       | tar -xJ --strip-components=1 -C /usr/local/bin "typst-${ARCH}/typst"; \
     chmod +x /usr/local/bin/typst; \
@@ -177,6 +216,20 @@ ARG CACHE_BUST=1
 # without changing any source files.
 RUN npm install -g npm@latest opencode-ai@latest \
     && npm cache clean --force
+
+# ── Build manifest ──────────────────────────────────────────────────────────
+# Snapshot the exact versions of everything installed (apt, npm, Python),
+# plus konrad's own version + git SHA + build date, into a JSON file at
+# /etc/konrad/build-manifest.json. The user reads it via
+# `konrad version --manifest`. Two purposes: (1) diagnose "worked
+# yesterday, broken today" by diffing manifests between dated tags; (2)
+# make the floating-pins strategy honest — even if pins float, what
+# shipped is always knowable after the fact.
+# KONRAD_VERSION and GIT_SHA were already declared near the LABEL block
+# above; reusing them here.
+COPY build-manifest.sh /tmp/build-manifest.sh
+RUN bash /tmp/build-manifest.sh "$KONRAD_VERSION" "$GIT_SHA" \
+    && rm /tmp/build-manifest.sh
 
 USER node
 
