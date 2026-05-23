@@ -241,7 +241,6 @@ cmd_rebuild() {
   require_podman
   [[ -f "$IMAGE_CONTEXT/Dockerfile" ]] \
     || die "expected Dockerfile at $IMAGE_CONTEXT/Dockerfile (is the konrad repo intact?)"
-  CACHE_BUST=$(date +%s)
   local git_sha
   git_sha="$(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || printf 'unknown')"
   info "building $IMAGE_NAME from $IMAGE_CONTEXT (konrad=$KONRAD_VERSION sha=$git_sha)"
@@ -250,10 +249,12 @@ cmd_rebuild() {
   # dangling images and get collected, forcing a full model re-download next time.
   podman build --target python-base   -t konrad-python-base:cache   "$IMAGE_CONTEXT"
   podman build --target python-models -t konrad-python-models:cache  "$IMAGE_CONTEXT"
+  # Layer-cached: a local rebuild reuses whatever hasn't changed under
+  # image/. Use `konrad update` to pull the daily-fresh image from
+  # ghcr.io (latest opencode-ai, fresh base image, refreshed apt/pip).
   podman build \
     --build-arg KONRAD_VERSION="$KONRAD_VERSION" \
     --build-arg GIT_SHA="$git_sha" \
-    --build-arg CACHE_BUST="$CACHE_BUST" \
     -t "$IMAGE_NAME" "$IMAGE_CONTEXT"
 }
 

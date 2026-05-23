@@ -210,13 +210,14 @@ ENV NODE_OPTIONS=--max-old-space-size=4096 \
 
 WORKDIR /workspace
 
-ARG CACHE_BUST=1
-
 # ── npm: install opencode ────────────────────────────────────────────────────
 # Installed as root into /home/node/.npm-global so the runtime user can't
-# mutate it. Lands in the image layer (no named volume backs it), so updates
-# flow through `konrad rebuild`. CACHE_BUST above lets the CLI force a refresh
-# without changing any source files.
+# mutate it. Layer-cached like any other RUN step. To get a fresh opencode
+# locally, use `konrad update` (pulls the daily-fresh image from ghcr.io,
+# which bakes in the latest opencode-ai). The previous CACHE_BUST trick
+# that forced this step to re-run on every local rebuild went away once
+# the registry path existed — local rebuild is now for konrad-on-konrad
+# dev work, not for chasing upstream opencode.
 RUN npm install -g npm@latest opencode-ai@latest \
     && npm cache clean --force
 
