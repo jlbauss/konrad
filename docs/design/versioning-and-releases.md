@@ -120,3 +120,7 @@ If a single PR bundles multiple concerns (rare; we prefer separate commits per c
 ## Day-zero history
 
 The pre-1.0 chapter started on **2026-05-23** with `VERSION=0.1`, when the registry-publish path went live (see ROADMAP entry of that date). Earlier development happened on `main` without a `VERSION` file and isn't representable in this scheme; the dated `Implemented` entries in ROADMAP are the authoritative history for that period.
+
+**`0.1` is the pre-public stabilization line** — the version that existed while the repo was still private and CI / publishing / smoke gates were getting their final shakedown. Functional changes during this phase didn't always bump (the bump-in-same-PR rule itself landed mid-stream); the dated image tags `:0.1.YYYY-MM-DD` are the authoritative per-day history.
+
+**`0.2` will be the first public alpha** — bumped as part of the "Set public" ROADMAP work. The bump signals the regime change: from this point forward, every functional change bumps `VERSION` in its PR, and the version line a user is on actually means something to them. Treat it as the day-one anchor for outside contributors and consumers.
