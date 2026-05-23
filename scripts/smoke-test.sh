@@ -4,8 +4,14 @@
 # `:latest` tag and last-known-good keeps serving users. Also runnable
 # locally:
 #
-#   ./scripts/smoke-test.sh                # tests konrad:latest
-#   ./scripts/smoke-test.sh my-tag:1.2     # tests an arbitrary tag
+#   ./scripts/smoke-test.sh                       # tests konrad:latest
+#   ./scripts/smoke-test.sh my-tag:1.2            # tests an arbitrary tag
+#   CONTAINER_ENGINE=docker ./scripts/smoke-test.sh   # use docker not podman
+#
+# CONTAINER_ENGINE defaults to podman (matches the local konrad runtime)
+# but accepts docker (used in GitHub Actions, where docker is preinstalled
+# and podman is not). Both engines accept the same flags we use here
+# (`run --rm --entrypoint ""`, `image inspect`).
 #
 # The checks are deliberately "installed and importable" rather than
 # "agent runs end-to-end" — exercising opencode requires a model
@@ -14,6 +20,7 @@
 set -euo pipefail
 
 IMAGE="${1:-konrad:latest}"
+ENGINE="${CONTAINER_ENGINE:-podman}"
 
 # --- Output helpers ---
 pass() { printf '  \033[32mPASS\033[0m  %s\n' "$*"; }
@@ -21,13 +28,15 @@ fail() { printf '  \033[31mFAIL\033[0m  %s\n' "$*" >&2; exit 1; }
 info() { printf '\n\033[1m%s\033[0m\n' "$*"; }
 
 # Run a one-shot command inside the image, no workspace mount needed.
-in_image() { podman run --rm --entrypoint "" "$IMAGE" "$@"; }
+in_image() { "$ENGINE" run --rm --entrypoint "" "$IMAGE" "$@"; }
 
-info "smoke-testing $IMAGE"
+info "smoke-testing $IMAGE (engine: $ENGINE)"
 
 # --- 1. Image exists ---
-podman image exists "$IMAGE" \
-  || fail "image $IMAGE not found locally — build it first"
+# `image inspect` returns non-zero if the image is missing — works in both
+# docker and podman (whereas `image exists` is podman-only).
+"$ENGINE" image inspect "$IMAGE" >/dev/null 2>&1 \
+  || fail "image $IMAGE not found locally — build or pull it first"
 pass "image present"
 
 # --- 2. Core binaries on PATH ---

@@ -7,8 +7,10 @@ LM_STUDIO_HOST_URL="http://localhost:1234/v1/models"
 
 # Registry coordinates — where CI publishes the prebuilt image and where
 # the CLI pulls from by default. `:latest` always points at the newest
-# build that passed the smoke gate (see .gitlab-ci.yml).
-REGISTRY_IMAGE="registry.gitlab.git.nrw/jbauss2/konrad:latest"
+# build that passed the smoke gate (see .github/workflows/build-image.yml).
+# CI runs on a GitHub mirror of this repo even though the primary repo
+# lives on gitlab.git.nrw — see the README's "Pinning strategy" section.
+REGISTRY_IMAGE="ghcr.io/jlbauss/konrad:latest"
 
 # Shared (cross-project) named volumes.
 SECRETS_VOLUME="konrad-secrets"

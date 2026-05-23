@@ -1,0 +1,184 @@
+# =============================================================================
+# konrad CI — build, smoke-test, publish the container image.
+#
+# This workflow runs on GitHub Actions even though the primary repo lives
+# on gitlab.git.nrw. The GitHub repo is a push mirror that exists only as
+# a CI execution surface; code work happens on GitLab. See README's
+# "Pinning strategy" section for the why.
+#
+# Trigger model:
+#   - push to main when image/, scripts/smoke-test.sh, this file, or
+#     VERSION changes  → build + smoke + publish
+#   - daily schedule    → same pipeline with no-cache + always-pull so
+#                          floating pins re-resolve and base image CVE
+#                          fixes flow in
+#   - workflow_dispatch (manual via Actions tab) → same as push
+#
+# Smoke-gated publish: if the smoke job fails, publish never runs and
+# `:latest` stays pointed at the last good build.
+#
+# Tag scheme (all pushed by every successful pipeline):
+#   :<ver>.<date>      immutable; e.g. 0.1.2026-05-23 — the rollback handle
+#   :<ver>             rolling; latest passing build on the current VERSION
+#   :latest            rolling alias for the newest <ver> passing build
+#   :<short-sha>       immutable; for bisecting
+#
+# Architecture: amd64-only today. arm64 hosted runners on GitHub Actions
+# are free for public repos but paid for private ones. Re-enable arm64 in
+# the build matrix when the GitHub mirror is flipped to public — see the
+# ROADMAP entry.
+# =============================================================================
+
+name: Build and publish konrad image
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'image/**'
+      - 'scripts/smoke-test.sh'
+      - '.github/workflows/build-image.yml'
+      - 'VERSION'
+  schedule:
+    # Daily at 02:00 UTC = 03:00/04:00 in NRW depending on DST.
+    # Cron format: minute hour day-of-month month day-of-week.
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  # github.repository is "owner/repo" — lowercased to satisfy ghcr.io's
+  # requirement that image paths be lowercase.
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Build — produces an amd64 image pushed to ghcr.io under a transient
+  # tag scoped to this CI run. Smoke and publish jobs consume that tag.
+  # ---------------------------------------------------------------------------
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      transient-tag: ${{ steps.metadata.outputs.transient }}
+      konrad-version: ${{ steps.metadata.outputs.version }}
+      build-date: ${{ steps.metadata.outputs.date }}
+      short-sha: ${{ steps.metadata.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute build metadata
+        id: metadata
+        run: |
+          VER=$(cat VERSION)
+          DATE=$(date -u +%Y-%m-%d)
+          SHA=${GITHUB_SHA::7}
+          # IMAGE_NAME may contain uppercase from $github.repository when
+          # the GitHub username/repo has any. ghcr.io rejects uppercase
+          # in image paths, so lowercase it here.
+          IMG=$(echo "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}" | tr '[:upper:]' '[:lower:]')
+          TRANSIENT="$IMG:ci-${{ github.run_id }}"
+          {
+            echo "version=$VER"
+            echo "date=$DATE"
+            echo "sha=$SHA"
+            echo "image=$IMG"
+            echo "transient=$TRANSIENT"
+          } >> "$GITHUB_OUTPUT"
+          echo "konrad $VER @ $SHA (build $DATE)"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push (transient tag)
+        uses: docker/build-push-action@v5
+        with:
+          context: image/
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.metadata.outputs.transient }}
+          build-args: |
+            KONRAD_VERSION=${{ steps.metadata.outputs.version }}
+            GIT_SHA=${{ steps.metadata.outputs.sha }}
+          # Scheduled (daily) runs force a fresh resolution of floating
+          # pins; push runs reuse the cache for speed.
+          no-cache: ${{ github.event_name == 'schedule' }}
+          pull: ${{ github.event_name == 'schedule' }}
+          # GitHub Actions cache for fast incremental builds.
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ---------------------------------------------------------------------------
+  # Smoke — pull the transient image, run the smoke suite against it.
+  # Failure here blocks the publish job.
+  # ---------------------------------------------------------------------------
+  smoke:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull transient image
+        env:
+          TRANSIENT: ${{ needs.build.outputs.transient-tag }}
+        run: |
+          docker pull "$TRANSIENT"
+          docker tag  "$TRANSIENT" konrad:latest
+
+      - name: Run smoke test
+        env:
+          CONTAINER_ENGINE: docker
+        run: ./scripts/smoke-test.sh konrad:latest
+
+  # ---------------------------------------------------------------------------
+  # Publish — only runs if smoke passed. `imagetools create -t newtag oldtag`
+  # retags without re-pulling/re-pushing layers; copies the manifest to
+  # each public tag in one fast operation per tag.
+  # ---------------------------------------------------------------------------
+  publish:
+    needs: [build, smoke]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Retag transient → public tags
+        env:
+          TRANSIENT: ${{ needs.build.outputs.transient-tag }}
+          VER: ${{ needs.build.outputs.konrad-version }}
+          DATE: ${{ needs.build.outputs.build-date }}
+          SHA: ${{ needs.build.outputs.short-sha }}
+          IMG: ${{ needs.build.outputs.transient-tag }}
+        run: |
+          # Strip the :ci-${run_id} suffix to get the registry path
+          BASE="${IMG%:*}"
+          for TAG in "$VER.$DATE" "$VER" latest "$SHA"; do
+            docker buildx imagetools create \
+              --tag "$BASE:$TAG" \
+              "$TRANSIENT"
+            echo "published $BASE:$TAG"
+          done

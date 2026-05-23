@@ -47,7 +47,7 @@ Status: **early / experimental**. The "safe" half of the original `safe-cowork` 
 git clone <this-repo> ~/src/konrad
 cd ~/src/konrad
 ./scripts/install.sh        # symlinks bin/konrad into ~/.local/bin
-konrad update               # pulls konrad:latest from the registry (~30 s)
+konrad update               # pulls konrad:latest from ghcr.io (~30 s)
 ```
 
 The first `konrad` run also auto-pulls if the image isn't already
@@ -57,6 +57,18 @@ falls back to a local build (`./scripts/build-image.sh`, ~5 min + ~2 GB
 of model download).
 
 Make sure `~/.local/bin` is on your `PATH`. The installer warns if it isn't.
+
+> **While the GitHub mirror is private** (it is today; see [Pinning
+> strategy](#pinning-strategy) below), `ghcr.io/jlbauss/konrad` is also
+> private, so you need to authenticate before `konrad update` can pull.
+> Create a [GitHub personal access token](https://github.com/settings/tokens)
+> with the `read:packages` scope, then:
+>
+> ```sh
+> echo "$GHCR_TOKEN" | podman login ghcr.io -u jlbauss --password-stdin
+> ```
+>
+> Once the repo + package are flipped to public, this step goes away.
 
 ## Use
 
@@ -255,7 +267,7 @@ The Dockerfile [carries this list as a comment block](image/Dockerfile) at the t
 
 ### Tag scheme on the registry
 
-Published at `registry.gitlab.git.nrw/jbauss2/konrad`:
+Published at `ghcr.io/jlbauss/konrad`. CI builds run on GitHub Actions against a one-way push mirror of this repo; the primary repo stays on `gitlab.git.nrw`. See [Design decisions](#design-decisions) for why.
 
 | Tag | Mutable? | Meaning |
 | --- | --- | --- |
@@ -272,11 +284,11 @@ Every published image carries `/etc/konrad/build-manifest.json` — a snapshot o
 
 ```sh
 podman run --rm --entrypoint cat \
-  registry.gitlab.git.nrw/jbauss2/konrad:0.1.2026-05-22 \
+  ghcr.io/jlbauss/konrad:0.1.2026-05-22 \
   /etc/konrad/build-manifest.json > yesterday.json
 
 podman run --rm --entrypoint cat \
-  registry.gitlab.git.nrw/jbauss2/konrad:0.1.2026-05-23 \
+  ghcr.io/jlbauss/konrad:0.1.2026-05-23 \
   /etc/konrad/build-manifest.json > today.json
 
 diff <(jq -S . yesterday.json) <(jq -S . today.json)
@@ -290,7 +302,7 @@ The diff names every package whose version changed between the two builds, which
 konrad/
 ├── bin/konrad                       # The CLI
 ├── VERSION                          # konrad's current semver (drives the tag scheme)
-├── .gitlab-ci.yml                   # Build → smoke → publish pipeline (amd64 today)
+├── .github/workflows/build-image.yml  # CI: build → smoke → publish (amd64 today)
 ├── image/                           # Container build context — the canonical artifact
 │   ├── Dockerfile                   # Pinning surface at the top — bump there
 │   ├── entrypoint.sh                # Composes opencode.jsonc + layers user content at start
@@ -332,6 +344,7 @@ A short, opinionated record of the load-bearing choices, so future-you can tell 
 - **Optimised for Qwen3.6-class local models.** The agent body in `image/opencode/agents/konrad.md` is sized and worded for a ~30B-class MoE local model — terse-but-deliberate, no Claude-style verification loops. Bigger frontier models work fine; smaller (<10B) ones may need prompt softening. The specific recommendation we test against is `qwen/qwen3.6-35b-a3b`.
 - **AGPL v3.** Compatible with all bundled upstream licenses (MIT, Apache 2.0, OFL 1.1). Strong copyleft is a deliberate choice for a sandbox-style tool — if someone extends konrad or runs it as a hosted service, the improvements come back to the commons. AGPL's network-use clause closes the SaaS loophole left open by plain GPL: a fork offered as a remote agent over an API still has to publish its source.
 - **Float versions; daily rebuild; smoke-gate the publish.** Almost nothing is pinned. The daily CI build re-resolves floating versions (so CVE fixes and bug-fix releases land automatically), and the smoke test gates the `:latest` tag (so users never see a broken build). The base image is the only major pin. A build manifest baked into every image makes after-the-fact regression diagnosis possible — see [Pinning strategy](#pinning-strategy) for the full table and the diff recipe. Trade-off accepted: silent upstream regressions can surface as runtime breakage, but the manifest names the cause and the dated tags (`:0.1.2026-05-22`) are always rollback-eligible.
+- **CI runs on a GitHub mirror; the primary repo stays on `gitlab.git.nrw`.** A one-way GitLab → GitHub push mirror replicates every commit; GitHub Actions runs the build → smoke → publish pipeline; the image lands on `ghcr.io/jlbauss/konrad`. The GitHub side is purely a CI execution surface — no issues, no MRs, no day-to-day work happens there. Why this shape: gitlab.git.nrw's shared runners don't permit the privileged-container operations Podman-in-Docker needs, and GitHub Actions gives us free hosted runners (with multi-arch coming back for free once the mirror is public). Trade-off accepted: CI status visibility lives on GitHub, not GitLab MRs, until we wire up the GitLab Commit Status API webhook.
 
 ## Troubleshooting
 
