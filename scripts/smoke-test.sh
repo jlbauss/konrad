@@ -90,18 +90,33 @@ BUILD_DATE=$(in_image jq -r .konrad.build_date /etc/konrad/build-manifest.json)
 pass "manifest valid (konrad=$KONRAD_VER, built=$BUILD_DATE)"
 
 # --- 6. Bundled config files in place ---
+# Cross-referenced against image/Dockerfile's COPY block. Two distinct
+# trees: /etc/konrad/ (root-owned, used by the entrypoint) and
+# /home/node/.config/opencode/ (opencode-discoverable, where agents,
+# skills, and instructions.md live — *not* /etc/konrad/instructions.md;
+# the Dockerfile moved it intentionally so edits don't invalidate the
+# npm layer).
 info "baked content"
+# Entrypoint + config-merge machinery
+in_image test -x /usr/local/bin/konrad-entrypoint \
+  || fail "konrad-entrypoint missing or non-executable"
+in_image test -f /etc/konrad/merge-config.js \
+  || fail "merge-config.js missing"
 in_image test -f /etc/konrad/opencode-defaults.jsonc \
   || fail "opencode-defaults.jsonc missing"
-in_image test -f /etc/konrad/instructions.md \
+# opencode-discoverable content
+in_image test -f /home/node/.config/opencode/instructions.md \
   || fail "instructions.md missing"
-in_image test -d /home/node/.config/opencode/skills/pdf \
-  || fail "pdf skill missing"
-in_image test -d /home/node/.config/opencode/skills/quality-assurance \
-  || fail "quality-assurance skill missing"
+in_image test -f /home/node/.config/opencode/agents/konrad.md \
+  || fail "konrad agent missing"
+for skill in do-it-manually pdf quality-assurance spreadsheets; do
+  in_image test -d "/home/node/.config/opencode/skills/$skill" \
+    || fail "$skill skill missing"
+done
+# Bundled fonts
 in_image test -d /usr/local/share/fonts/konrad \
   || fail "bundled fonts missing"
-pass "konrad defaults, skills, and fonts present"
+pass "entrypoint, defaults, agents, skills, and fonts present"
 
 # --- 7. End-to-end: docling extracts a tiny PDF ---
 # Catches regressions in the docling/onnxruntime/rapidocr chain that
