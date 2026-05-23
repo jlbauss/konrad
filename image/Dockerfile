@@ -173,7 +173,10 @@ RUN set -eux; \
 # and absolute references inside the venv remain valid. The model cache uses
 # --chown directly so the ~2 GB of model files land with correct ownership in
 # a single layer — a subsequent `chown -R` would duplicate them in image history.
+# uv comes along too — needed at runtime for `uv pip list` in the build
+# manifest script and useful for `uv pip install` extensions.
 COPY --from=python-base               /opt/venv  /opt/venv
+COPY --from=python-base               /usr/local/bin/uv  /usr/local/bin/uv
 COPY --from=python-models --chown=node:node /opt/models  /home/node/.cache/docling/models
 
 ENV VIRTUAL_ENV=/opt/venv \

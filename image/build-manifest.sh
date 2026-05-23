@@ -32,7 +32,7 @@ jq -n \
                           | jq -s 'sort_by(.name)')" \
   --argjson npm_global "$(npm ls -g --json --depth=0 2>/dev/null \
                           | jq '.dependencies // {}')" \
-  --argjson python_pkgs "$(/opt/venv/bin/pip list --format=json \
+  --argjson python_pkgs "$(uv pip list --python /opt/venv/bin/python --format=json \
                             | jq 'sort_by(.name)')" \
   '{
      konrad: {

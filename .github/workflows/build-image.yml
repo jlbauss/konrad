@@ -50,6 +50,14 @@ env:
   # github.repository is "owner/repo" — lowercased to satisfy ghcr.io's
   # requirement that image paths be lowercase.
   IMAGE_NAME: ${{ github.repository }}
+  # Force JavaScript actions to run on Node 24 instead of the deprecated
+  # Node 20 runtime. checkout@v5 and build-push-action@v6 already ship
+  # Node 24; setup-buildx-action@v3 and login-action@v3 still ship
+  # Node 20 (no v4 yet). This env var silences their deprecation warning
+  # and runs them on Node 24 too — GitHub will flip this default in
+  # June 2026 anyway. Remove this line once the docker org ships Node 24
+  # versions of setup-buildx and login.
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
   # ---------------------------------------------------------------------------
@@ -67,7 +75,7 @@ jobs:
       build-date: ${{ steps.metadata.outputs.date }}
       short-sha: ${{ steps.metadata.outputs.sha }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Compute build metadata
         id: metadata
@@ -98,7 +106,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push (transient tag)
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: image/
           platforms: linux/amd64
@@ -126,7 +134,7 @@ jobs:
       contents: read
       packages: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: docker/login-action@v3
         with:
