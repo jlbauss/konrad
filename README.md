@@ -70,6 +70,17 @@ Make sure `~/.local/bin` is on your `PATH`. The installer warns if it isn't.
 >
 > Once the repo + package are flipped to public, this step goes away.
 
+### Hacking on konrad locally
+
+If you're working on konrad itself (editing the Dockerfile, agent prompts, skills, …), `konrad rebuild` builds from your local checkout and tags the result `konrad:local` — distinct from `konrad:latest`, so your dev build doesn't clobber the published image you pulled via `konrad update`. Run the dev build with:
+
+```sh
+KONRAD_IMAGE=konrad:local konrad
+KONRAD_IMAGE=konrad:local konrad shell
+```
+
+`konrad version` always shows which image is currently active, plus the other one if present, so you can tell at a glance whether you're running your local edits or the published image.
+
 ## Use
 
 ```sh
@@ -85,8 +96,8 @@ That's the whole UX: the current directory is mounted at `/workspace` inside the
 | ----------------------------- | --------------------------------------------------------------------- |
 | `konrad`                      | Default. Runs opencode against the current directory.                 |
 | `konrad shell`                | Opens a bash shell in the container — same mounts, no agent.          |
-| `konrad update`               | Pulls the latest `konrad:latest` from the registry.                   |
-| `konrad rebuild`              | Rebuilds the image from this repo's `image/` — for hacking on konrad. |
+| `konrad update`               | Pulls the latest image from the registry, tags it `konrad:latest`.    |
+| `konrad rebuild`              | Builds locally from this repo's `image/`, tags it `konrad:local` (does *not* clobber `konrad:latest`). |
 | `konrad clean`                | Removes the central log dir at `~/.local/state/konrad/log/`.          |
 | `konrad clean --all`          | Also drops the shared volumes (auth, cache, opencode state). Forces fresh login. |
 | `konrad config init`          | Copies the baked default `opencode.jsonc` to your user override.      |

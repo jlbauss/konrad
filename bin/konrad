@@ -2,11 +2,26 @@
 # konrad — sandboxed opencode in a Podman container. See `konrad help`.
 set -euo pipefail
 
-IMAGE_NAME="konrad:latest"
 LM_STUDIO_HOST_URL="http://localhost:1234/v1/models"
 
+# Image tags. Two distinct surfaces:
+#   konrad:latest  — what `konrad update` writes (= the published image
+#                    from ghcr.io). The default for run/shell.
+#   konrad:local   — what `konrad rebuild` writes (= your local build,
+#                    for working ON konrad itself). Opt in via
+#                    KONRAD_IMAGE=konrad:local so dev iteration doesn't
+#                    clobber the pulled image.
+#
+# KONRAD_IMAGE selects which tag run/shell uses; it does NOT redirect
+# what update/rebuild produce (those always write to their fixed tags).
+# To run with a custom-named build, build it manually (`podman tag
+# konrad:local konrad:my-experiment`) then set KONRAD_IMAGE.
+IMAGE_DEFAULT="konrad:latest"
+IMAGE_LOCAL_TAG="konrad:local"
+IMAGE_NAME="${KONRAD_IMAGE:-$IMAGE_DEFAULT}"
+
 # Registry coordinates — where CI publishes the prebuilt image and where
-# the CLI pulls from by default. `:latest` always points at the newest
+# `konrad update` pulls from. `:latest` always points at the newest
 # build that passed the smoke gate (see .github/workflows/build-image.yml).
 # CI runs on a GitHub mirror of this repo even though the primary repo
 # lives on gitlab.git.nrw — see the README's "Pinning strategy" section.
@@ -91,7 +106,12 @@ require_image() {
   if podman image exists "$IMAGE_NAME"; then
     return 0
   fi
-  # First-run path: try the registry before falling back to a local build.
+  # Non-default tags don't auto-resolve — user must build/pull explicitly.
+  # The only tag we know how to fetch is the registry's :latest.
+  if [[ "$IMAGE_NAME" != "$IMAGE_DEFAULT" ]]; then
+    die "image '$IMAGE_NAME' not found locally. To build the local dev image: 'konrad rebuild' (writes $IMAGE_LOCAL_TAG). To pull the published image: 'konrad update' (writes $IMAGE_DEFAULT)."
+  fi
+  # Default tag missing — try registry, fall back to local build.
   # Pull is ~30 s + ~800 MB; local build is ~5 min + ~2 GB of model
   # download. Registry should be the default user experience.
   info "image '$IMAGE_NAME' not found locally — pulling $REGISTRY_IMAGE…"
@@ -103,6 +123,9 @@ require_image() {
   warn "registry pull failed (offline? registry unreachable?)"
   info "falling back to local build — this takes ~5 minutes and ~2 GB of model download."
   cmd_rebuild
+  # cmd_rebuild writes $IMAGE_LOCAL_TAG, but the user asked to run
+  # $IMAGE_DEFAULT. Re-tag so the run can proceed transparently.
+  podman tag "$IMAGE_LOCAL_TAG" "$IMAGE_NAME"
 }
 
 check_lm_studio() {
@@ -200,6 +223,7 @@ podman_run() {
     --userns=keep-id:uid=1000,gid=1000 \
     -e "KONRAD_DEBUG=${KONRAD_DEBUG}" \
     -e "KONRAD_HOST_WORKSPACE=${cwd}" \
+    -e "KONRAD_HOST_LOG_DIR=${KONRAD_LOG_DIR}" \
     -v "${cwd}:/workspace:z" \
     -v "${KONRAD_LOG_DIR}:/home/node/.local/share/opencode/log:z" \
     -v "${SECRETS_VOLUME}:/home/node/.opencode-secrets:U" \
@@ -243,19 +267,22 @@ cmd_rebuild() {
     || die "expected Dockerfile at $IMAGE_CONTEXT/Dockerfile (is the konrad repo intact?)"
   local git_sha
   git_sha="$(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || printf 'unknown')"
-  info "building $IMAGE_NAME from $IMAGE_CONTEXT (konrad=$KONRAD_VERSION sha=$git_sha)"
+  info "building $IMAGE_LOCAL_TAG from $IMAGE_CONTEXT (konrad=$KONRAD_VERSION sha=$git_sha)"
   # Build intermediate stages first with stable tags so Podman's layer cache
   # keeps them alive across prune operations. Without tags they are treated as
   # dangling images and get collected, forcing a full model re-download next time.
   podman build --target python-base   -t konrad-python-base:cache   "$IMAGE_CONTEXT"
   podman build --target python-models -t konrad-python-models:cache  "$IMAGE_CONTEXT"
   # Layer-cached: a local rebuild reuses whatever hasn't changed under
-  # image/. Use `konrad update` to pull the daily-fresh image from
-  # ghcr.io (latest opencode-ai, fresh base image, refreshed apt/pip).
+  # image/. Always writes to $IMAGE_LOCAL_TAG (regardless of KONRAD_IMAGE)
+  # so the pulled image at $IMAGE_DEFAULT is never accidentally clobbered.
+  # To use the freshly-built image: KONRAD_IMAGE=$IMAGE_LOCAL_TAG konrad
+  # To get the published image: konrad update (writes $IMAGE_DEFAULT).
   podman build \
     --build-arg KONRAD_VERSION="$KONRAD_VERSION" \
     --build-arg GIT_SHA="$git_sha" \
-    -t "$IMAGE_NAME" "$IMAGE_CONTEXT"
+    -t "$IMAGE_LOCAL_TAG" "$IMAGE_CONTEXT"
+  info "built $IMAGE_LOCAL_TAG — run with: KONRAD_IMAGE=$IMAGE_LOCAL_TAG konrad"
 }
 
 cmd_update() {
@@ -264,19 +291,21 @@ cmd_update() {
   if ! podman pull "$REGISTRY_IMAGE"; then
     die "registry pull failed (offline? registry unreachable?)"
   fi
-  podman tag "$REGISTRY_IMAGE" "$IMAGE_NAME"
-  info "updated $IMAGE_NAME"
+  # Always write to $IMAGE_DEFAULT, never the KONRAD_IMAGE override —
+  # `konrad update` specifically means "refresh the published image."
+  podman tag "$REGISTRY_IMAGE" "$IMAGE_DEFAULT"
+  info "updated $IMAGE_DEFAULT"
   # Summarize what just landed by reading the OCI labels — no need to
   # start a container.
   local ver date
-  ver="$(podman image inspect "$IMAGE_NAME" \
+  ver="$(podman image inspect "$IMAGE_DEFAULT" \
          --format '{{index .Labels "org.opencontainers.image.version"}}' 2>/dev/null || printf 'unknown')"
-  date="$(podman image inspect "$IMAGE_NAME" \
+  date="$(podman image inspect "$IMAGE_DEFAULT" \
           --format '{{index .Labels "org.opencontainers.image.created"}}' 2>/dev/null || printf '')"
   if [[ -n "$date" ]]; then
-    info "now running konrad image $ver (built $date)"
+    info "now serving konrad image $ver (built $date)"
   else
-    info "now running konrad image $ver"
+    info "now serving konrad image $ver"
   fi
 }
 
@@ -314,12 +343,24 @@ cmd_clean() {
 
 cmd_version() {
   printf 'konrad CLI %s\n' "$KONRAD_VERSION"
+  printf 'active image: %s' "$IMAGE_NAME"
+  if [[ -n "${KONRAD_IMAGE:-}" ]]; then
+    printf ' (KONRAD_IMAGE override)'
+  fi
+  printf '\n'
+
   if ! command -v podman >/dev/null 2>&1 || ! podman info >/dev/null 2>&1; then
     printf 'image:  (cannot inspect — podman unavailable)\n'
     return 0
   fi
   if ! podman image exists "$IMAGE_NAME"; then
-    printf 'image:  %s (not pulled — run: konrad update)\n' "$IMAGE_NAME"
+    if [[ "$IMAGE_NAME" == "$IMAGE_DEFAULT" ]]; then
+      printf 'image:  %s (not pulled — run: konrad update)\n' "$IMAGE_NAME"
+    elif [[ "$IMAGE_NAME" == "$IMAGE_LOCAL_TAG" ]]; then
+      printf 'image:  %s (not built — run: konrad rebuild)\n' "$IMAGE_NAME"
+    else
+      printf 'image:  %s (not present locally)\n' "$IMAGE_NAME"
+    fi
     return 0
   fi
   local digest image_ver image_rev
@@ -331,6 +372,18 @@ cmd_version() {
                --format '{{index .Labels "org.opencontainers.image.revision"}}' 2>/dev/null || printf 'unknown')"
   printf 'image:  %s (%s)\n' "$IMAGE_NAME" "${digest:0:19}"
   printf '        version=%s revision=%s\n' "$image_ver" "$image_rev"
+
+  # Both tags' state when neither override nor missing, so the user can
+  # see what else is sitting on their machine alongside the active one.
+  if [[ -z "${KONRAD_IMAGE:-}" ]]; then
+    if podman image exists "$IMAGE_LOCAL_TAG"; then
+      local local_rev
+      local_rev="$(podman image inspect "$IMAGE_LOCAL_TAG" \
+                   --format '{{index .Labels "org.opencontainers.image.revision"}}' 2>/dev/null || printf 'unknown')"
+      printf 'also present: %s (revision=%s)  — run with: KONRAD_IMAGE=%s konrad\n' \
+        "$IMAGE_LOCAL_TAG" "$local_rev" "$IMAGE_LOCAL_TAG"
+    fi
+  fi
 
   # --manifest dumps the full build-manifest.json — apt/npm/pip snapshots
   # plus build metadata. One container start; only on explicit request.
@@ -391,8 +444,10 @@ konrad — sandboxed opencode in a Podman container.
 Usage:
   konrad                Run opencode against the current directory.
   konrad shell          Open a bash shell in the container, same mounts.
-  konrad update         Pull the latest konrad image from the registry.
-  konrad rebuild        Rebuild from local image/ (for working ON konrad).
+  konrad update         Pull the latest konrad image from the registry
+                          (writes konrad:latest).
+  konrad rebuild        Rebuild from local image/ (writes konrad:local —
+                          run with KONRAD_IMAGE=konrad:local konrad).
   konrad clean          Remove the central log dir (~/.local/state/konrad/).
   konrad clean --all    Also remove the shared volumes (auth, cache, state).
   konrad config init    Copy the baked opencode.jsonc to your user override.
@@ -402,6 +457,18 @@ Usage:
   konrad version --manifest
                         Dump the full build manifest (apt/npm/pip snapshot).
   konrad help           Show this message.
+
+Image tags:
+  konrad:latest    What 'konrad update' writes (= published image from ghcr.io).
+                   Default for 'konrad' and 'konrad shell'.
+  konrad:local     What 'konrad rebuild' writes (= your local build, for
+                   working ON konrad itself). Doesn't clobber konrad:latest.
+
+Override which image runs:
+  KONRAD_IMAGE=konrad:local konrad           Run the dev build.
+  KONRAD_IMAGE=konrad:my-experiment konrad   Run a custom-tagged image.
+                                              (You must build/pull it first;
+                                              the CLI won't fetch arbitrary tags.)
 
 Debug:
   KONRAD_DEBUG=1 konrad    Run with timestamped per-phase logs on both sides

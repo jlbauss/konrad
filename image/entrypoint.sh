@@ -22,6 +22,7 @@ KONRAD_BAKED=/etc/konrad                       # everything below was shipped in
 
 KONRAD_DEBUG="${KONRAD_DEBUG:-0}"
 KONRAD_HOST_WORKSPACE="${KONRAD_HOST_WORKSPACE:-(unknown — KONRAD_HOST_WORKSPACE not set)}"
+KONRAD_HOST_LOG_DIR="${KONRAD_HOST_LOG_DIR:-(unknown — KONRAD_HOST_LOG_DIR not set)}"
 
 say() { printf '[konrad container] %s\n' "$*" >&2; }
 warn() { printf '[konrad container] warning: %s\n' "$*" >&2; }
@@ -153,7 +154,7 @@ dbg "entrypoint done — about to exec: $*"
 # launch with per-line +Xms deltas (the structure that makes "what took
 # 2 seconds" easy to spot). The log dir is bind-mounted from the host's
 # XDG state dir, so logs accumulate centrally there — not in the workspace.
-say "opencode logs (host): \${XDG_STATE_HOME:-~/.local/state}/konrad/log/"
+say "opencode logs (host): $KONRAD_HOST_LOG_DIR"
 say "starting opencode…"
 
 # Debug mode: ask Bun to print every fetch/http call to fd 2. This catches
