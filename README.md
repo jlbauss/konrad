@@ -290,7 +290,7 @@ The diff names every package whose version changed between the two builds, which
 konrad/
 ├── bin/konrad                       # The CLI
 ├── VERSION                          # konrad's current semver (drives the tag scheme)
-├── .gitlab-ci.yml                   # Build → smoke → publish pipeline (multi-arch)
+├── .gitlab-ci.yml                   # Build → smoke → publish pipeline (amd64 today)
 ├── image/                           # Container build context — the canonical artifact
 │   ├── Dockerfile                   # Pinning surface at the top — bump there
 │   ├── entrypoint.sh                # Composes opencode.jsonc + layers user content at start

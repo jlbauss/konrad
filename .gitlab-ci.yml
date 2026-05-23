@@ -23,6 +23,13 @@
 # When VERSION bumps (e.g. 0.1 → 0.2), the previous version line stops
 # getting new daily rebuilds. Users on `:0.1` stay on their last good build
 # until they upgrade. Pre-1.0 simplicity — revisit at 1.0.
+#
+# Runner targeting: jobs use `tags: [docker]` to land on gitlab.git.nrw's
+# shared docker-executor runners (the "shared docker" runner pool). We
+# publish amd64-only today because no arm64 runner is available on the
+# instance; Apple Silicon users will run via QEMU emulation. When an
+# arm64-tagged runner appears, add a build:arm64 job and switch publish:
+# back to a multi-arch manifest list.
 # =============================================================================
 
 stages:
@@ -37,6 +44,7 @@ variables:
 
 .podman-base: &podman-base
   image: quay.io/podman/stable:latest
+  tags: [docker]
   before_script:
     # Resolve build metadata once. KONRAD_VERSION drives the tag scheme;
     # GIT_SHA + BUILD_DATE end up baked into the image's build-manifest.json.
@@ -58,74 +66,51 @@ variables:
     - podman login -u "${CI_REGISTRY_USER}" -p "${CI_REGISTRY_PASSWORD}" "${CI_REGISTRY}"
 
 # -----------------------------------------------------------------------------
-# Build — one job per arch. Each pushes its arch-specific image to the
-# registry under a transient pipeline-scoped tag so the publish job can
-# stitch them into a multi-arch manifest list.
+# Build — amd64 only today. Pushes the built image under a transient
+# pipeline-scoped tag that smoke + publish consume.
 # -----------------------------------------------------------------------------
 
-.build-template: &build-template
+build:
   <<: *podman-base
   stage: build
   script:
     - |
       # shellcheck disable=SC2086  # BUILD_FLAGS is intentionally word-split
       podman build $BUILD_FLAGS \
-        --platform "linux/${ARCH}" \
         --build-arg "KONRAD_VERSION=${KONRAD_VERSION}" \
         --build-arg "GIT_SHA=${GIT_SHA}" \
-        --tag "${IMAGE}:build-${CI_PIPELINE_ID}-${ARCH}" \
+        --tag "${IMAGE}:build-${CI_PIPELINE_ID}" \
         image/
-    - podman push "${IMAGE}:build-${CI_PIPELINE_ID}-${ARCH}"
-
-build:amd64:
-  <<: *build-template
-  tags: [amd64]
-  variables:
-    ARCH: "amd64"
-
-# Requires an arm64-tagged runner on the GitLab instance. If none is
-# available, remove this job and the arm64 reference in publish: below;
-# users on Apple Silicon will run via QEMU emulation (slower).
-build:arm64:
-  <<: *build-template
-  tags: [arm64]
-  variables:
-    ARCH: "arm64"
+    - podman push "${IMAGE}:build-${CI_PIPELINE_ID}"
 
 # -----------------------------------------------------------------------------
-# Smoke — run the smoke suite against the amd64 build. Single-arch is
-# enough; the script tests "things are installed and importable," which
-# doesn't vary by arch. Failure here blocks publish.
+# Smoke — run the smoke suite against the build. Failure blocks publish.
 # -----------------------------------------------------------------------------
 
 smoke:
   <<: *podman-base
   stage: smoke
-  tags: [amd64]
-  needs: [build:amd64]
+  needs: [build]
   script:
-    - podman pull "${IMAGE}:build-${CI_PIPELINE_ID}-amd64"
-    - podman tag  "${IMAGE}:build-${CI_PIPELINE_ID}-amd64" konrad:latest
+    - podman pull "${IMAGE}:build-${CI_PIPELINE_ID}"
+    - podman tag  "${IMAGE}:build-${CI_PIPELINE_ID}" konrad:latest
     - ./scripts/smoke-test.sh konrad:latest
 
 # -----------------------------------------------------------------------------
-# Publish — only runs if smoke passed. Stitches the per-arch images into
-# a multi-arch manifest list and pushes it under every tag we ship.
+# Publish — only runs if smoke passed. Tags the build under every public
+# tag we ship and pushes them.
 # -----------------------------------------------------------------------------
 
 publish:
   <<: *podman-base
   stage: publish
-  tags: [amd64]
-  needs: [build:amd64, build:arm64, smoke]
+  needs: [build, smoke]
   script:
+    - podman pull "${IMAGE}:build-${CI_PIPELINE_ID}"
     - |
       for TAG in "${FULL_TAG}" "${KONRAD_VERSION}" "latest" "${GIT_SHA}"; do
-        podman manifest create "${IMAGE}:${TAG}" \
-          "docker://${IMAGE}:build-${CI_PIPELINE_ID}-amd64" \
-          "docker://${IMAGE}:build-${CI_PIPELINE_ID}-arm64"
-        podman manifest push --all "${IMAGE}:${TAG}" \
-          "docker://${IMAGE}:${TAG}"
+        podman tag  "${IMAGE}:build-${CI_PIPELINE_ID}" "${IMAGE}:${TAG}"
+        podman push "${IMAGE}:${TAG}"
         echo "published ${IMAGE}:${TAG}"
       done
 
