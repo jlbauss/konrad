@@ -18,6 +18,10 @@ ENV DEBIAN_FRONTEND=noninteractive \
 # what the agent will see at runtime.
 #
 #   shellcheck          → lints bin/konrad, entrypoint, scripts/*.sh
+#   yamllint            → YAML syntax + style across .github/workflows/
+#                         and devcontainer.json. Sharper than `python3 -c
+#                         "import yaml"` for the everyday "did I write
+#                         valid YAML" check.
 #   git, jq, curl, sudo → daily-use
 #   openssh-client      → `ssh` binary so `git push` over SSH remotes
 #                         works. VS Code forwards the host's SSH agent
@@ -45,6 +49,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 # CLI needed.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     shellcheck \
+    yamllint \
     git gh curl jq ca-certificates sudo \
     openssh-client \
     ripgrep fd-find bat \
@@ -56,6 +61,49 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # uv: pulled from Astral's official image. uv manages its own Python
 # toolchains, so no system Python install needed alongside.
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
+
+# Standalone validators not in apt — Go and Haskell binaries from the
+# upstreams' GitHub releases. Pinned by version so dev-container builds
+# are reproducible; bump deliberately when there's a reason.
+#
+#   actionlint → GitHub Actions workflow validation. Sharper than yamllint
+#                for .github/workflows/*.yml because it understands the
+#                Actions semantics (invalid step refs, expression typos,
+#                shell injection in `run:`). https://github.com/rhysd/actionlint
+#   hadolint   → Dockerfile linter. Catches apt cache cleanup misses,
+#                COPY ownership smells, layer-ordering issues that
+#                shellcheck and bash -n can't see. https://github.com/hadolint/hadolint
+#
+# Both pinned for dev-container reproducibility. Bump when bumping
+# matters (e.g. new rule we want, or an upstream fix).
+ARG ACTIONLINT_VERSION=1.7.12
+ARG HADOLINT_VERSION=2.14.0
+RUN set -eux; \
+    curl -fsSL "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" \
+      | tar -xz -C /usr/local/bin actionlint; \
+    chmod +x /usr/local/bin/actionlint; \
+    actionlint -version; \
+    curl -fsSL -o /usr/local/bin/hadolint \
+      "https://github.com/hadolint/hadolint/releases/download/v${HADOLINT_VERSION}/hadolint-Linux-x86_64"; \
+    chmod +x /usr/local/bin/hadolint; \
+    hadolint --version
+
+# Dev venv at /opt/dev-venv — pre-installed Python validators on PATH so
+# one-shot "import yaml" / "check-jsonschema foo.json" calls Just Work
+# without re-creating an ephemeral venv each time. Distinct from konrad's
+# runtime /opt/venv (which holds docling, reportlab, etc.) — this venv
+# is just dev-container tooling.
+#
+#   pyyaml           → `python3 -c "import yaml; ..."` for ad-hoc YAML
+#                      parsing / round-trip checks that yamllint doesn't
+#                      cover.
+#   check-jsonschema → opencode.jsonc validation against opencode's
+#                      schema, JSON files against committed schemas, etc.
+RUN uv venv /opt/dev-venv --python-preference=managed --python=3.13 \
+    && uv pip install --python /opt/dev-venv/bin/python --no-cache \
+         pyyaml check-jsonschema
+
+ENV PATH="/opt/dev-venv/bin:$PATH"
 
 # Debian renames fd → fdfind and bat → batcat; symlink to the canonical
 # names the agent and image/Dockerfile both expect.
