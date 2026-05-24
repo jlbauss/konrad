@@ -132,10 +132,32 @@ resolve-locks:
         echo "Opened MR !$IID"
       fi
 
-      # ---- auto-merge: immediate merge via API ----------------------------
-      # No MR pipeline gates the merge here (build/smoke run downstream on
-      # the GitHub mirror after the merge lands on main). If merge fails
-      # (conflicts, server hiccup), the MR stays open for manual handling.
-      curl -fsSL --request PUT --header "PRIVATE-TOKEN: $BOT_PAT" \
-        "$CI_API_V4_URL/projects/$CI_PROJECT_ID/merge_requests/$IID/merge" \
-        || { echo "Merge call failed — MR !$IID left open for manual handling." >&2; exit 1; }
+      # ---- wait for mergeable status, then merge --------------------------
+      # GitLab computes detailed_merge_status asynchronously after MR
+      # creation; PUT /merge returns 405 if called while status is still
+      # `checking` or `unchecked`. Poll briefly until it's `mergeable`
+      # (or a terminal failure state), then merge. No MR pipeline gates
+      # this — build/smoke run downstream on the GitHub mirror after the
+      # merge lands on main.
+      MR_URL="$CI_API_V4_URL/projects/$CI_PROJECT_ID/merge_requests/$IID"
+      for attempt in 1 2 3 4 5 6 7 8; do
+        STATUS="$(curl -fsSL --header "PRIVATE-TOKEN: $BOT_PAT" "$MR_URL" \
+                    | jq -r '.detailed_merge_status // .merge_status')"
+        echo "Attempt $attempt: detailed_merge_status=$STATUS"
+        case "$STATUS" in
+          mergeable|can_be_merged) break ;;
+          checking|unchecked|cannot_be_merged_recheck) sleep 3 ;;
+          *)
+            echo "MR !$IID in non-mergeable state '$STATUS' — left open for manual handling." >&2
+            exit 1
+            ;;
+        esac
+      done
+
+      if [ "$STATUS" != "mergeable" ] && [ "$STATUS" != "can_be_merged" ]; then
+        echo "MR !$IID never reached mergeable state (last: '$STATUS') — left open for manual handling." >&2
+        exit 1
+      fi
+
+      curl -fsSL --request PUT --header "PRIVATE-TOKEN: $BOT_PAT" "$MR_URL/merge" \
+        || { echo "Merge call failed despite status=$STATUS — MR !$IID left open for manual handling." >&2; exit 1; }
