@@ -23,6 +23,12 @@ command -v podman >/dev/null 2>&1 \
 # Build metadata baked into the image manifest + OCI labels.
 KONRAD_VERSION="$(cat "$REPO_ROOT/VERSION" 2>/dev/null || printf 'dev')"
 GIT_SHA="$(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || printf 'unknown')"
+# Commit author date drives BUILD_DATE in build-manifest.json so rebuilds
+# from the same source commit produce a byte-identical manifest layer.
+BUILD_DATE="$(git -C "$REPO_ROOT" log -1 --format=%cI HEAD 2>/dev/null \
+              | sed 's/+00:00/Z/' \
+              | sed 's/T\(..\):\(..\):\(..\).*/T\1:\2:\3Z/' \
+              || date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 printf 'konrad-build: building python-base (Python venv + docling-slim)…\n'
 podman build --target python-base  -t konrad-python-base:cache  "$CTX"
@@ -35,4 +41,5 @@ printf 'konrad-build: building final runtime image (konrad=%s sha=%s)…\n' \
 exec podman build \
   --build-arg "KONRAD_VERSION=$KONRAD_VERSION" \
   --build-arg "GIT_SHA=$GIT_SHA" \
+  --build-arg "BUILD_DATE=$BUILD_DATE" \
   -t konrad:latest "$CTX"

@@ -1,24 +1,36 @@
 # =============================================================================
-# Pinning surface — the only versions you should ever need to bump by hand.
-# Everything else floats and gets the latest on every rebuild; the daily
-# CI rebuild + smoke-gated publish is the safety net. See README
-# "Pinning strategy" for the full rationale.
+# Pinning surface — three layers of versions, each handled differently.
+# See README "Pinning strategy" for the full rationale.
+#
+#   1. Hand-pinned in this file:
+#        - BASE_IMAGE  (node:26-trixie-slim — Debian/Node LTS track)
+#      Major bumps are deliberate events: rebuild locally, run smoke,
+#      then bump. Patch updates flow in for free on daily CI rebuilds
+#      that re-pull the base image.
+#
+#   2. Locked in image/locks/ (committed, refreshed by daily resolve-locks
+#      workflow → PR):
+#        - python  (locks/python.lock from locks/python.spec)
+#        - npm     (locks/npm.lock: opencode-ai + npm)
+#        - typst   (locks/typst.lock: pinned version string)
+#      Each lock keys exactly one Dockerfile layer; Docker's layer cache
+#      reuses the layer when the lock didn't move. The resolve-locks
+#      workflow re-resolves upstream daily and opens a PR when a lock
+#      genuinely changes — so floating pins still flow in, just visibly
+#      and one input at a time.
+#
+#   3. Floating (no lock — apt-layer rebuilds when apt churns; cheap,
+#      downstream of nothing huge, and Debian doesn't lend itself to a
+#      clean lock format):
+#        - apt packages  (whatever Debian trixie currently ships)
+#        - uv            (ghcr.io/astral-sh/uv:latest — tool that consumes
+#                          the python lock; uv installing from a fully-pinned
+#                          lock is reproducible across uv versions)
 #
 # When you add or remove a pin, update both this block *and* the README
 # table so the two stay in sync.
 # =============================================================================
 ARG BASE_IMAGE=node:26-trixie-slim
-# ^ Debian/Node LTS track. Major bumps (trixie → forky, node 26 → 28) are
-#   deliberate events: rebuild against the new tag locally, run the smoke
-#   test, then bump here. Patch updates flow in for free on every daily
-#   CI rebuild that re-pulls the base image.
-#
-# Floating (no pin — daily rebuild + smoke catches breakage):
-#   - uv                (ghcr.io/astral-sh/uv:latest)
-#   - typst             (resolved from GitHub releases API at build time)
-#   - opencode-ai, npm  (@latest)
-#   - Python deps       (docling-slim[standard], pypdf, pdfplumber, …)
-#   - apt packages      (whatever Debian trixie currently ships)
 
 # =============================================================================
 # Stage 1 — python-base
@@ -42,17 +54,18 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
 
 ENV VIRTUAL_ENV=/opt/venv
 
-# onnxruntime is rapidocr's inference engine. docling-slim[standard]
-# pulls in rapidocr>=3.8, which leaves the engine choice to the installer
-# (RapidOCR 3.x supports ONNX Runtime / OpenVINO / PaddleOCR / PyTorch).
-# Without onnxruntime the EXTRACT route's --ocr-engine rapidocr path
-# raises "onnxruntime not installed" the first time OCR is needed.
+# Install from python.lock — a fully-resolved set with exact versions
+# for every transitive dep. Source spec at locks/python.spec; the daily
+# resolve-locks CI workflow re-resolves and PRs an updated lock when
+# upstream moves. onnxruntime is in the spec because docling-slim's
+# rapidocr>=3.8 leaves the inference engine choice to the installer
+# (RapidOCR 3.x supports ONNX / OpenVINO / Paddle / PyTorch); without it
+# the EXTRACT route's --ocr-engine rapidocr path raises "onnxruntime
+# not installed" the first time OCR is needed.
+COPY locks/python.lock /tmp/python.lock
 RUN uv venv $VIRTUAL_ENV --python /usr/bin/python3 \
-    && uv pip install --no-cache \
-    --torch-backend=cpu \
-    "docling-slim[standard]" openpyxl pandas \
-    pypdf pdfplumber pdf2image reportlab \
-    onnxruntime
+    && uv pip install --no-cache --torch-backend=cpu -r /tmp/python.lock \
+    && rm /tmp/python.lock
 
 # =============================================================================
 # Stage 2 — python-models
@@ -147,12 +160,15 @@ RUN ln -sf /usr/bin/fdfind /usr/local/bin/fd \
 COPY fonts/konrad/ /usr/local/share/fonts/konrad/
 RUN fc-cache -f
 
-# Install Typst — version resolved from GitHub at build time so daily CI
-# rebuilds pick up the latest release. Typst is pre-1.0 (so minor bumps
-# can carry breaking changes), but we don't ship any .typ templates in
-# this repo — the agent generates Typst from scratch each time. Breakage
-# would surface in the CI smoke test before publish.
+# Install Typst — version comes from locks/typst.lock so layer caches
+# when the lock is unchanged. The daily resolve-locks workflow re-resolves
+# from GitHub's releases API and opens a PR when a new version lands.
+# Typst is pre-1.0 (so minor bumps can carry breaking changes), but we
+# don't ship any .typ templates in this repo — the agent generates Typst
+# from scratch each time. Breakage surfaces in the CI smoke test before
+# publish.
 ARG TARGETARCH
+COPY locks/typst.lock /tmp/typst.lock
 
 RUN set -eux; \
     case "$TARGETARCH" in \
@@ -160,13 +176,13 @@ RUN set -eux; \
       arm64) ARCH="aarch64-unknown-linux-musl" ;; \
       *) echo "unsupported arch: $TARGETARCH" >&2; exit 1 ;; \
     esac; \
-    TYPST_VERSION=$(curl -fsSL https://api.github.com/repos/typst/typst/releases/latest | jq -r .tag_name); \
-    [ -n "$TYPST_VERSION" ] && [ "$TYPST_VERSION" != "null" ] \
-      || { echo "could not resolve latest Typst version from GitHub API" >&2; exit 1; }; \
-    curl -fsSL "https://github.com/typst/typst/releases/download/${TYPST_VERSION}/typst-${ARCH}.tar.xz" \
+    TYPST_VERSION="$(cat /tmp/typst.lock)"; \
+    [ -n "$TYPST_VERSION" ] || { echo "locks/typst.lock is empty" >&2; exit 1; }; \
+    curl -fsSL "https://github.com/typst/typst/releases/download/v${TYPST_VERSION}/typst-${ARCH}.tar.xz" \
       | tar -xJ --strip-components=1 -C /usr/local/bin "typst-${ARCH}/typst"; \
     chmod +x /usr/local/bin/typst; \
-    typst --version
+    typst --version; \
+    rm /tmp/typst.lock
 
 # ── Pull in the Python world from the build stages ──────────────────────────
 # venv stays at /opt/venv (same path as in python-base) so all shebang lines
@@ -212,14 +228,15 @@ WORKDIR /workspace
 
 # ── npm: install opencode ────────────────────────────────────────────────────
 # Installed as root into /home/node/.npm-global so the runtime user can't
-# mutate it. Layer-cached like any other RUN step. To get a fresh opencode
-# locally, use `konrad update` (pulls the daily-fresh image from ghcr.io,
-# which bakes in the latest opencode-ai). The previous CACHE_BUST trick
-# that forced this step to re-run on every local rebuild went away once
-# the registry path existed — local rebuild is now for konrad-on-konrad
-# dev work, not for chasing upstream opencode.
-RUN npm install -g npm@latest opencode-ai@latest \
-    && npm cache clean --force
+# mutate it. Versions come from locks/npm.lock so this layer caches when
+# the lock is unchanged. The daily resolve-locks workflow re-queries the
+# npm registry and opens a PR when opencode-ai or npm itself bumps.
+COPY locks/npm.lock /tmp/npm.lock
+RUN NPM_VERSION="$(jq -r '.npm' /tmp/npm.lock)" \
+    && OPENCODE_VERSION="$(jq -r '."opencode-ai"' /tmp/npm.lock)" \
+    && npm install -g "npm@${NPM_VERSION}" "opencode-ai@${OPENCODE_VERSION}" \
+    && npm cache clean --force \
+    && rm /tmp/npm.lock
 
 # ── Build manifest ──────────────────────────────────────────────────────────
 # Snapshot the exact versions of everything installed (apt, npm, Python),
@@ -230,9 +247,13 @@ RUN npm install -g npm@latest opencode-ai@latest \
 # make the floating-pins strategy honest — even if pins float, what
 # shipped is always knowable after the fact.
 # KONRAD_VERSION and GIT_SHA were already declared near the LABEL block
-# above; reusing them here.
+# above; reusing them here. BUILD_DATE comes from the git commit's
+# author date (passed in by CI / bin/konrad) so two builds from the same
+# source commit produce a byte-identical manifest — critical for layer
+# cache hits across daily scheduled CI rebuilds.
+ARG BUILD_DATE=unknown
 COPY build-manifest.sh /tmp/build-manifest.sh
-RUN bash /tmp/build-manifest.sh "$KONRAD_VERSION" "$GIT_SHA" \
+RUN bash /tmp/build-manifest.sh "$KONRAD_VERSION" "$GIT_SHA" "$BUILD_DATE" \
     && rm /tmp/build-manifest.sh
 
 USER node

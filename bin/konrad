@@ -265,8 +265,15 @@ cmd_rebuild() {
   require_podman
   [[ -f "$IMAGE_CONTEXT/Dockerfile" ]] \
     || die "expected Dockerfile at $IMAGE_CONTEXT/Dockerfile (is the konrad repo intact?)"
-  local git_sha
+  local git_sha build_date
   git_sha="$(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || printf 'unknown')"
+  # Commit author date drives BUILD_DATE in the image's build-manifest.json
+  # so rebuilds from the same source commit produce a byte-identical
+  # manifest layer. Falls back to current UTC if not in a git repo.
+  build_date="$(git -C "$REPO_ROOT" log -1 --format=%cI HEAD 2>/dev/null \
+                | sed 's/+00:00/Z/' \
+                | sed 's/T\(..\):\(..\):\(..\).*/T\1:\2:\3Z/' \
+                || date -u +%Y-%m-%dT%H:%M:%SZ)"
   info "building $IMAGE_LOCAL_TAG from $IMAGE_CONTEXT (konrad=$KONRAD_VERSION sha=$git_sha)"
   # Build intermediate stages first with stable tags so Podman's layer cache
   # keeps them alive across prune operations. Without tags they are treated as
@@ -281,6 +288,7 @@ cmd_rebuild() {
   podman build \
     --build-arg KONRAD_VERSION="$KONRAD_VERSION" \
     --build-arg GIT_SHA="$git_sha" \
+    --build-arg BUILD_DATE="$build_date" \
     -t "$IMAGE_LOCAL_TAG" "$IMAGE_CONTEXT"
   info "built $IMAGE_LOCAL_TAG — run with: KONRAD_IMAGE=$IMAGE_LOCAL_TAG konrad"
 }

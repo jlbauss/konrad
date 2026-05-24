@@ -4,7 +4,14 @@
 # install step so the manifest reflects what actually shipped, not what
 # the Dockerfile asked for.
 #
-# Usage: build-manifest.sh <konrad-version> <git-sha>
+# Usage: build-manifest.sh <konrad-version> <git-sha> [<build-date>]
+#
+# build-date defaults to the git commit's author date if passed in,
+# falling back to the current UTC time. Sourcing it from the commit
+# rather than `date` at build time is what lets this layer cache across
+# daily CI rebuilds — two builds from the same source commit produce a
+# byte-identical manifest, so the layer hash matches, so users don't
+# re-pull it.
 #
 # The output is what makes the floating-pins strategy honest: when a user
 # reports "worked yesterday, broken today," diffing two dated tags'
@@ -13,7 +20,7 @@ set -euo pipefail
 
 KONRAD_VERSION="${1:-unknown}"
 GIT_SHA="${2:-unknown}"
-BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+BUILD_DATE="${3:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
 
 mkdir -p /etc/konrad
 
