@@ -263,7 +263,7 @@ konrad runs its inputs through three layers of pinning, each handled differently
 
 **2. Locked in [image/locks/](image/locks/) (committed, refreshed by daily CI).**
 
-Each lockfile keys exactly one Dockerfile layer. Docker's existing layer cache reuses the layer when the lock is byte-identical to last time; rebuilds the layer (and everything downstream) when the lock genuinely moves. The [`resolve-locks.yml`](.github/workflows/resolve-locks.yml) workflow re-resolves the upstream names daily, diffs the result against the committed lock, and opens a PR when anything moved — so floating pins still flow in, just visibly and one input at a time.
+Each lockfile keys exactly one Dockerfile layer. Docker's existing layer cache reuses the layer when the lock is byte-identical to last time; rebuilds the layer (and everything downstream) when the lock genuinely moves. The [`.gitlab-ci.yml`](.gitlab-ci.yml) `resolve-locks` job runs on GitLab daily, re-resolves the upstream names, diffs the result against the committed lock, and opens (and auto-merges) an MR when anything moved — so floating pins still flow in, just visibly and one input at a time. The merge mirrors to GitHub, which then triggers a real rebuild here.
 
 | Component | Lock | Source |
 | --- | --- | --- |

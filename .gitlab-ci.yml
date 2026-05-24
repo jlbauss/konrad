@@ -1,0 +1,141 @@
+# =============================================================================
+# GitLab CI — daily lock-file refresh.
+#
+# Why this exists, and why on GitLab (not GitHub Actions like the build):
+#
+# The container image build itself lives on GitHub Actions
+# (.github/workflows/build-image.yml). That move was forced by
+# gitlab.git.nrw's shared docker runners not granting the user-namespace
+# / clone() capabilities Podman-in-Docker needs (see commit f5bc95d).
+#
+# This job is different: it just resolves dependency names (uv pip
+# compile, npm view, GitHub releases API) and opens an MR. No Podman,
+# no privileged container ops — runs fine on the same shared runner
+# that couldn't host the image build.
+#
+# Why this matters: the GitLab repo is source of truth; GitHub is a
+# one-way push mirror. A bot that lands commits on GitHub directly
+# (where the resolve-locks workflow used to live) creates commits the
+# mirror can't reconcile back to GitLab. Moving the bot to GitLab keeps
+# the source of truth single, and the merge to main mirrors to GitHub,
+# which then triggers build-image.yml via the image/** path filter.
+#
+# Setup (manual, one-time, done in the GitLab UI):
+#   1. Settings → Access Tokens → create a Project Access Token,
+#      Developer role, scopes `api` + `write_repository`. Stash as
+#      a masked + protected CI/CD variable named BOT_PAT.
+#   2. Settings → CI/CD → Pipeline schedules → New schedule:
+#        cron:        0 1 * * *   (daily 01:00 UTC)
+#        target:      main
+#        description: daily lock refresh
+#      The job is gated to schedule + manual web triggers (see `rules:`
+#      below), so it never runs on regular pushes.
+# =============================================================================
+
+resolve-locks:
+  image: node:26-trixie-slim
+  tags: [docker]
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_PIPELINE_SOURCE == "web"
+  variables:
+    GIT_STRATEGY: clone
+    GIT_DEPTH: "1"
+  script:
+    - |
+      set -eux
+
+      # ---- bootstrap toolchain --------------------------------------------
+      apt-get update
+      apt-get install -y --no-install-recommends \
+        git curl jq ca-certificates xz-utils
+      rm -rf /var/lib/apt/lists/*
+      curl -fsSL https://astral.sh/uv/install.sh \
+        | env UV_INSTALL_DIR=/usr/local/bin sh
+
+      # ---- re-resolve each lock -------------------------------------------
+      cd image/locks
+      MOVED=""
+
+      uv pip compile python.spec \
+        --torch-backend=cpu \
+        --python-version=3.13 \
+        -o python.lock.new
+      if diff -q python.lock python.lock.new >/dev/null 2>&1; then
+        rm python.lock.new
+      else
+        mv python.lock.new python.lock
+        MOVED="$MOVED python"
+      fi
+
+      NPM_VERSION="$(npm view npm version)"
+      OPENCODE_VERSION="$(npm view opencode-ai version)"
+      jq -n --arg npm "$NPM_VERSION" --arg opencode "$OPENCODE_VERSION" \
+        '{"opencode-ai": $opencode, "npm": $npm}' > npm.lock.new
+      if diff -q npm.lock npm.lock.new >/dev/null 2>&1; then
+        rm npm.lock.new
+      else
+        mv npm.lock.new npm.lock
+        MOVED="$MOVED npm"
+      fi
+
+      TYPST_VERSION="$(curl -fsSL https://api.github.com/repos/typst/typst/releases/latest \
+                         | jq -r .tag_name | sed 's/^v//')"
+      [ -n "$TYPST_VERSION" ] && [ "$TYPST_VERSION" != "null" ] \
+        || { echo "could not resolve latest Typst version" >&2; exit 1; }
+      echo "$TYPST_VERSION" > typst.lock.new
+      if diff -q typst.lock typst.lock.new >/dev/null 2>&1; then
+        rm typst.lock.new
+      else
+        mv typst.lock.new typst.lock
+        MOVED="$MOVED typst"
+      fi
+
+      MOVED="$(echo "$MOVED" | xargs)"
+      cd ../..
+
+      if [ -z "$MOVED" ]; then
+        echo "Nothing moved — daily noop, exiting clean."
+        exit 0
+      fi
+      echo "Locks moved: $MOVED"
+
+      # ---- commit + force-push to locks/auto-bump -------------------------
+      # Force-push so a fresh daily resolution always replaces the prior
+      # branch contents (the open MR, if any, picks up the new diff).
+      git config user.email "konrad-bot@gitlab.git.nrw"
+      git config user.name  "konrad-locks-bot"
+      git checkout -B locks/auto-bump
+      git add image/locks
+      git commit -m "chore(locks): bump $MOVED"
+      git push -f \
+        "https://oauth2:${BOT_PAT}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git" \
+        locks/auto-bump
+
+      # ---- open MR (or reuse the open one) --------------------------------
+      EXISTING="$(curl -fsSL --header "PRIVATE-TOKEN: $BOT_PAT" \
+        "$CI_API_V4_URL/projects/$CI_PROJECT_ID/merge_requests?source_branch=locks/auto-bump&state=opened" \
+        | jq '.[0].iid // empty')"
+
+      if [ -n "$EXISTING" ]; then
+        IID="$EXISTING"
+        echo "Reusing existing MR !$IID"
+      else
+        IID="$(curl -fsSL --request POST --header "PRIVATE-TOKEN: $BOT_PAT" \
+          --data-urlencode "source_branch=locks/auto-bump" \
+          --data-urlencode "target_branch=main" \
+          --data-urlencode "title=chore(locks): bump $MOVED" \
+          --data-urlencode "description=Daily lock refresh — moved: **$MOVED**. Merging triggers build-image.yml on the GitHub mirror via the image/** path filter." \
+          --data-urlencode "remove_source_branch=true" \
+          "$CI_API_V4_URL/projects/$CI_PROJECT_ID/merge_requests" \
+          | jq -r '.iid')"
+        echo "Opened MR !$IID"
+      fi
+
+      # ---- auto-merge: immediate merge via API ----------------------------
+      # No MR pipeline gates the merge here (build/smoke run downstream on
+      # the GitHub mirror after the merge lands on main). If merge fails
+      # (conflicts, server hiccup), the MR stays open for manual handling.
+      curl -fsSL --request PUT --header "PRIVATE-TOKEN: $BOT_PAT" \
+        "$CI_API_V4_URL/projects/$CI_PROJECT_ID/merge_requests/$IID/merge" \
+        || { echo "Merge call failed — MR !$IID left open for manual handling." >&2; exit 1; }

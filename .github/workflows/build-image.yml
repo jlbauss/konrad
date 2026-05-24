@@ -131,12 +131,13 @@ jobs:
             BUILD_DATE=${{ steps.metadata.outputs.commit_date }}
           # All triggers reuse the GHA layer cache. Inputs that should
           # actually re-resolve (Python deps, opencode-ai, Typst version)
-          # are gated by the lockfiles in image/locks/; the separate
-          # resolve-locks workflow re-resolves daily and opens a PR when
-          # a lock genuinely moves, which is what then triggers a real
-          # rebuild here. Daily scheduled runs of this workflow that find
-          # nothing changed are a cache hit top-to-bottom and republish
-          # the same layers — no user pull.
+          # are gated by the lockfiles in image/locks/; the resolve-locks
+          # job in .gitlab-ci.yml runs daily on GitLab, opens + auto-merges
+          # an MR when any lock genuinely moves, and the mirror push back
+          # to GitHub is what then triggers a real rebuild here. Daily
+          # scheduled runs of this workflow that find nothing changed are
+          # a cache hit top-to-bottom and republish the same layers — no
+          # user pull.
           #
           # `pull: true` on scheduled runs only — picks up Debian point
           # updates / CVE fixes on the base image. Push runs reuse the
