@@ -140,16 +140,24 @@ resolve-locks:
       # this — build/smoke run downstream on the GitHub mirror after the
       # merge lands on main.
       MR_URL="$CI_API_V4_URL/projects/$CI_PROJECT_ID/merge_requests/$IID"
-      for attempt in 1 2 3 4 5 6 7 8; do
+      for attempt in 1 2 3 4 5 6 7 8 9 10 11 12; do
         STATUS="$(curl -fsSL --header "PRIVATE-TOKEN: $BOT_PAT" "$MR_URL" \
                     | jq -r '.detailed_merge_status // .merge_status')"
         echo "Attempt $attempt: detailed_merge_status=$STATUS"
         case "$STATUS" in
-          mergeable|can_be_merged) break ;;
-          checking|unchecked|cannot_be_merged_recheck) sleep 3 ;;
-          *)
-            echo "MR !$IID in non-mergeable state '$STATUS' — left open for manual handling." >&2
+          # success — proceed to merge
+          mergeable|can_be_merged)
+            break
+            ;;
+          # known terminal failures — fail fast, leave MR open for human
+          blocked_status|broken_status|not_open|not_approved|requested_changes|discussions_not_resolved|draft_status|external_status_checks|need_rebase)
+            echo "MR !$IID in terminal non-mergeable state '$STATUS' — left open for manual handling." >&2
             exit 1
+            ;;
+          # everything else (preparing, checking, unchecked, cannot_be_merged_recheck,
+          # ci_still_running, ci_must_pass, unknown future states) — wait and retry
+          *)
+            sleep 3
             ;;
         esac
       done
