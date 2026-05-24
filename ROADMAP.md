@@ -8,6 +8,7 @@ _Raw ideas land here. Promote into the appropriate tier after a refinement pass.
 
 _Work that gates publishing the repo as alpha. We are here today._
 
+- check if the implemented fix for chached image upgrade works (i.e. podman compare image versions, etc.)
 - konrad update says: "konrad: now serving konrad image 0.1"  -> this should say the actual image tag (i.e. with date)
 - [ ] **Frictionless install.** A `curl … | sh` one-liner (or Homebrew tap) that drops `konrad` on `PATH` and pulls the image. Users shouldn't need to clone the repo. The registry-pull path is now in place (`konrad update` + first-run auto-pull from `ghcr.io/jlbauss/konrad:latest`), so this narrows to "drop the CLI on PATH without cloning."
 - [ ] **Set public** Update Readme, etc. to make it clear for users who pass this project what it can and what it cant do. Also rework the readme so it resembles what is my vision. update relevant things like the current instructions.md (or just move it? --> conceptualize what goes where). Switch to a merge way of doing development. **Bump `VERSION` to `0.2` as part of this work** — `0.1` is the pre-public stabilization line, `0.2` is the first public alpha and the day-one anchor for outside users (see [docs/design/versioning-and-releases.md](docs/design/versioning-and-releases.md#day-zero-history)).
