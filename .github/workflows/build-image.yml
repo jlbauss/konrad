@@ -90,6 +90,11 @@ jobs:
           VER=$(cat VERSION)
           DATE=$(date -u +%Y-%m-%d)
           SHA=${GITHUB_SHA::7}
+          # Commit author date in ISO-8601 UTC. Used as BUILD_DATE in the
+          # image's build-manifest.json so daily rebuilds from the same
+          # source commit produce a byte-identical manifest layer (cache
+          # hit, no user re-pull).
+          COMMIT_DATE=$(git log -1 --format=%cI "$GITHUB_SHA" | sed 's/+00:00/Z/' | sed 's/T\(..\):\(..\):\(..\).*/T\1:\2:\3Z/')
           # IMAGE_NAME may contain uppercase from $github.repository when
           # the GitHub username/repo has any. ghcr.io rejects uppercase
           # in image paths, so lowercase it here.
@@ -99,10 +104,11 @@ jobs:
             echo "version=$VER"
             echo "date=$DATE"
             echo "sha=$SHA"
+            echo "commit_date=$COMMIT_DATE"
             echo "image=$IMG"
             echo "transient=$TRANSIENT"
           } >> "$GITHUB_OUTPUT"
-          echo "konrad $VER @ $SHA (build $DATE)"
+          echo "konrad $VER @ $SHA (build $DATE, commit $COMMIT_DATE)"
 
       - uses: docker/setup-buildx-action@v3
 
@@ -122,11 +128,20 @@ jobs:
           build-args: |
             KONRAD_VERSION=${{ steps.metadata.outputs.version }}
             GIT_SHA=${{ steps.metadata.outputs.sha }}
-          # Scheduled (daily) runs force a fresh resolution of floating
-          # pins; push runs reuse the cache for speed.
-          no-cache: ${{ github.event_name == 'schedule' }}
+            BUILD_DATE=${{ steps.metadata.outputs.commit_date }}
+          # All triggers reuse the GHA layer cache. Inputs that should
+          # actually re-resolve (Python deps, opencode-ai, Typst version)
+          # are gated by the lockfiles in image/locks/; the separate
+          # resolve-locks workflow re-resolves daily and opens a PR when
+          # a lock genuinely moves, which is what then triggers a real
+          # rebuild here. Daily scheduled runs of this workflow that find
+          # nothing changed are a cache hit top-to-bottom and republish
+          # the same layers — no user pull.
+          #
+          # `pull: true` on scheduled runs only — picks up Debian point
+          # updates / CVE fixes on the base image. Push runs reuse the
+          # cached base layer for speed.
           pull: ${{ github.event_name == 'schedule' }}
-          # GitHub Actions cache for fast incremental builds.
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

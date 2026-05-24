@@ -253,28 +253,35 @@ The opencode binary itself is **not** in a named volume — it's installed root-
 
 ## Pinning strategy
 
-konrad's image floats almost everything by default. The **daily CI rebuild** re-resolves floating versions so CVE fixes and bug-fix releases flow in automatically. The **smoke-test gate** is the safety net: if any check fails, the new build is not promoted to `:latest` and users keep getting the last known-good build.
+konrad runs its inputs through three layers of pinning, each handled differently. The goal is "CVE fixes and bug-fix releases flow in automatically, but a no-op day doesn't re-download 4 GB of byte-identical layers."
 
-The trade-off: you don't review weekly dependency-bump PRs, but a silently regressed upstream can surface as runtime breakage. The build manifest (see below) is the diagnostic floor.
-
-**What's pinned:**
+**1. Hand-pinned in the Dockerfile.**
 
 | Component | Pinning | Why |
 | --- | --- | --- |
-| `node:26-trixie-slim` (base image) | Major (Debian/Node LTS track) | Major bumps (trixie → forky, node 26 → 28) are deliberate events. Bump by editing `ARG BASE_IMAGE` at the top of [image/Dockerfile](image/Dockerfile). |
+| `node:26-trixie-slim` (base image) | Major (Debian/Node LTS track) | Major bumps (trixie → forky, node 26 → 28) are deliberate events. Bump by editing `ARG BASE_IMAGE` at the top of [image/Dockerfile](image/Dockerfile). Debian point updates flow in via daily scheduled CI runs that re-pull the base. |
 
-**What floats:**
+**2. Locked in [image/locks/](image/locks/) (committed, refreshed by daily CI).**
 
-| Component | Source |
-| --- | --- |
-| `uv` | `ghcr.io/astral-sh/uv:latest` |
-| `typst` | GitHub releases API, resolved at build time |
-| `opencode-ai`, `npm` | npm `@latest` |
-| Python deps (`docling-slim[standard]`, `pypdf`, `pdfplumber`, `pdf2image`, `reportlab`, `openpyxl`, `pandas`, `onnxruntime`) | uv pip install without version constraints |
-| apt packages | Whatever Debian trixie currently ships |
-| Docling models | Re-downloaded on every stage 2 rebuild |
+Each lockfile keys exactly one Dockerfile layer. Docker's existing layer cache reuses the layer when the lock is byte-identical to last time; rebuilds the layer (and everything downstream) when the lock genuinely moves. The [`resolve-locks.yml`](.github/workflows/resolve-locks.yml) workflow re-resolves the upstream names daily, diffs the result against the committed lock, and opens a PR when anything moved — so floating pins still flow in, just visibly and one input at a time.
 
-The Dockerfile [carries this list as a comment block](image/Dockerfile) at the top so the surface is visible at a glance. Keep that block and this table in sync when adding or removing pins.
+| Component | Lock | Source |
+| --- | --- | --- |
+| Python deps (`docling-slim[standard]`, `pypdf`, `pdfplumber`, `pdf2image`, `reportlab`, `openpyxl`, `pandas`, `onnxruntime`) | `python.lock` from `python.spec` | `uv pip compile --torch-backend=cpu --python-version=3.13` |
+| `opencode-ai`, `npm` | `npm.lock` | `npm view <pkg> version` |
+| `typst` | `typst.lock` | GitHub releases API for `typst/typst` |
+
+The win: a typical "only opencode-ai bumped" day rebuilds only the npm layer and downstream — ~80 MB user pull on the next `konrad update`. No-op days (nothing moved) rebuild nothing and the user pull is a manifest poll, ~0 MB.
+
+**3. Floating (rebuilds when upstream churns).**
+
+| Component | Source | Why no lock |
+| --- | --- | --- |
+| apt packages | Whatever Debian trixie currently ships | Debian doesn't have a clean "install from lock" format; per-package pinning is fragile (archive rolls). The apt layer is small and downstream of nothing huge, so apt churn doesn't cost much. |
+| `uv` (`ghcr.io/astral-sh/uv:latest`) | Latest at build time | uv is just the tool that installs from `python.lock`; installing from a fully-pinned lock is reproducible across uv versions, so uv-version churn doesn't matter for the resulting venv. |
+| Docling models | Re-downloaded on every stage 2 rebuild | Tracked under ROADMAP Tier 1 — a `models.lock` is the planned follow-up. |
+
+The Dockerfile [carries this list as a comment block](image/Dockerfile) at the top so the surface is visible at a glance. Keep that block and this table in sync when changing how a component is pinned.
 
 ### Tag scheme on the registry
 
