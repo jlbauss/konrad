@@ -62,6 +62,15 @@ resolve-locks:
       # Output: "sha256:..." on stdout; exits non-zero on failure.
       resolve_digest() {
         ref="$1"                       # e.g., node:26-trixie-slim
+        # Bash parameter expansion gotcha: when $ref has no ':', both
+        # ${ref%:*} and ${ref##*:} return the whole string unchanged
+        # (the pattern matches nothing). That would silently produce
+        # garbage URLs like .../manifests/ghcr.io/astral-sh/uv → 405.
+        # Require an explicit tag in the lock and refuse to guess.
+        case "$ref" in
+          *:*) : ;;
+          *) echo "ref '$ref' has no ':<tag>' — write the tag explicitly in the lock" >&2; return 1 ;;
+        esac
         name="${ref%:*}"
         tag="${ref##*:}"
         case "$name" in
