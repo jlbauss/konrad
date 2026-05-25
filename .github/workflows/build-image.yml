@@ -91,11 +91,17 @@ jobs:
           VER=$(cat VERSION)
           DATE=$(date -u +%Y-%m-%d)
           SHA=${GITHUB_SHA::7}
-          # Commit author date in ISO-8601 UTC. Used as BUILD_DATE in the
-          # image's build-manifest.json so daily rebuilds from the same
-          # source commit produce a byte-identical manifest layer (cache
-          # hit, no user re-pull).
+          # Commit committer date in two forms:
+          #   - ISO-8601 UTC → BUILD_DATE in the image's build-manifest.json
+          #     so two builds from the same source commit produce a
+          #     byte-identical manifest layer.
+          #   - Unix epoch  → SOURCE_DATE_EPOCH, the canonical timestamp
+          #     BuildKit uses when rewriting layer mtimes (see "Reproducible
+          #     layers" below). Tied to the commit, not the build moment,
+          #     so re-runs of CI on the same commit produce byte-identical
+          #     layers.
           COMMIT_DATE=$(git log -1 --format=%cI "$GITHUB_SHA" | sed 's/+00:00/Z/' | sed 's/T\(..\):\(..\):\(..\).*/T\1:\2:\3Z/')
+          COMMIT_EPOCH=$(git log -1 --format=%ct "$GITHUB_SHA")
           # IMAGE_NAME may contain uppercase from $github.repository when
           # the GitHub username/repo has any. ghcr.io rejects uppercase
           # in image paths, so lowercase it here.
@@ -113,6 +119,7 @@ jobs:
             echo "date=$DATE"
             echo "sha=$SHA"
             echo "commit_date=$COMMIT_DATE"
+            echo "commit_epoch=$COMMIT_EPOCH"
             echo "image=$IMG"
             echo "transient=$TRANSIENT"
             echo "base_image=$BASE_IMAGE"
@@ -135,7 +142,6 @@ jobs:
         with:
           context: image/
           platforms: linux/amd64
-          push: true
           tags: ${{ steps.metadata.outputs.transient }}
           build-args: |
             BASE_IMAGE=${{ steps.metadata.outputs.base_image }}
@@ -143,6 +149,7 @@ jobs:
             KONRAD_VERSION=${{ steps.metadata.outputs.version }}
             GIT_SHA=${{ steps.metadata.outputs.sha }}
             BUILD_DATE=${{ steps.metadata.outputs.commit_date }}
+            SOURCE_DATE_EPOCH=${{ steps.metadata.outputs.commit_epoch }}
           # Every input is pinned by digest via image/locks/. `pull` would
           # be a no-op (the FROM / COPY --from refs are already content-
           # addressed), so it's off. Base + uv updates flow in through the
@@ -150,6 +157,19 @@ jobs:
           pull: false
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          # Reproducible layers. SOURCE_DATE_EPOCH (passed above) tells
+          # BuildKit the canonical timestamp; rewrite-timestamp=true makes
+          # BuildKit walk every file in every produced layer and rewrite
+          # its mtime to that value before tar'ing. Result: when a layer's
+          # content is logically identical to a previous run (same packages
+          # installed, same files copied), the layer's tar bytes are also
+          # identical → same sha256 digest → users don't re-download.
+          # Without this, apt and similar tools stamp current mtimes into
+          # every installed file, so a rebuild with byte-identical content
+          # still produces a new digest. type=image,push=true is the
+          # equivalent of the bare `push: true` field (which is mutually
+          # exclusive with custom `outputs`).
+          outputs: type=image,push=true,rewrite-timestamp=true
 
   # ---------------------------------------------------------------------------
   # Smoke — pull the transient image, run the smoke suite against it.
