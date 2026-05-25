@@ -53,9 +53,67 @@ resolve-locks:
       curl -fsSL https://astral.sh/uv/install.sh \
         | env UV_INSTALL_DIR=/usr/local/bin sh
 
+      # ---- helper: resolve current manifest digest of an image ref --------
+      # Speaks Docker Registry HTTP API v2 against either Docker Hub or
+      # GHCR. The Accept header asks for an index (multi-arch) manifest
+      # first, falling back to single-platform manifests — so for a tag
+      # that points at an index we get the index digest, which is what
+      # `FROM image@<digest>` resolves correctly across architectures.
+      # Output: "sha256:..." on stdout; exits non-zero on failure.
+      resolve_digest() {
+        ref="$1"                       # e.g., node:26-trixie-slim
+        name="${ref%:*}"
+        tag="${ref##*:}"
+        case "$name" in
+          ghcr.io/*)
+            registry="ghcr.io"; path="${name#ghcr.io/}"
+            auth_host="ghcr.io"; auth_service="ghcr.io"
+            ;;
+          *)
+            registry="registry-1.docker.io"; path="$name"
+            case "$path" in */*) ;; *) path="library/$path" ;; esac
+            auth_host="auth.docker.io"; auth_service="registry.docker.io"
+            ;;
+        esac
+        token="$(curl -fsSL \
+          "https://${auth_host}/token?service=${auth_service}&scope=repository:${path}:pull" \
+          | jq -r .token)"
+        [ -n "$token" ] && [ "$token" != "null" ] \
+          || { echo "auth token fetch failed for $ref" >&2; return 1; }
+        digest="$(curl -fsSI \
+          -H "Authorization: Bearer $token" \
+          -H "Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json" \
+          "https://${registry}/v2/${path}/manifests/${tag}" \
+          | awk 'tolower($1) == "docker-content-digest:" { gsub(/[\r\n]/,"",$2); print $2 }')"
+        [ -n "$digest" ] \
+          || { echo "no Docker-Content-Digest in manifest response for $ref" >&2; return 1; }
+        printf '%s' "$digest"
+      }
+
       # ---- re-resolve each lock -------------------------------------------
       cd image/locks
       MOVED=""
+
+      # base image: lock holds "<name>:<tag>@sha256:..." — re-resolve digest
+      # for the same name:tag and bump if it moved. Major-bumping the tag
+      # (e.g., node:26 → node:27) is a deliberate manual edit to base.lock;
+      # the bot resolves the new digest on its next run.
+      OLD_BASE="$(cat base.lock)"
+      BASE_REF="${OLD_BASE%@*}"
+      NEW_BASE="${BASE_REF}@$(resolve_digest "$BASE_REF")"
+      if [ "$OLD_BASE" != "$NEW_BASE" ]; then
+        echo "$NEW_BASE" > base.lock
+        MOVED="$MOVED base"
+      fi
+
+      # uv source image — same pattern.
+      OLD_UV="$(cat uv.lock)"
+      UV_REF="${OLD_UV%@*}"
+      NEW_UV="${UV_REF}@$(resolve_digest "$UV_REF")"
+      if [ "$OLD_UV" != "$NEW_UV" ]; then
+        echo "$NEW_UV" > uv.lock
+        MOVED="$MOVED uv"
+      fi
 
       uv pip compile python.spec \
         --torch-backend=cpu \

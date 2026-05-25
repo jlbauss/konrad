@@ -265,6 +265,15 @@ cmd_rebuild() {
   require_podman
   [[ -f "$IMAGE_CONTEXT/Dockerfile" ]] \
     || die "expected Dockerfile at $IMAGE_CONTEXT/Dockerfile (is the konrad repo intact?)"
+  # Pinned image refs (full name@digest) — locks/base.lock + locks/uv.lock.
+  # CI reads the same files so local + CI builds resolve to the same digests.
+  local base_image uv_image
+  base_image="$(cat "$IMAGE_CONTEXT/locks/base.lock" 2>/dev/null)" \
+    || die "missing $IMAGE_CONTEXT/locks/base.lock (is the konrad repo intact?)"
+  uv_image="$(cat "$IMAGE_CONTEXT/locks/uv.lock" 2>/dev/null)" \
+    || die "missing $IMAGE_CONTEXT/locks/uv.lock (is the konrad repo intact?)"
+  [[ -n "$base_image" ]] || die "empty $IMAGE_CONTEXT/locks/base.lock"
+  [[ -n "$uv_image" ]]   || die "empty $IMAGE_CONTEXT/locks/uv.lock"
   local git_sha build_date
   git_sha="$(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || printf 'unknown')"
   # Commit author date drives BUILD_DATE in the image's build-manifest.json
@@ -278,14 +287,22 @@ cmd_rebuild() {
   # Build intermediate stages first with stable tags so Podman's layer cache
   # keeps them alive across prune operations. Without tags they are treated as
   # dangling images and get collected, forcing a full model re-download next time.
-  podman build --target python-base   -t konrad-python-base:cache   "$IMAGE_CONTEXT"
-  podman build --target python-models -t konrad-python-models:cache  "$IMAGE_CONTEXT"
+  podman build --target python-base \
+    --build-arg BASE_IMAGE="$base_image" \
+    --build-arg UV_IMAGE="$uv_image" \
+    -t konrad-python-base:cache "$IMAGE_CONTEXT"
+  podman build --target python-models \
+    --build-arg BASE_IMAGE="$base_image" \
+    --build-arg UV_IMAGE="$uv_image" \
+    -t konrad-python-models:cache "$IMAGE_CONTEXT"
   # Layer-cached: a local rebuild reuses whatever hasn't changed under
   # image/. Always writes to $IMAGE_LOCAL_TAG (regardless of KONRAD_IMAGE)
   # so the pulled image at $IMAGE_DEFAULT is never accidentally clobbered.
   # To use the freshly-built image: KONRAD_IMAGE=$IMAGE_LOCAL_TAG konrad
   # To get the published image: konrad update (writes $IMAGE_DEFAULT).
   podman build \
+    --build-arg BASE_IMAGE="$base_image" \
+    --build-arg UV_IMAGE="$uv_image" \
     --build-arg KONRAD_VERSION="$KONRAD_VERSION" \
     --build-arg GIT_SHA="$git_sha" \
     --build-arg BUILD_DATE="$build_date" \

@@ -9,10 +9,15 @@
 # Trigger model:
 #   - push to main when image/, scripts/smoke-test.sh, this file, or
 #     VERSION changes  → build + smoke + publish
-#   - daily schedule    → same pipeline with no-cache + always-pull so
-#                          floating pins re-resolve and base image CVE
-#                          fixes flow in
+#   - pull_request    → build + smoke + publish under :pr-<num>
 #   - workflow_dispatch (manual via Actions tab) → same as push
+#
+# Every floating input is now lock-managed (image/locks/{base,uv,python,
+# npm,typst,models}.lock). The GitLab resolve-locks bot resolves these
+# daily; when any lock moves the merge mirrors to GitHub and triggers
+# a real build here via the path filter on image/**. There is no daily
+# `schedule:` trigger on this workflow — a build only fires when there
+# is something genuinely new to build.
 #
 # Smoke-gated publish: if the smoke job fails, publish never runs and
 # `:latest` stays pointed at the last good build.
@@ -46,10 +51,6 @@ on:
       - 'scripts/smoke-test.sh'
       - '.github/workflows/build-image.yml'
       - 'VERSION'
-  schedule:
-    # Daily at 02:00 UTC = 03:00/04:00 in NRW depending on DST.
-    # Cron format: minute hour day-of-month month day-of-week.
-    - cron: '0 2 * * *'
   workflow_dispatch:
 
 env:
@@ -100,6 +101,13 @@ jobs:
           # in image paths, so lowercase it here.
           IMG=$(echo "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}" | tr '[:upper:]' '[:lower:]')
           TRANSIENT="$IMG:ci-${{ github.run_id }}"
+          # Pinned image refs (full name@digest) from the lock files. Local
+          # `konrad rebuild` reads the same files, so the CI build resolves
+          # to identical digests as a developer's local build.
+          BASE_IMAGE=$(cat image/locks/base.lock)
+          UV_IMAGE=$(cat image/locks/uv.lock)
+          [ -n "$BASE_IMAGE" ] || { echo "empty image/locks/base.lock" >&2; exit 1; }
+          [ -n "$UV_IMAGE" ]   || { echo "empty image/locks/uv.lock"   >&2; exit 1; }
           {
             echo "version=$VER"
             echo "date=$DATE"
@@ -107,8 +115,12 @@ jobs:
             echo "commit_date=$COMMIT_DATE"
             echo "image=$IMG"
             echo "transient=$TRANSIENT"
+            echo "base_image=$BASE_IMAGE"
+            echo "uv_image=$UV_IMAGE"
           } >> "$GITHUB_OUTPUT"
           echo "konrad $VER @ $SHA (build $DATE, commit $COMMIT_DATE)"
+          echo "base: $BASE_IMAGE"
+          echo "uv:   $UV_IMAGE"
 
       - uses: docker/setup-buildx-action@v3
 
@@ -126,23 +138,16 @@ jobs:
           push: true
           tags: ${{ steps.metadata.outputs.transient }}
           build-args: |
+            BASE_IMAGE=${{ steps.metadata.outputs.base_image }}
+            UV_IMAGE=${{ steps.metadata.outputs.uv_image }}
             KONRAD_VERSION=${{ steps.metadata.outputs.version }}
             GIT_SHA=${{ steps.metadata.outputs.sha }}
             BUILD_DATE=${{ steps.metadata.outputs.commit_date }}
-          # All triggers reuse the GHA layer cache. Inputs that should
-          # actually re-resolve (Python deps, opencode-ai, Typst version)
-          # are gated by the lockfiles in image/locks/; the resolve-locks
-          # job in .gitlab-ci.yml runs daily on GitLab, opens + auto-merges
-          # an MR when any lock genuinely moves, and the mirror push back
-          # to GitHub is what then triggers a real rebuild here. Daily
-          # scheduled runs of this workflow that find nothing changed are
-          # a cache hit top-to-bottom and republish the same layers — no
-          # user pull.
-          #
-          # `pull: true` on scheduled runs only — picks up Debian point
-          # updates / CVE fixes on the base image. Push runs reuse the
-          # cached base layer for speed.
-          pull: ${{ github.event_name == 'schedule' }}
+          # Every input is pinned by digest via image/locks/. `pull` would
+          # be a no-op (the FROM / COPY --from refs are already content-
+          # addressed), so it's off. Base + uv updates flow in through the
+          # GitLab resolve-locks bot, not through a daily registry re-pull.
+          pull: false
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

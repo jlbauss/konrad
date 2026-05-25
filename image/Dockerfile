@@ -1,36 +1,35 @@
 # =============================================================================
-# Pinning surface — three layers of versions, each handled differently.
+# Pinning surface — two categories, both lock-managed except apt.
 # See README "Pinning strategy" for the full rationale.
 #
-#   1. Hand-pinned in this file:
-#        - BASE_IMAGE  (node:26-trixie-slim — Debian/Node LTS track)
-#      Major bumps are deliberate events: rebuild locally, run smoke,
-#      then bump. Patch updates flow in for free on daily CI rebuilds
-#      that re-pull the base image.
-#
-#   2. Locked in image/locks/ (committed, refreshed by daily resolve-locks
-#      workflow → PR):
+#   1. Locked in image/locks/ (committed; resolve-locks bot on GitLab
+#      re-resolves daily and opens an MR when any lock moves):
+#        - base    (locks/base.lock: full ref node:26-trixie-slim@sha256:…)
+#        - uv      (locks/uv.lock:  full ref ghcr.io/astral-sh/uv@sha256:…)
 #        - python  (locks/python.lock from locks/python.spec)
 #        - npm     (locks/npm.lock: opencode-ai + npm)
 #        - typst   (locks/typst.lock: pinned version string)
-#      Each lock keys exactly one Dockerfile layer; Docker's layer cache
-#      reuses the layer when the lock didn't move. The resolve-locks
-#      workflow re-resolves upstream daily and opens a PR when a lock
-#      genuinely changes — so floating pins still flow in, just visibly
-#      and one input at a time.
+#      Each lock keys exactly one Dockerfile layer (or the FROM chain for
+#      base); Docker's layer cache reuses the layer when the lock didn't
+#      move. Local `konrad rebuild` and CI both read the same locks, so
+#      they resolve to the same digests — no drift.
 #
-#   3. Floating (no lock — apt-layer rebuilds when apt churns; cheap,
-#      downstream of nothing huge, and Debian doesn't lend itself to a
-#      clean lock format):
-#        - apt packages  (whatever Debian trixie currently ships)
-#        - uv            (ghcr.io/astral-sh/uv:latest — tool that consumes
-#                          the python lock; uv installing from a fully-pinned
-#                          lock is reproducible across uv versions)
+#      To major-bump a locked image (e.g., node:26 → node:27), edit the
+#      `:tag` part of the lock by hand; the bot resolves the new digest
+#      on its next run.
+#
+#   2. Floating (no lock):
+#        - apt packages — cache invalidates only when the base FROM moves
+#                          (i.e., when base.lock bumps); so apt naturally
+#                          refreshes whenever Debian/Node ship a new
+#                          base, picking up the latest package index at
+#                          that point. No separate apt lock needed.
 #
 # When you add or remove a pin, update both this block *and* the README
 # table so the two stay in sync.
 # =============================================================================
-ARG BASE_IMAGE=node:26-trixie-slim
+ARG BASE_IMAGE
+ARG UV_IMAGE
 
 # =============================================================================
 # Stage 1 — python-base
@@ -39,6 +38,11 @@ ARG BASE_IMAGE=node:26-trixie-slim
 # =============================================================================
 FROM ${BASE_IMAGE} AS python-base
 
+# Re-declare in this stage so the COPY --from below can expand it.
+# (Build-args declared above the first FROM are global but not in stage
+# scope until re-declared per-stage.)
+ARG UV_IMAGE
+
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -46,11 +50,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* /var/log/apt/* /var/log/dpkg.log
 
-# uv floats — daily CI rebuild picks up the latest release; the smoke test
-# gate is the safety net for any breaking change. Pin a major (`:0`) only
-# if a future uv 1.0 introduces a breaking-change cadence we want to opt
-# into deliberately.
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
+# uv source image is pinned by digest via locks/uv.lock. The bot bumps
+# it daily when astral-sh ships a new uv release; the smoke test gate
+# is the safety net for any breaking change.
+COPY --from=${UV_IMAGE} /uv /uvx /usr/local/bin/
 
 ENV VIRTUAL_ENV=/opt/venv
 

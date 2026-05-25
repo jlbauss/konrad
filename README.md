@@ -253,33 +253,27 @@ The opencode binary itself is **not** in a named volume — it's installed root-
 
 ## Pinning strategy
 
-konrad runs its inputs through three layers of pinning, each handled differently. The goal is "CVE fixes and bug-fix releases flow in automatically, but a no-op day doesn't re-download 4 GB of byte-identical layers."
+Every meaningful input is digest- or version-locked in [image/locks/](image/locks/). The [`.gitlab-ci.yml`](.gitlab-ci.yml) `resolve-locks` job runs on GitLab daily, re-resolves each upstream, diffs against the committed lock, and opens (auto-merges) an MR when anything moved. The merge mirrors to GitHub and triggers a real rebuild via the `image/**` path filter — so builds only fire when there is something genuinely new to build. There is no scheduled cron rebuild on GitHub.
 
-**1. Hand-pinned in the Dockerfile.**
+**Locked inputs.** Each lock keys exactly one Dockerfile concern. Docker's layer cache reuses the layer when the lock is byte-identical to last time; rebuilds (and everything downstream) when it moves. Local `konrad rebuild` reads the same lock files as CI, so a developer's local build and the published image resolve to identical digests.
 
-| Component | Pinning | Why |
-| --- | --- | --- |
-| `node:26-trixie-slim` (base image) | Major (Debian/Node LTS track) | Major bumps (trixie → forky, node 26 → 28) are deliberate events. Bump by editing `ARG BASE_IMAGE` at the top of [image/Dockerfile](image/Dockerfile). Debian point updates flow in via daily scheduled CI runs that re-pull the base. |
+| Component | Lock | Source | Notes |
+| --- | --- | --- | --- |
+| Base image (`node:26-trixie-slim`) | `base.lock` | Docker Registry HTTP API v2 | Full ref: `name:tag@sha256:…`. Major-bump the `:tag` part by hand (e.g., `node:26 → node:27`); the bot resolves the new digest on its next run. |
+| `uv` source image (`ghcr.io/astral-sh/uv:latest`) | `uv.lock` | Same | Same shape as `base.lock`. |
+| Python deps (`docling-slim[standard]`, `pypdf`, `pdfplumber`, `pdf2image`, `reportlab`, `openpyxl`, `pandas`, `onnxruntime`) | `python.lock` from `python.spec` | `uv pip compile --torch-backend=cpu --python-version=3.13` | |
+| `opencode-ai`, `npm` | `npm.lock` | `npm view <pkg> version` | |
+| `typst` | `typst.lock` | GitHub releases API for `typst/typst` | |
 
-**2. Locked in [image/locks/](image/locks/) (committed, refreshed by daily CI).**
+The win: a typical "only opencode-ai bumped" day rebuilds only the npm layer and downstream — ~80 MB user pull on the next `konrad update`. No-op days fire no build at all — the user pull is a manifest poll, ~0 MB.
 
-Each lockfile keys exactly one Dockerfile layer. Docker's existing layer cache reuses the layer when the lock is byte-identical to last time; rebuilds the layer (and everything downstream) when the lock genuinely moves. The [`.gitlab-ci.yml`](.gitlab-ci.yml) `resolve-locks` job runs on GitLab daily, re-resolves the upstream names, diffs the result against the committed lock, and opens (and auto-merges) an MR when anything moved — so floating pins still flow in, just visibly and one input at a time. The merge mirrors to GitHub, which then triggers a real rebuild here.
-
-| Component | Lock | Source |
-| --- | --- | --- |
-| Python deps (`docling-slim[standard]`, `pypdf`, `pdfplumber`, `pdf2image`, `reportlab`, `openpyxl`, `pandas`, `onnxruntime`) | `python.lock` from `python.spec` | `uv pip compile --torch-backend=cpu --python-version=3.13` |
-| `opencode-ai`, `npm` | `npm.lock` | `npm view <pkg> version` |
-| `typst` | `typst.lock` | GitHub releases API for `typst/typst` |
-
-The win: a typical "only opencode-ai bumped" day rebuilds only the npm layer and downstream — ~80 MB user pull on the next `konrad update`. No-op days (nothing moved) rebuild nothing and the user pull is a manifest poll, ~0 MB.
-
-**3. Floating (rebuilds when upstream churns).**
+**Floating (one input).**
 
 | Component | Source | Why no lock |
 | --- | --- | --- |
-| apt packages | Whatever Debian trixie currently ships | Debian doesn't have a clean "install from lock" format; per-package pinning is fragile (archive rolls). The apt layer is small and downstream of nothing huge, so apt churn doesn't cost much. |
-| `uv` (`ghcr.io/astral-sh/uv:latest`) | Latest at build time | uv is just the tool that installs from `python.lock`; installing from a fully-pinned lock is reproducible across uv versions, so uv-version churn doesn't matter for the resulting venv. |
-| Docling models | Re-downloaded on every stage 2 rebuild | Tracked under ROADMAP Tier 1 — a `models.lock` is the planned follow-up. |
+| apt packages | Whatever Debian trixie currently ships | apt's RUN layer cache invalidates only when its parent `FROM` changes — i.e., when `base.lock` bumps. So apt naturally refreshes whenever Debian/Node ship a new base image, picking up the current package index at that point. No separate apt lock needed. |
+
+Docling models live in their own lock (`models.lock`) — see ROADMAP for that follow-up; today they re-download whenever the Python venv layer rebuilds.
 
 The Dockerfile [carries this list as a comment block](image/Dockerfile) at the top so the surface is visible at a glance. Keep that block and this table in sync when changing how a component is pinned.
 
@@ -361,7 +355,7 @@ A short, opinionated record of the load-bearing choices, so future-you can tell 
 - **Minimal hardcoded defaults.** Provider endpoints ship pre-wired but model lists ship empty — users declare whichever model they've loaded in `~/.config/konrad/opencode.jsonc`. Earlier versions auto-discovered models via the `opencode-models-discovery` plugin, but the startup cost wasn't worth it; an inline replacement is on the roadmap. **No top-level `"model"` is set in the baked default** — opencode prompts on first run, then remembers your choice in the `konrad-state` volume across subsequent runs.
 - **Optimised for Qwen3.6-class local models.** The agent body in `image/opencode/agents/konrad.md` is sized and worded for a ~30B-class MoE local model — terse-but-deliberate, no Claude-style verification loops. Bigger frontier models work fine; smaller (<10B) ones may need prompt softening. The specific recommendation we test against is `qwen/qwen3.6-35b-a3b`.
 - **AGPL v3.** Compatible with all bundled upstream licenses (MIT, Apache 2.0, OFL 1.1). Strong copyleft is a deliberate choice for a sandbox-style tool — if someone extends konrad or runs it as a hosted service, the improvements come back to the commons. AGPL's network-use clause closes the SaaS loophole left open by plain GPL: a fork offered as a remote agent over an API still has to publish its source.
-- **Float versions; daily rebuild; smoke-gate the publish.** Almost nothing is pinned. The daily CI build re-resolves floating versions (so CVE fixes and bug-fix releases land automatically), and the smoke test gates the `:latest` tag (so users never see a broken build). The base image is the only major pin. A build manifest baked into every image makes after-the-fact regression diagnosis possible — see [Pinning strategy](#pinning-strategy) for the full table and the diff recipe. Trade-off accepted: silent upstream regressions can surface as runtime breakage, but the manifest names the cause and the dated tags (`:0.1.2026-05-22`) are always rollback-eligible.
+- **Lock every input; bot maintains the locks; smoke-gate the publish.** Every meaningful input — base image, uv source image, Python deps, npm packages, Typst — is digest- or version-locked in [image/locks/](image/locks/). A GitLab bot re-resolves all of them daily; when something genuinely moved, the bot opens and auto-merges an MR, the mirror push triggers CI, and a real build runs. When nothing moved, nothing builds. The smoke test gates `:latest` so users never see a broken build. A build manifest baked into every image makes after-the-fact regression diagnosis possible — see [Pinning strategy](#pinning-strategy) for the full table and the diff recipe. Trade-off accepted: silent upstream regressions can surface as runtime breakage, but the manifest names the cause and the dated tags (`:0.1.2026-05-22`) are always rollback-eligible.
 - **CI runs on a GitHub mirror; the primary repo stays on `gitlab.git.nrw`.** A one-way GitLab → GitHub push mirror replicates every commit; GitHub Actions runs the build → smoke → publish pipeline; the image lands on `ghcr.io/jlbauss/konrad`. The GitHub side is purely a CI execution surface — no issues, no MRs, no day-to-day work happens there. Why this shape: gitlab.git.nrw's shared runners don't permit the privileged-container operations Podman-in-Docker needs, and GitHub Actions gives us free hosted runners (with multi-arch coming back for free once the mirror is public). Trade-off accepted: CI status visibility lives on GitHub, not GitLab MRs, until we wire up the GitLab Commit Status API webhook.
 
 ## Troubleshooting
