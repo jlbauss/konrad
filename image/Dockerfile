@@ -32,16 +32,22 @@ ARG BASE_IMAGE
 ARG UV_IMAGE
 
 # =============================================================================
+# Stage alias — uv source image
+# BuildKit doesn't allow ARG expansion directly in `COPY --from=${ARG}`,
+# but it DOES allow it in `FROM ${ARG} AS <name>`. So we alias the
+# digest-pinned uv image as a stage and reference the stage name below.
+# (The error if you try `COPY --from=${UV_IMAGE}` is explicit: "variable
+# expansion is not supported for --from, define a new stage with FROM
+# using ARG from global scope as a workaround".)
+# =============================================================================
+FROM ${UV_IMAGE} AS uv-source
+
+# =============================================================================
 # Stage 1 — python-base
 # Installs the Python toolchain and docling into /opt/venv.
 # No repo files. Invalidated only when Python deps change.
 # =============================================================================
 FROM ${BASE_IMAGE} AS python-base
-
-# Re-declare in this stage so the COPY --from below can expand it.
-# (Build-args declared above the first FROM are global but not in stage
-# scope until re-declared per-stage.)
-ARG UV_IMAGE
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -50,10 +56,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* /var/log/apt/* /var/log/dpkg.log
 
-# uv source image is pinned by digest via locks/uv.lock. The bot bumps
-# it daily when astral-sh ships a new uv release; the smoke test gate
-# is the safety net for any breaking change.
-COPY --from=${UV_IMAGE} /uv /uvx /usr/local/bin/
+# uv source image is pinned by digest via locks/uv.lock (the `uv-source`
+# stage alias above). The bot bumps it daily when astral-sh ships a new
+# uv release; the smoke test gate is the safety net for any breaking change.
+COPY --from=uv-source /uv /uvx /usr/local/bin/
 
 ENV VIRTUAL_ENV=/opt/venv
 
