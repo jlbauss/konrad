@@ -86,15 +86,10 @@ LABEL org.opencontainers.image.title="konrad" \
     org.opencontainers.image.licenses="AGPL-3.0-only" \
     org.opencontainers.image.source="https://gitlab.git.nrw/jbauss2/konrad"
 
-# Version + revision labels are set by --build-arg from bin/konrad / CI.
-# These are the cheap source for `konrad version` — readable from
-# `podman image inspect` without starting a container. The full build
-# manifest (apt/npm/python snapshots) lives at /etc/konrad/build-manifest.json
-# inside the image for the rare deep-dive (`konrad version --manifest`).
-ARG KONRAD_VERSION=dev
-ARG GIT_SHA=unknown
-LABEL org.opencontainers.image.version="${KONRAD_VERSION}" \
-    org.opencontainers.image.revision="${GIT_SHA}"
+# Version + revision labels and build-manifest live at the very tail of
+# this stage. They depend on build-args that change every commit (GIT_SHA,
+# BUILD_DATE), so placing them last keeps every layer above (apt, fonts,
+# typst, COPY --from, npm, opencode/) cache-stable across commits.
 
 # NODE_ENV=production per Node Docker best-practices §1.
 # LANG/LC_ALL force a UTF-8 locale at runtime. Without this, the image
@@ -238,30 +233,42 @@ RUN NPM_VERSION="$(jq -r '.npm' /tmp/npm.lock)" \
     && npm cache clean --force \
     && rm /tmp/npm.lock
 
-# ── Build manifest ──────────────────────────────────────────────────────────
-# Snapshot the exact versions of everything installed (apt, npm, Python),
-# plus konrad's own version + git SHA + build date, into a JSON file at
-# /etc/konrad/build-manifest.json. The user reads it via
-# `konrad version --manifest`. Two purposes: (1) diagnose "worked
-# yesterday, broken today" by diffing manifests between dated tags; (2)
-# make the floating-pins strategy honest — even if pins float, what
-# shipped is always knowable after the fact.
-# KONRAD_VERSION and GIT_SHA were already declared near the LABEL block
-# above; reusing them here. BUILD_DATE comes from the git commit's
-# author date (passed in by CI / bin/konrad) so two builds from the same
-# source commit produce a byte-identical manifest — critical for layer
-# cache hits across daily scheduled CI rebuilds.
+# ── Frequently-changing content (cache-stable across non-opencode commits) ──
+# opencode/ contains agents/, skills/, and instructions.md. They change
+# often but only on commits that actually edit them. Placed BEFORE the
+# version labels + build manifest so a commit that doesn't touch
+# opencode/ (a ROADMAP update, a CI tweak, anything outside image/opencode/)
+# leaves this layer's diff_id stable — users pulling :latest after such
+# a commit don't re-download these files.
+COPY --chown=node:node opencode/ /home/node/.config/opencode/
+
+# ── Version labels + build manifest ─────────────────────────────────────────
+# Declared at the very tail on purpose. All three build-args change per
+# commit: KONRAD_VERSION on a version bump, GIT_SHA on every commit,
+# BUILD_DATE on every commit (the git commit's author date — same commit
+# → same date, so re-runs on the same SHA produce a byte-identical
+# manifest layer and cache-hit). If these ARGs sat near the top of the
+# stage, the LABEL using them would invalidate every downstream RUN on
+# every commit. Keeping the only references here means every commit
+# churns just these tail layers (a few KB) — apt, fonts, typst,
+# COPY --from, npm, and opencode/ all cache-stable above.
+#
+# The labels are the cheap source for `konrad version` — readable from
+# `podman image inspect` without starting a container. The full build
+# manifest (apt/npm/python snapshots) lives at /etc/konrad/build-manifest.json
+# inside the image for the rare deep-dive (`konrad version --manifest`).
+# Two purposes: (1) diagnose "worked yesterday, broken today" by diffing
+# manifests between dated tags; (2) make the floating-pins strategy
+# honest — even if pins float, what shipped is always knowable.
+ARG KONRAD_VERSION=dev
+ARG GIT_SHA=unknown
 ARG BUILD_DATE=unknown
+LABEL org.opencontainers.image.version="${KONRAD_VERSION}" \
+    org.opencontainers.image.revision="${GIT_SHA}"
 COPY build-manifest.sh /tmp/build-manifest.sh
 RUN bash /tmp/build-manifest.sh "$KONRAD_VERSION" "$GIT_SHA" "$BUILD_DATE" \
     && rm /tmp/build-manifest.sh
 
 USER node
-
-# ── Frequently-changing content — always last ────────────────────────────────
-# opencode/ contains agents/, skills/, and instructions.md. All change often
-# but are cheap to copy. Keeping them last means edits here never invalidate
-# the npm layer above.
-COPY --chown=node:node opencode/ /home/node/.config/opencode/
 
 ENTRYPOINT ["/usr/local/bin/konrad-entrypoint"]
