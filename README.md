@@ -76,7 +76,8 @@ That's the whole UX: the current directory is mounted at `/workspace` inside the
 | `-v`, `--verbose`        | Per-phase timestamps + verbose opencode logs. Useful for chasing slow startup. |
 | `--version`              | Print CLI version + image tag/digest/revision.                          |
 | `--update`               | Pull the latest image from `ghcr.io/jlbauss/konrad:latest` and refresh the CLI script itself. |
-| `--reset`                | Wipe shared volumes + log dir. Asks for a typed `RESET` confirmation; affects all workspaces. |
+| `--reset`                | Wipe shared volumes + log dir. Prompts `[y/N]`; affects all workspaces. |
+| `--uninstall`            | Remove the CLI binary + the image. Prompts `[y/N]`. Leaves user config, shared volumes, and log dir alone — use `--reset` first if you want those gone too. |
 | `-h`, `--help`           | Show usage.                                                             |
 
 Short flags bundle (`konrad -sv` is `konrad -s -v`).
@@ -94,7 +95,8 @@ Operations rare enough that the CLI doesn't ship a verb for them:
 | Diff your override vs. baked default | `diff -u <(podman run --rm --entrypoint cat ghcr.io/jlbauss/konrad:latest /etc/konrad/opencode-defaults.jsonc) ~/.config/konrad/opencode.jsonc` |
 | Dump the build manifest              | `podman run --rm --entrypoint cat ghcr.io/jlbauss/konrad:latest /etc/konrad/build-manifest.json \| jq .` |
 | Clear just the log dir               | `rm -rf ~/.local/state/konrad/log/`                                                           |
-| Nuclear reset                        | `konrad --reset` (wipes log dir + all shared volumes; types `RESET` to confirm)               |
+| Nuclear reset                        | `konrad --reset` (wipes log dir + all shared volumes; prompts `[y/N]`)                        |
+| Full uninstall                       | `konrad --reset` → `konrad-dev --uninstall` (if installed) → `konrad --uninstall` → optionally `rm -rf ~/.config/konrad/` |
 
 ## Configuration
 
@@ -246,7 +248,7 @@ There's no `konrad logs` subcommand — the path is standard, and `tail`/`less`/
 
 The opencode binary itself is **not** in a named volume — it's installed root-owned into the image at build time, so the runtime user can't mutate it. Updates flow through `konrad --update` (or `konrad-dev --rebuild` if you're working on konrad locally).
 
-`konrad --reset` drops the central log dir *and* all three shared volumes after a typed `RESET` confirmation (next run requires a fresh `/connect`, repopulates caches, and asks you to pick a model again). For a log-only wipe, `rm -rf ~/.local/state/konrad/log/`. Workspace `.agent/` is yours — konrad never deletes it (auto-prune only touches the ephemeral subdirs).
+`konrad --reset` drops the central log dir *and* all three shared volumes after a `[y/N]` prompt (next run requires a fresh `/connect`, repopulates caches, and asks you to pick a model again). For a log-only wipe, `rm -rf ~/.local/state/konrad/log/`. Workspace `.agent/` is yours — konrad never deletes it (auto-prune only touches the ephemeral subdirs).
 
 ## Pinning strategy
 
@@ -359,7 +361,7 @@ A short, opinionated record of the load-bearing choices, so future-you can tell 
 | Agent can't find the file you mentioned                          | You ran `konrad` in the wrong directory     | The cwd is what gets mounted at `/workspace`. Always `cd` first.                          |
 | `konrad: warning: LM Studio not reachable …` but you started it  | Wrong host: `host.containers.internal`      | Inside container it's `host.containers.internal`; from the host it's `localhost`. The CLI checks the host side — make sure your host `curl localhost:1234/v1/models` returns JSON. |
 | `merge-config: failed to parse ~/.config/konrad/opencode.jsonc`  | Syntax error in your user override          | `cat ~/.config/konrad/opencode.jsonc` and check the JSONC syntax. Comments are fine.      |
-| Want to wipe and start over                                      | —                                           | `konrad --reset` (types `RESET` to confirm), then `konrad --update`                       |
+| Want to wipe and start over                                      | —                                           | `konrad --reset` (prompts `[y/N]`), then `konrad --update`                                |
 
 If a problem isn't listed here, run `konrad -s` to poke around inside the container with the same mounts opencode would see.
 
