@@ -9,21 +9,29 @@
 # / clone() capabilities Podman-in-Docker needs (see commit f5bc95d).
 #
 # This job is different: it just resolves dependency names (uv pip
-# compile, npm view, GitHub releases API) and opens an MR. No Podman,
-# no privileged container ops — runs fine on the same shared runner
-# that couldn't host the image build.
+# compile, npm view, GitHub releases API) and pushes the bump directly
+# to main. No Podman, no privileged container ops — runs fine on the
+# same shared runner that couldn't host the image build.
 #
 # Why this matters: the GitLab repo is source of truth; GitHub is a
 # one-way push mirror. A bot that lands commits on GitHub directly
 # (where the resolve-locks workflow used to live) creates commits the
 # mirror can't reconcile back to GitLab. Moving the bot to GitLab keeps
-# the source of truth single, and the merge to main mirrors to GitHub,
+# the source of truth single, and the push to main mirrors to GitHub,
 # which then triggers build-image.yml via the image/** path filter.
 #
+# Why direct push (no MR): this bot has no reviewer and no MR pipeline
+# gates the merge (image build + smoke run downstream on the GitHub
+# mirror after main moves). The konrad working agreement (CLAUDE.md)
+# already prescribes CLI merges over MRs for trunk-based flow; for a
+# deterministic daily bump the MR adds polling complexity without
+# review value, and FF-pushing main keeps history linear.
+#
 # Setup (manual, one-time, done in the GitLab UI):
-#   1. Settings → Access Tokens → create a Project Access Token,
-#      Developer role, scopes `api` + `write_repository`. Stash as
-#      a masked + protected CI/CD variable named BOT_PAT.
+#   1. Settings → Access Tokens → create a Project Access Token with
+#      scope `write_repository`. Role must be allowed to push to main:
+#      Maintainer if main is a protected branch, Developer otherwise.
+#      Stash as a masked + protected CI/CD variable named BOT_PAT.
 #   2. Settings → CI/CD → Pipeline schedules → New schedule:
 #        cron:        0 1 * * *   (daily 01:00 UTC)
 #        target:      main
@@ -167,72 +175,14 @@ resolve-locks:
       fi
       echo "Locks moved: $MOVED"
 
-      # ---- commit + force-push to locks/auto-bump -------------------------
-      # Force-push so a fresh daily resolution always replaces the prior
-      # branch contents (the open MR, if any, picks up the new diff).
+      # ---- commit + push directly to main ---------------------------------
+      # FF-push HEAD to main. If main moved after this pipeline started
+      # the push is rejected (no -f), which is the desired behavior:
+      # tomorrow's run will re-resolve against the new main.
       git config user.email "konrad-bot@gitlab.git.nrw"
       git config user.name  "konrad-locks-bot"
-      git checkout -B locks/auto-bump
       git add image/locks
       git commit -m "chore(locks): bump $MOVED"
-      git push -f \
+      git push \
         "https://oauth2:${BOT_PAT}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git" \
-        locks/auto-bump
-
-      # ---- open MR (or reuse the open one) --------------------------------
-      EXISTING="$(curl -fsSL --header "PRIVATE-TOKEN: $BOT_PAT" \
-        "$CI_API_V4_URL/projects/$CI_PROJECT_ID/merge_requests?source_branch=locks/auto-bump&state=opened" \
-        | jq '.[0].iid // empty')"
-
-      if [ -n "$EXISTING" ]; then
-        IID="$EXISTING"
-        echo "Reusing existing MR !$IID"
-      else
-        IID="$(curl -fsSL --request POST --header "PRIVATE-TOKEN: $BOT_PAT" \
-          --data-urlencode "source_branch=locks/auto-bump" \
-          --data-urlencode "target_branch=main" \
-          --data-urlencode "title=chore(locks): bump $MOVED" \
-          --data-urlencode "description=Daily lock refresh — moved: **$MOVED**. Merging triggers build-image.yml on the GitHub mirror via the image/** path filter." \
-          --data-urlencode "remove_source_branch=true" \
-          "$CI_API_V4_URL/projects/$CI_PROJECT_ID/merge_requests" \
-          | jq -r '.iid')"
-        echo "Opened MR !$IID"
-      fi
-
-      # ---- wait for mergeable status, then merge --------------------------
-      # GitLab computes detailed_merge_status asynchronously after MR
-      # creation; PUT /merge returns 405 if called while status is still
-      # `checking` or `unchecked`. Poll briefly until it's `mergeable`
-      # (or a terminal failure state), then merge. No MR pipeline gates
-      # this — build/smoke run downstream on the GitHub mirror after the
-      # merge lands on main.
-      MR_URL="$CI_API_V4_URL/projects/$CI_PROJECT_ID/merge_requests/$IID"
-      for attempt in 1 2 3 4 5 6 7 8 9 10 11 12; do
-        STATUS="$(curl -fsSL --header "PRIVATE-TOKEN: $BOT_PAT" "$MR_URL" \
-                    | jq -r '.detailed_merge_status // .merge_status')"
-        echo "Attempt $attempt: detailed_merge_status=$STATUS"
-        case "$STATUS" in
-          # success — proceed to merge
-          mergeable|can_be_merged)
-            break
-            ;;
-          # known terminal failures — fail fast, leave MR open for human
-          blocked_status|broken_status|not_open|not_approved|requested_changes|discussions_not_resolved|draft_status|external_status_checks|need_rebase)
-            echo "MR !$IID in terminal non-mergeable state '$STATUS' — left open for manual handling." >&2
-            exit 1
-            ;;
-          # everything else (preparing, checking, unchecked, cannot_be_merged_recheck,
-          # ci_still_running, ci_must_pass, unknown future states) — wait and retry
-          *)
-            sleep 3
-            ;;
-        esac
-      done
-
-      if [ "$STATUS" != "mergeable" ] && [ "$STATUS" != "can_be_merged" ]; then
-        echo "MR !$IID never reached mergeable state (last: '$STATUS') — left open for manual handling." >&2
-        exit 1
-      fi
-
-      curl -fsSL --request PUT --header "PRIVATE-TOKEN: $BOT_PAT" "$MR_URL/merge" \
-        || { echo "Merge call failed despite status=$STATUS — MR !$IID left open for manual handling." >&2; exit 1; }
+        HEAD:main
