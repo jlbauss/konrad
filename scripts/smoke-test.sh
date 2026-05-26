@@ -93,9 +93,9 @@ pass "manifest valid (konrad=$KONRAD_VER, built=$BUILD_DATE)"
 # Cross-referenced against image/Dockerfile's COPY block. Two distinct
 # trees: /etc/konrad/ (root-owned, used by the entrypoint) and
 # /home/node/.config/opencode/ (opencode-discoverable, where agents,
-# skills, and instructions.md live — *not* /etc/konrad/instructions.md;
-# the Dockerfile moved it intentionally so edits don't invalidate the
-# npm layer).
+# skills, and environment.md live — *not* /etc/konrad/environment.md;
+# the Dockerfile keeps it in the opencode-discoverable dir intentionally
+# so edits don't invalidate the npm layer).
 info "baked content"
 # Entrypoint + config-merge machinery
 in_image test -x /usr/local/bin/konrad-entrypoint \
@@ -105,8 +105,8 @@ in_image test -f /etc/konrad/merge-config.js \
 in_image test -f /etc/konrad/opencode-defaults.jsonc \
   || fail "opencode-defaults.jsonc missing"
 # opencode-discoverable content
-in_image test -f /home/node/.config/opencode/instructions.md \
-  || fail "instructions.md missing"
+in_image test -f /home/node/.config/opencode/environment.md \
+  || fail "environment.md missing"
 in_image test -f /home/node/.config/opencode/agents/konrad.md \
   || fail "konrad agent missing"
 for skill in do-it-manually pdf quality-assurance spreadsheets; do

@@ -153,7 +153,7 @@ Use multi-line bodies for any change that needed a design decision. The git log 
 
 **README.md** — anything that changes how a user installs, runs, or thinks about konrad. A new subcommand or flag. A new external dependency (e.g. a tool the user has to install on the host).
 
-**CLAUDE.md** — this is the repo-level instructions file, loaded by Claude Code (and any other agent) working *on* konrad. Update when there's a new tool/file/directory the agent should know about, a new convention or constraint the agent should follow, or a structural change (config layering, state tiers, image stages). Konrad's *own* model instructions live separately at `image/konrad-defaults/instructions.md` (baked into the image, loaded by opencode at runtime).
+**CLAUDE.md** — this is the repo-level instructions file, loaded by Claude Code (and any other agent) working *on* konrad. Update when there's a new tool/file/directory the agent should know about, a new convention or constraint the agent should follow, or a structural change (config layering, state tiers, image stages). The runtime konrad agent's *environment manifest* lives separately at `image/opencode/environment.md` (baked into the image, loaded by opencode at runtime via the `instructions` config key); update that file when shipped tools, Python libraries, or the filesystem layout change.
 
 Keep all three tight — every byte competes with task context inside the model's window.
 
