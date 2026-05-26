@@ -33,7 +33,9 @@ charset-normalizer==3.4.7
     #   reportlab
     #   requests
 click==8.4.1
-    # via typer
+    # via
+    #   huggingface-hub
+    #   typer
 colorlog==6.10.1
     # via rapidocr
 cryptography==48.0.0
@@ -44,7 +46,7 @@ defusedxml==0.7.1
     #   docling-slim
 dill==0.4.1
     # via multiprocess
-docling-core==2.77.0
+docling-core==2.77.1
     # via
     #   docling-ibm-models
     #   docling-parse
@@ -81,7 +83,7 @@ httpx==0.28.1
     # via
     #   docling-slim
     #   huggingface-hub
-huggingface-hub==1.16.1
+huggingface-hub==1.16.4
     # via
     #   accelerate
     #   docling-ibm-models
@@ -210,7 +212,7 @@ pygments==2.20.0
     #   rich
 pylatexenc==2.10
     # via docling-slim
-pypdf==6.12.1
+pypdf==6.12.2
     # via -r python.spec
 pypdfium2==5.8.0
     # via
