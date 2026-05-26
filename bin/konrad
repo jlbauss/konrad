@@ -54,12 +54,19 @@ SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 IMAGE_CONTEXT="$REPO_ROOT/image"
 
-# CLI version comes from the VERSION file at repo root. When `bin/konrad`
-# is symlinked from a clone (the only install path today), VERSION is
-# always present. Future install paths (curl|sh tarball) may strip it,
-# so we tolerate its absence with a "dev" fallback.
+# CLI version. Three sources, in priority order:
+#   1. $REPO_ROOT/VERSION       — present when installed from a clone
+#                                  (./scripts/install.sh symlink path).
+#   2. $KONRAD_VERSION_BAKED    — rewritten by scripts/install-remote.sh
+#                                  at install time (curl|sh path), so
+#                                  standalone installs still report the
+#                                  real version instead of "dev".
+#   3. "dev"                     — last-ditch fallback.
+KONRAD_VERSION_BAKED=""  # rewritten by scripts/install-remote.sh
 if [[ -f "$REPO_ROOT/VERSION" ]]; then
   KONRAD_VERSION="$(cat "$REPO_ROOT/VERSION")"
+elif [[ -n "$KONRAD_VERSION_BAKED" ]]; then
+  KONRAD_VERSION="$KONRAD_VERSION_BAKED"
 else
   KONRAD_VERSION="dev"
 fi
@@ -263,8 +270,27 @@ cmd_shell() {
 
 cmd_rebuild() {
   require_podman
-  [[ -f "$IMAGE_CONTEXT/Dockerfile" ]] \
-    || die "expected Dockerfile at $IMAGE_CONTEXT/Dockerfile (is the konrad repo intact?)"
+  # `konrad rebuild` is the working-on-konrad path: it needs image/Dockerfile
+  # and image/locks/*.lock next to bin/konrad. Standalone installs (curl|sh)
+  # don't have those — surface the right next step instead of a generic
+  # "is the konrad repo intact?" message that reads wrong to a user who
+  # never had the repo in the first place.
+  if [[ ! -f "$IMAGE_CONTEXT/Dockerfile" ]]; then
+    cat >&2 <<'EOF'
+konrad: rebuild needs a checkout of the konrad source.
+
+This CLI was installed standalone (no repo alongside it), so there's no
+image/Dockerfile to build from. To work on konrad locally:
+
+  git clone https://gitlab.git.nrw/jbauss2/konrad.git
+  cd konrad
+  ./scripts/install.sh          # symlink CLI from the clone (live edits)
+  konrad rebuild                # now resolves image/Dockerfile
+
+To just refresh the published image: konrad update
+EOF
+    exit 1
+  fi
   # Pinned image refs (full name@digest) — locks/base.lock + locks/uv.lock.
   # CI reads the same files so local + CI builds resolve to the same digests.
   local base_image uv_image

@@ -43,24 +43,17 @@ Status: **early / experimental**. The "safe" half of the original `safe-cowork` 
 
 ## Install
 
+One-liner, no clone needed:
+
 ```sh
-git clone <this-repo> ~/src/konrad
-cd ~/src/konrad
-./scripts/install.sh        # symlinks bin/konrad into ~/.local/bin
-konrad update               # pulls konrad:latest from ghcr.io (~30 s)
+curl -fsSL https://gitlab.git.nrw/jbauss2/konrad/-/raw/main/scripts/install-remote.sh | sh
 ```
 
-The first `konrad` run also auto-pulls if the image isn't already
-present, so the explicit `konrad update` is optional — it just lets you
-preload before you need it. If the registry is unreachable, konrad
-falls back to a local build (`./scripts/build-image.sh`, ~5 min + ~2 GB
-of model download).
-
-Make sure `~/.local/bin` is on your `PATH`. The installer warns if it isn't.
+This drops `konrad` into `~/.local/bin/` (override with `KONRAD_INSTALL_DIR=…`), pre-pulls the container image (~30 s + ~800 MB; skip with `KONRAD_NO_PULL=1`), and warns if you need to install podman or fix your `PATH`. Re-run any time to upgrade in place.
 
 > **While the GitHub mirror is private** (it is today; see [Pinning
 > strategy](#pinning-strategy) below), `ghcr.io/jlbauss/konrad` is also
-> private, so you need to authenticate before `konrad update` can pull.
+> private, so you need to authenticate before the image pull works.
 > Create a [GitHub personal access token](https://github.com/settings/tokens)
 > with the `read:packages` scope, then:
 >
@@ -70,9 +63,22 @@ Make sure `~/.local/bin` is on your `PATH`. The installer warns if it isn't.
 >
 > Once the repo + package are flipped to public, this step goes away.
 
+The first `konrad` run also auto-pulls if the image isn't already
+present, so the explicit pre-pull is optional. If the registry is
+unreachable, konrad falls back to a local build (~5 min + ~2 GB of
+model download).
+
 ### Hacking on konrad locally
 
-If you're working on konrad itself (editing the Dockerfile, agent prompts, skills, …), `konrad rebuild` builds from your local checkout and tags the result `konrad:local` — distinct from `konrad:latest`, so your dev build doesn't clobber the published image you pulled via `konrad update`. Run the dev build with:
+If you're working on konrad itself (editing the Dockerfile, agent prompts, skills, …), clone the repo and use the symlink installer instead — edits to `bin/konrad` then go live with no extra step:
+
+```sh
+git clone https://gitlab.git.nrw/jbauss2/konrad.git
+cd konrad
+./scripts/install.sh        # symlinks bin/konrad into ~/.local/bin
+```
+
+`konrad rebuild` then builds from your local checkout and tags the result `konrad:local` — distinct from `konrad:latest`, so your dev build doesn't clobber the published image. Run the dev build with:
 
 ```sh
 KONRAD_IMAGE=konrad:local konrad
@@ -331,16 +337,17 @@ konrad/
 │   ├── build-image.sh               # Local build — passes KONRAD_VERSION + GIT_SHA build args
 │   ├── smoke-test.sh                # CI smoke gate — also runnable locally
 │   ├── fetch-fonts.sh               # One-shot — pulls fonts from upstream when bumping versions
-│   └── install.sh                   # Symlinks bin/konrad into ~/.local/bin
+│   ├── install.sh                   # Clone-based install: symlinks bin/konrad into ~/.local/bin
+│   └── install-remote.sh            # curl|sh installer: fetches CLI standalone, bakes VERSION in
 └── devcontainer/                    # Experimental: VS Code entry point as a second consumption path (see ROADMAP)
     └── devcontainer.json
 ```
 
 ## Two ways to work with konrad
 
-**Using konrad as a user.** Install once with the steps above. From then on, `cd` to whatever folder you want the agent to operate on and run `konrad`. The konrad repo only matters for getting the image and CLI installed; you don't open it day-to-day.
+**Using konrad as a user.** Run the curl|sh one-liner from the Install section. No clone needed — you get the CLI on `PATH` and the image pulled in one shot. From then on, `cd` to whatever folder you want the agent to operate on and run `konrad`.
 
-**Hacking on konrad itself.** Clone the repo and edit. Changes to `bin/konrad` take effect immediately; changes anywhere under `image/` need a rebuild (`konrad rebuild`) which writes to `konrad:local` — distinct from `konrad:latest` so your dev build doesn't clobber the published image. Run it with `KONRAD_IMAGE=konrad:local konrad`. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full development loop, including branching, PRs, and the versioning rules. (The `devcontainer/` folder is an experimental second consumption path — not the recommended dev environment yet; see [ROADMAP.md](ROADMAP.md).)
+**Hacking on konrad itself.** Clone the repo and use `./scripts/install.sh` instead — it symlinks `bin/konrad` from the clone so your edits go live immediately. Changes anywhere under `image/` still need a rebuild (`konrad rebuild`) which writes to `konrad:local` — distinct from `konrad:latest` so your dev build doesn't clobber the published image. Run it with `KONRAD_IMAGE=konrad:local konrad`. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full development loop, including branching, PRs, and the versioning rules. (The `devcontainer/` folder is an experimental second consumption path — not the recommended dev environment yet; see [ROADMAP.md](ROADMAP.md).)
 
 ## Design decisions
 
