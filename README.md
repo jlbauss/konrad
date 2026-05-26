@@ -320,9 +320,9 @@ konrad/
 │   ├── merge-config.js              # Deep-merge for the JSONC layering
 │   ├── build-manifest.sh            # Snapshot apt/npm/pip versions into /etc/konrad/build-manifest.json
 │   ├── konrad-defaults/             # → /etc/konrad/ in the image (not opencode-discoverable)
-│   │   ├── opencode-defaults.jsonc  # Baked defaults — merged with user override at start
-│   │   └── instructions.md          # konrad's base instructions, loaded via instructions key
+│   │   └── opencode-defaults.jsonc  # Baked defaults — merged with user override at start
 │   ├── opencode/                    # → ~/.config/opencode/ in the image
+│   │   ├── environment.md           # Runtime environment manifest (tools, libs, layout) — loaded via instructions key
 │   │   ├── agents/                  # Built-in primary agents (konrad, manual-transformer)
 │   │   └── skills/                  # Bundled skills (do-it-manually, spreadsheets, pdf, quality-assurance)
 │   └── fonts/konrad/                # → /usr/local/share/fonts/konrad/ (seven OFL families)

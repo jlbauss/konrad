@@ -13,18 +13,21 @@
   // Points to the official opencode JSON schema.
   "$schema": "https://opencode.ai/config.json",
 
-  // Konrad's base instructions for the model, loaded via the instructions
-  // key. opencode also additively loads any AGENTS.md it discovers — both
-  // the user-level one (~/.config/opencode/AGENTS.md) and the project-level
-  // one (workspace root). Keeping Konrad's base on the instructions key
-  // (rather than parking it as an AGENTS.md) gives us a clear "Konrad's
-  // domain vs user's domain" split: AGENTS.md is for user content.
+  // Konrad's runtime environment manifest, loaded via the instructions
+  // key. The file describes the tool inventory, Python libraries, filesystem
+  // layout, and constraints the agent runs in — not behavior (behavior lives
+  // in the agent prompts under agents/). opencode also additively loads any
+  // AGENTS.md it discovers — both the user-level one
+  // (~/.config/opencode/AGENTS.md) and the project-level one (workspace
+  // root). Keeping Konrad's environment on the instructions key (rather than
+  // parking it as an AGENTS.md) gives us a clear "Konrad's domain vs user's
+  // domain" split: AGENTS.md is for user content.
   // See README → Configuration → "Adding your own model instructions".
   //
-  // instructions.md lives alongside the agents/ and skills/ in opencode's
+  // environment.md lives alongside the agents/ and skills/ in opencode's
   // config dir (not /etc/konrad/) so that edits to it don't invalidate the
   // expensive model-download layer in the multi-stage Dockerfile build.
-  "instructions": ["/home/node/.config/opencode/instructions.md"],
+  "instructions": ["/home/node/.config/opencode/environment.md"],
 
   // Hide opencode Zen from the picker. Zen is opencode's hosted/paid
   // model gateway; konrad is local-first, so it's opt-in (a user who

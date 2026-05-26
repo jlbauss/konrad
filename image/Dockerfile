@@ -218,8 +218,8 @@ RUN install -d -o node -g node \
 
 # ── Konrad system files (root-owned — node user can't tamper) ───────────────
 # Ordered rarest-to-change first so that editing these files invalidates as
-# few downstream layers as possible. instructions.md is NOT here — it moves
-# to opencode/ below so edits to it never touch the npm layer.
+# few downstream layers as possible. environment.md is NOT here — it lives
+# in opencode/ below so edits to it never touch the npm layer.
 COPY merge-config.js   /etc/konrad/merge-config.js
 COPY entrypoint.sh     /usr/local/bin/konrad-entrypoint
 COPY konrad-defaults/  /etc/konrad/
@@ -243,7 +243,7 @@ RUN NPM_VERSION="$(jq -r '.npm' /tmp/npm.lock)" \
     && rm /tmp/npm.lock
 
 # ── Frequently-changing content (cache-stable across non-opencode commits) ──
-# opencode/ contains agents/, skills/, and instructions.md. They change
+# opencode/ contains agents/, skills/, and environment.md. They change
 # often but only on commits that actually edit them. Placed BEFORE the
 # version labels + build manifest so a commit that doesn't touch
 # opencode/ (a ROADMAP update, a CI tweak, anything outside image/opencode/)
