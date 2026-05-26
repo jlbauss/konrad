@@ -8,9 +8,13 @@
 #
 # Trigger model:
 #   - push to main when image/, scripts/smoke-test.sh, this file, or
-#     VERSION changes  → build + smoke + publish
+#     VERSION changes  → build + smoke + publish (rolling tags)
 #   - pull_request    → build + smoke + publish under :pr-<num>
-#   - workflow_dispatch (manual via Actions tab) → same as push
+#   - workflow_dispatch from main → same as push (rolling tags)
+#   - workflow_dispatch from any other ref → build + smoke, NO publish
+#     (guards the rolling tags from being clobbered by a manual run
+#      against a non-main branch — e.g. prep/public-alpha integration
+#      branches; you still get a build + smoke signal in the run log.)
 #
 # Every floating input is now lock-managed (image/locks/{base,uv,python,
 # npm,typst,models}.lock). The GitLab resolve-locks bot resolves these
@@ -216,20 +220,27 @@ jobs:
   # each public tag in one fast operation per tag.
   #
   # Tag list depends on the trigger:
-  #   - push to main / schedule / workflow_dispatch → :<ver>.<date>, :<ver>,
-  #                                                    :latest, :<sha>
-  #   - pull_request from same repo  → :pr-<num> only (transient, replaced
-  #                                     on every push to the PR branch)
-  #   - pull_request from a fork     → SKIPPED (GITHUB_TOKEN is read-only
-  #                                     on fork PRs; can't write to ghcr.io).
-  #                                     Smoke still ran in the smoke job, so
-  #                                     reviewers have that signal.
+  #   - push to main / workflow_dispatch on main → :<ver>.<date>, :<ver>,
+  #                                                 :latest, :<sha>
+  #   - pull_request from same repo   → :pr-<num> only (transient, replaced
+  #                                      on every push to the PR branch)
+  #   - pull_request from a fork      → SKIPPED (GITHUB_TOKEN is read-only
+  #                                      on fork PRs; can't write to ghcr.io).
+  #                                      Smoke still ran, so reviewers have
+  #                                      that signal.
+  #   - workflow_dispatch on non-main → SKIPPED (would otherwise clobber
+  #                                      :latest with a feature-branch image;
+  #                                      build + smoke still run for signal).
   # ---------------------------------------------------------------------------
   publish:
     needs: [build, smoke]
     runs-on: ubuntu-latest
     # Skip from fork PRs (no registry write access from the default token).
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false
+    # Skip workflow_dispatch from non-main refs (don't let a manual run
+    # against a feature branch publish under the rolling tags).
+    if: |
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false)
+      && (github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/main')
     permissions:
       contents: read
       packages: write
