@@ -142,8 +142,6 @@ fi
 say "pre-pulling konrad image (this may take ~30 s and ~800 MB)…"
 if ! "$TARGET" update; then
   warn "image pre-pull failed; konrad will retry on first run."
-  warn "If ghcr.io/jlbauss/konrad is still private, you may need to:"
-  warn "  echo \"\$GHCR_TOKEN\" | podman login ghcr.io -u jlbauss --password-stdin"
 fi
 
 printf '\n'

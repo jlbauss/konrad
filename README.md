@@ -51,18 +51,6 @@ curl -fsSL https://gitlab.git.nrw/jbauss2/konrad/-/raw/main/scripts/install-remo
 
 This drops `konrad` into `~/.local/bin/` (override with `KONRAD_INSTALL_DIR=…`), pre-pulls the container image (~30 s + ~800 MB; skip with `KONRAD_NO_PULL=1`), and warns if you need to install podman or fix your `PATH`. Re-run any time to upgrade in place.
 
-> **While the GitHub mirror is private** (it is today; see [Pinning
-> strategy](#pinning-strategy) below), `ghcr.io/jlbauss/konrad` is also
-> private, so you need to authenticate before the image pull works.
-> Create a [GitHub personal access token](https://github.com/settings/tokens)
-> with the `read:packages` scope, then:
->
-> ```sh
-> echo "$GHCR_TOKEN" | podman login ghcr.io -u jlbauss --password-stdin
-> ```
->
-> Once the repo + package are flipped to public, this step goes away.
-
 The first `konrad` run also auto-pulls if the image isn't already
 present, so the explicit pre-pull is optional. If the registry is
 unreachable, konrad falls back to a local build (~5 min + ~2 GB of
