@@ -139,7 +139,7 @@ if ! podman info >/dev/null 2>&1; then
   exit 0
 fi
 
-say "pre-pulling konrad image (this may take ~30 s and ~800 MB)…"
+say "pre-pulling konrad image (one-time download)…"
 if ! "$TARGET" update; then
   warn "image pre-pull failed; konrad will retry on first run."
 fi

@@ -191,8 +191,8 @@ RUN set -eux; \
 # ── Pull in the Python world from the build stages ──────────────────────────
 # venv stays at /opt/venv (same path as in python-base) so all shebang lines
 # and absolute references inside the venv remain valid. The model cache uses
-# --chown directly so the ~2 GB of model files land with correct ownership in
-# a single layer — a subsequent `chown -R` would duplicate them in image history.
+# --chown directly so the model files land with correct ownership in a single
+# layer — a subsequent `chown -R` would duplicate them in image history.
 # uv comes along too — needed at runtime for `uv pip list` in the build
 # manifest script and useful for `uv pip install` extensions.
 COPY --from=python-base               /opt/venv  /opt/venv

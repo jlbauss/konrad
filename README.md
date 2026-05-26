@@ -49,12 +49,12 @@ One-liner, no clone needed:
 curl -fsSL https://gitlab.git.nrw/jbauss2/konrad/-/raw/main/scripts/install-remote.sh | sh
 ```
 
-This drops `konrad` into `~/.local/bin/` (override with `KONRAD_INSTALL_DIR=…`), pre-pulls the container image (~30 s + ~800 MB; skip with `KONRAD_NO_PULL=1`), and warns if you need to install podman or fix your `PATH`. Re-run any time to upgrade in place.
+This drops `konrad` into `~/.local/bin/` (override with `KONRAD_INSTALL_DIR=…`), pre-pulls the container image (skippable with `KONRAD_NO_PULL=1`), and warns if you need to install podman or fix your `PATH`. Re-run any time to upgrade in place.
 
 The first `konrad` run also auto-pulls if the image isn't already
 present, so the explicit pre-pull is optional. If the registry is
-unreachable, konrad falls back to a local build (~5 min + ~2 GB of
-model download).
+unreachable, konrad falls back to a local build — substantially
+slower, since it recompiles every layer and re-fetches model weights.
 
 ### Hacking on konrad locally
 

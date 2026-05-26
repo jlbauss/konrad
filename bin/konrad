@@ -119,8 +119,9 @@ require_image() {
     die "image '$IMAGE_NAME' not found locally. To build the local dev image: 'konrad rebuild' (writes $IMAGE_LOCAL_TAG). To pull the published image: 'konrad update' (writes $IMAGE_DEFAULT)."
   fi
   # Default tag missing — try registry, fall back to local build.
-  # Pull is ~30 s + ~800 MB; local build is ~5 min + ~2 GB of model
-  # download. Registry should be the default user experience.
+  # Pull fetches a known-good image; local build recompiles every layer
+  # and re-downloads model weights, so it's substantially slower. The
+  # registry path is the default user experience.
   info "image '$IMAGE_NAME' not found locally — pulling $REGISTRY_IMAGE…"
   if podman pull "$REGISTRY_IMAGE" >/dev/null 2>&1; then
     podman tag "$REGISTRY_IMAGE" "$IMAGE_NAME"
@@ -128,7 +129,7 @@ require_image() {
     return 0
   fi
   warn "registry pull failed (offline? registry unreachable?)"
-  info "falling back to local build — this takes ~5 minutes and ~2 GB of model download."
+  info "falling back to local build — substantially slower; will fetch model weights."
   cmd_rebuild
   # cmd_rebuild writes $IMAGE_LOCAL_TAG, but the user asked to run
   # $IMAGE_DEFAULT. Re-tag so the run can proceed transparently.
