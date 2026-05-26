@@ -1,31 +1,44 @@
 #!/usr/bin/env bash
-# konrad — sandboxed opencode in a Podman container. See `konrad help`.
+# konrad — sandboxed opencode in a Podman container. See `konrad --help`.
 set -euo pipefail
 
 LM_STUDIO_HOST_URL="http://localhost:1234/v1/models"
 
 # Image tags. Two distinct surfaces:
-#   konrad:latest  — what `konrad update` writes (= the published image
-#                    from ghcr.io). The default for run/shell.
-#   konrad:local   — what `konrad rebuild` writes (= your local build,
-#                    for working ON konrad itself). Opt in via
-#                    KONRAD_IMAGE=konrad:local so dev iteration doesn't
-#                    clobber the pulled image.
+#   konrad:latest  — what `konrad --update` writes (= the published image
+#                    from ghcr.io). The default when this script is
+#                    invoked as `konrad`.
+#   konrad:local   — what `konrad-dev --rebuild` writes (= your local
+#                    build, for working ON konrad itself). The default
+#                    when this script is invoked as `konrad-dev` (the
+#                    contributor symlink — see CONTRIBUTING.md).
 #
-# KONRAD_IMAGE selects which tag run/shell uses; it does NOT redirect
-# what update/rebuild produce (those always write to their fixed tags).
-# To run with a custom-named build, build it manually (`podman tag
-# konrad:local konrad:my-experiment`) then set KONRAD_IMAGE.
-IMAGE_DEFAULT="konrad:latest"
+# Same script, two binaries on PATH. The invocation name decides which
+# image tag is the default — `konrad` runs the published image,
+# `konrad-dev` runs your dev build. Neither touches the other, so a
+# contributor can keep both side by side. KONRAD_IMAGE still overrides
+# either path for ad-hoc tags (`KONRAD_IMAGE=konrad:pr-42 konrad`).
+#
+# KONRAD_IMAGE does NOT redirect what --update/--rebuild produce; those
+# always write to their fixed tags.
 IMAGE_LOCAL_TAG="konrad:local"
+case "$(basename -- "$0")" in
+  konrad-dev) IMAGE_DEFAULT="$IMAGE_LOCAL_TAG" ;;
+  *)          IMAGE_DEFAULT="konrad:latest"   ;;
+esac
 IMAGE_NAME="${KONRAD_IMAGE:-$IMAGE_DEFAULT}"
 
 # Registry coordinates — where CI publishes the prebuilt image and where
-# `konrad update` pulls from. `:latest` always points at the newest
+# `konrad --update` pulls from. `:latest` always points at the newest
 # build that passed the smoke gate (see .github/workflows/build-image.yml).
 # CI runs on a GitHub mirror of this repo even though the primary repo
 # lives on gitlab.git.nrw — see the README's "Pinning strategy" section.
 REGISTRY_IMAGE="ghcr.io/jlbauss/konrad:latest"
+
+# URL of the curl|sh installer. `konrad --update` re-runs it after the
+# image pull so the CLI itself stays fresh; standalone installs don't
+# otherwise auto-update.
+INSTALL_REMOTE_URL="https://gitlab.git.nrw/jbauss2/konrad/-/raw/main/scripts/install-remote.sh"
 
 # Shared (cross-project) named volumes.
 SECRETS_VOLUME="konrad-secrets"
@@ -42,8 +55,8 @@ USER_CFG_DIR="${HOME}/.config/konrad"
 KONRAD_LOG_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/konrad/log"
 
 # --- Resolve the script's source directory, even when symlinked ---
-# Lets `konrad rebuild` find image/Dockerfile no matter where bin/konrad
-# is symlinked from.
+# Lets `konrad-dev --rebuild` find image/Dockerfile no matter where
+# bin/konrad is symlinked from.
 SOURCE="${BASH_SOURCE[0]}"
 while [[ -L "$SOURCE" ]]; do
   SRC_DIR_TMP="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
@@ -56,7 +69,8 @@ IMAGE_CONTEXT="$REPO_ROOT/image"
 
 # CLI version. Three sources, in priority order:
 #   1. $REPO_ROOT/VERSION       — present when installed from a clone
-#                                  (./scripts/install.sh symlink path).
+#                                  (the konrad-dev symlink path documented
+#                                  in CONTRIBUTING.md).
 #   2. $KONRAD_VERSION_BAKED    — rewritten by scripts/install-remote.sh
 #                                  at install time (curl|sh path), so
 #                                  standalone installs still report the
@@ -78,8 +92,8 @@ warn() { printf 'konrad: warning: %s\n' "$*" >&2; }
 info() { printf 'konrad: %s\n' "$*" >&2; }
 
 # Debug mode: KONRAD_DEBUG=1 turns on per-phase timestamps and passes
-# verbose flags through to opencode. Helpful when chasing startup
-# delays. Off by default — output stays concise.
+# verbose flags through to opencode. Off by default — flip with -v/--verbose
+# or by exporting KONRAD_DEBUG=1 in the environment.
 KONRAD_DEBUG="${KONRAD_DEBUG:-0}"
 # $SECONDS is bash's built-in script-elapsed counter (portable to bash 3.2
 # on macOS). The container side uses GNU `date +%N` for sub-second precision
@@ -116,7 +130,17 @@ require_image() {
   # Non-default tags don't auto-resolve — user must build/pull explicitly.
   # The only tag we know how to fetch is the registry's :latest.
   if [[ "$IMAGE_NAME" != "$IMAGE_DEFAULT" ]]; then
-    die "image '$IMAGE_NAME' not found locally. To build the local dev image: 'konrad rebuild' (writes $IMAGE_LOCAL_TAG). To pull the published image: 'konrad update' (writes $IMAGE_DEFAULT)."
+    if [[ "$(basename -- "$0")" == "konrad-dev" ]]; then
+      die "image '$IMAGE_NAME' not found locally. Build the local dev image with 'konrad-dev --rebuild' or pull the published one with 'konrad --update'."
+    else
+      die "image '$IMAGE_NAME' not found locally. Pull the published image with 'konrad --update', or build/pull '$IMAGE_NAME' manually first."
+    fi
+  fi
+  # konrad-dev shouldn't auto-pull the published image when its own
+  # default (konrad:local) is missing — that would silently undo what
+  # the dev was about to do with --rebuild.
+  if [[ "$(basename -- "$0")" == "konrad-dev" ]]; then
+    die "image '$IMAGE_NAME' not built yet. Run: konrad-dev --rebuild"
   fi
   # Default tag missing — try registry, fall back to local build.
   # Pull fetches a known-good image; local build recompiles every layer
@@ -128,12 +152,7 @@ require_image() {
     info "pulled and tagged as $IMAGE_NAME"
     return 0
   fi
-  warn "registry pull failed (offline? registry unreachable?)"
-  info "falling back to local build — substantially slower; will fetch model weights."
-  cmd_rebuild
-  # cmd_rebuild writes $IMAGE_LOCAL_TAG, but the user asked to run
-  # $IMAGE_DEFAULT. Re-tag so the run can proceed transparently.
-  podman tag "$IMAGE_LOCAL_TAG" "$IMAGE_NAME"
+  die "registry pull failed (offline? registry unreachable?). Once connectivity is back: konrad --update"
 }
 
 check_lm_studio() {
@@ -242,55 +261,143 @@ podman_run() {
     "$IMAGE_NAME" "$@"
 }
 
-# --- Subcommands ---
+# --- Actions ---
 
-cmd_run() {
-  dbg "cmd_run start"
+do_run() {
+  local mode="$1"  # "agent" or "shell"
+  dbg "do_run start (mode=$mode)"
   info "preflight checks…"
   require_podman; dbg "podman OK"
   require_image;  dbg "image OK"
-  check_lm_studio; dbg "lm-studio probe done"
+  if [[ "$mode" == "agent" ]]; then
+    check_lm_studio; dbg "lm-studio probe done"
+  fi
   ensure_gitignore; dbg "gitignore ensured"
   prune_log_dir; dbg "log dir pruned"
-  info "launching container (this can take a few seconds on first run)…"
-  dbg "about to exec podman run"
-  podman_run opencode
+  if [[ "$mode" == "shell" ]]; then
+    info "launching container…"
+    dbg "about to exec podman run (bash)"
+    podman_run bash
+  else
+    info "launching container (this can take a few seconds on first run)…"
+    dbg "about to exec podman run (opencode)"
+    podman_run opencode
+  fi
 }
 
-cmd_shell() {
-  dbg "cmd_shell start"
-  info "preflight checks…"
-  require_podman; dbg "podman OK"
-  require_image;  dbg "image OK"
-  ensure_gitignore; dbg "gitignore ensured"
-  prune_log_dir; dbg "log dir pruned"
-  info "launching container…"
-  dbg "about to exec podman run"
-  podman_run bash
+do_version() {
+  printf 'konrad CLI %s\n' "$KONRAD_VERSION"
+
+  if ! command -v podman >/dev/null 2>&1 || ! podman info >/dev/null 2>&1; then
+    printf 'image: %s (cannot inspect — podman unavailable)\n' "$IMAGE_NAME"
+    return 0
+  fi
+  if ! podman image exists "$IMAGE_NAME"; then
+    local hint
+    if [[ "$(basename -- "$0")" == "konrad-dev" ]]; then
+      hint="not built — run: konrad-dev --rebuild"
+    else
+      hint="not pulled — run: konrad --update"
+    fi
+    printf 'image: %s (%s)\n' "$IMAGE_NAME" "$hint"
+    return 0
+  fi
+  local digest image_ver image_rev
+  digest="$(podman image inspect "$IMAGE_NAME" --format '{{.Id}}' 2>/dev/null \
+            || printf 'unknown')"
+  image_ver="$(podman image inspect "$IMAGE_NAME" \
+               --format '{{index .Labels "org.opencontainers.image.version"}}' 2>/dev/null || printf 'unknown')"
+  image_rev="$(podman image inspect "$IMAGE_NAME" \
+               --format '{{index .Labels "org.opencontainers.image.revision"}}' 2>/dev/null || printf 'unknown')"
+  local override_note=""
+  [[ -n "${KONRAD_IMAGE:-}" ]] && override_note=" (KONRAD_IMAGE override)"
+  printf 'image: %s (%s) version=%s revision=%s%s\n' \
+    "$IMAGE_NAME" "${digest:0:19}" "$image_ver" "$image_rev" "$override_note"
 }
 
-cmd_rebuild() {
+do_update() {
+  # Hard gate: --update refreshes the published image and the stable CLI
+  # itself. konrad-dev's image (konrad:local) comes from --rebuild, and
+  # its CLI source comes from `git pull` in the checkout — neither path
+  # touches what --update would touch.
+  if [[ "$(basename -- "$0")" == "konrad-dev" ]]; then
+    die "konrad-dev doesn't update. To rebuild the dev image: konrad-dev --rebuild. To refresh the stable konrad CLI next to it on PATH: konrad --update. To update this script: git pull inside the checkout the symlink points at."
+  fi
   require_podman
-  # `konrad rebuild` is the working-on-konrad path: it needs image/Dockerfile
-  # and image/locks/*.lock next to bin/konrad. Standalone installs (curl|sh)
-  # don't have those — surface the right next step instead of a generic
-  # "is the konrad repo intact?" message that reads wrong to a user who
-  # never had the repo in the first place.
-  if [[ ! -f "$IMAGE_CONTEXT/Dockerfile" ]]; then
-    cat >&2 <<'EOF'
-konrad: rebuild needs a checkout of the konrad source.
 
-This CLI was installed standalone (no repo alongside it), so there's no
-image/Dockerfile to build from. To work on konrad locally:
+  # 1. Pull the image.
+  info "pulling $REGISTRY_IMAGE…"
+  if ! podman pull "$REGISTRY_IMAGE"; then
+    die "registry pull failed (offline? registry unreachable?)"
+  fi
+  podman tag "$REGISTRY_IMAGE" "$IMAGE_DEFAULT"
+  local ver date
+  ver="$(podman image inspect "$IMAGE_DEFAULT" \
+         --format '{{index .Labels "org.opencontainers.image.version"}}' 2>/dev/null || printf 'unknown')"
+  date="$(podman image inspect "$IMAGE_DEFAULT" \
+          --format '{{index .Labels "org.opencontainers.image.created"}}' 2>/dev/null || printf '')"
+  if [[ -n "$date" ]]; then
+    info "image refreshed to $ver (built $date)"
+  else
+    info "image refreshed to $ver"
+  fi
+
+  # 2. Self-update the CLI. Skip for symlink installs — those track a
+  #    checkout and update via `git pull` in the user's clone, not from
+  #    the remote raw URL. The symlink check distinguishes:
+  #      - regular file  → curl|sh install        → refresh via installer
+  #      - symlink       → clone-symlink install  → leave alone
+  if [[ -L "$0" ]]; then
+    info "CLI is a symlink — update with 'git pull' inside the checkout it points at."
+    return 0
+  fi
+  if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
+    warn "neither curl nor wget available; CLI was not refreshed."
+    return 0
+  fi
+  info "refreshing CLI from $INSTALL_REMOTE_URL…"
+  local install_dir
+  install_dir="$(dirname "$0")"
+  # KONRAD_NO_PULL=1 tells the installer to skip its own image-pull step
+  # (we just did one). KONRAD_INSTALL_DIR pins the target so the refresh
+  # lands at the same path the user originally installed to.
+  if command -v curl >/dev/null 2>&1; then
+    KONRAD_NO_PULL=1 KONRAD_INSTALL_DIR="$install_dir" \
+      curl -fsSL "$INSTALL_REMOTE_URL" | sh
+  else
+    KONRAD_NO_PULL=1 KONRAD_INSTALL_DIR="$install_dir" \
+      wget -qO- "$INSTALL_REMOTE_URL" | sh
+  fi
+}
+
+do_rebuild() {
+  # Hard gate: --rebuild is konrad-dev's verb. A curl|sh-installed konrad
+  # has no source to build from, and we want the dev image and stable
+  # image to stay in separate worlds.
+  if [[ "$(basename -- "$0")" != "konrad-dev" ]]; then
+    cat >&2 <<'EOF'
+konrad: --rebuild is only available from konrad-dev.
+
+konrad-dev is the contributor binary — a symlink to bin/konrad from a
+checkout of the konrad repo. To set it up:
 
   git clone https://gitlab.git.nrw/jbauss2/konrad.git
   cd konrad
-  ./scripts/install.sh          # symlink CLI from the clone (live edits)
-  konrad rebuild                # now resolves image/Dockerfile
+  mkdir -p ~/.local/bin && ln -sfn "$(pwd)/bin/konrad" ~/.local/bin/konrad-dev
+  konrad-dev --rebuild
 
-To just refresh the published image: konrad update
+Full contributor setup: CONTRIBUTING.md.
+
+To just refresh the published image: konrad --update
 EOF
     exit 1
+  fi
+  require_podman
+  # konrad-dev should always have the source next to it (the symlink points
+  # at a checkout's bin/konrad), but guard anyway — a sparse checkout or a
+  # stale symlink would otherwise fail downstream with a confusing error.
+  if [[ ! -f "$IMAGE_CONTEXT/Dockerfile" ]]; then
+    die "konrad-dev: expected $IMAGE_CONTEXT/Dockerfile (is the symlink pointing at a complete checkout?)"
   fi
   # Pinned image refs (full name@digest) — locks/base.lock + locks/uv.lock.
   # CI reads the same files so local + CI builds resolve to the same digests.
@@ -325,8 +432,7 @@ EOF
   # Layer-cached: a local rebuild reuses whatever hasn't changed under
   # image/. Always writes to $IMAGE_LOCAL_TAG (regardless of KONRAD_IMAGE)
   # so the pulled image at $IMAGE_DEFAULT is never accidentally clobbered.
-  # To use the freshly-built image: KONRAD_IMAGE=$IMAGE_LOCAL_TAG konrad
-  # To get the published image: konrad update (writes $IMAGE_DEFAULT).
+  # Run the freshly-built image with: konrad-dev.
   podman build \
     --build-arg BASE_IMAGE="$base_image" \
     --build-arg UV_IMAGE="$uv_image" \
@@ -334,198 +440,90 @@ EOF
     --build-arg GIT_SHA="$git_sha" \
     --build-arg BUILD_DATE="$build_date" \
     -t "$IMAGE_LOCAL_TAG" "$IMAGE_CONTEXT"
-  info "built $IMAGE_LOCAL_TAG — run with: KONRAD_IMAGE=$IMAGE_LOCAL_TAG konrad"
+  info "built $IMAGE_LOCAL_TAG — run with: konrad-dev"
 }
 
-cmd_update() {
-  require_podman
-  info "pulling $REGISTRY_IMAGE…"
-  if ! podman pull "$REGISTRY_IMAGE"; then
-    die "registry pull failed (offline? registry unreachable?)"
-  fi
-  # Always write to $IMAGE_DEFAULT, never the KONRAD_IMAGE override —
-  # `konrad update` specifically means "refresh the published image."
-  podman tag "$REGISTRY_IMAGE" "$IMAGE_DEFAULT"
-  info "updated $IMAGE_DEFAULT"
-  # Summarize what just landed by reading the OCI labels — no need to
-  # start a container.
-  local ver date
-  ver="$(podman image inspect "$IMAGE_DEFAULT" \
-         --format '{{index .Labels "org.opencontainers.image.version"}}' 2>/dev/null || printf 'unknown')"
-  date="$(podman image inspect "$IMAGE_DEFAULT" \
-          --format '{{index .Labels "org.opencontainers.image.created"}}' 2>/dev/null || printf '')"
-  if [[ -n "$date" ]]; then
-    info "now serving konrad image $ver (built $date)"
-  else
-    info "now serving konrad image $ver"
-  fi
-}
+do_reset() {
+  # Strong confirmation: y/N is too easy to fat-finger when the action is
+  # destructive across all workspaces. Demand the literal word RESET.
+  cat >&2 <<EOF
 
-cmd_clean() {
-  require_podman
+==============================================================================
+WARNING — konrad --reset will permanently delete:
 
-  # The legacy workspace bind (.agent/opencode/) is gone. If a stale
-  # copy from a pre-2026-05-20 konrad lingers in the workspace, point
-  # the user at it but don't auto-delete (auth.json may still be there
-  # pre-secrets-volume migration; let them inspect).
-  local legacy
-  legacy="$(pwd -P)/.agent/opencode"
-  if [[ -d "$legacy" ]]; then
-    warn "found orphan $legacy from a pre-2026-05-20 konrad; safe to 'rm -rf' once you've copied out any local auth.json"
+  - the central log dir:
+      $KONRAD_LOG_DIR
+  - the shared volumes:
+      • $SECRETS_VOLUME  (your provider credentials — you'll need to /connect again)
+      • $CACHE_VOLUME    (opencode's cache)
+      • $STATE_VOLUME    (opencode's UI state and model selection)
+
+This affects ALL workspaces, not just the current one. There is no undo.
+==============================================================================
+
+EOF
+  printf 'konrad: type RESET to confirm (anything else aborts): ' >&2
+  local confirmation=""
+  read -r confirmation || true
+  if [[ "$confirmation" != "RESET" ]]; then
+    info "aborted; nothing was deleted."
+    exit 0
   fi
 
-  # Wipe the central log dir wholesale — host-side, no podman needed.
   if [[ -d "$KONRAD_LOG_DIR" ]]; then
     rm -rf "$KONRAD_LOG_DIR"
     info "removed $KONRAD_LOG_DIR"
-  else
-    info "no logs at $KONRAD_LOG_DIR"
   fi
-
-  if [[ "${1:-}" == "--all" ]]; then
+  if command -v podman >/dev/null 2>&1 && podman info >/dev/null 2>&1; then
     for vol in "$SECRETS_VOLUME" "$CACHE_VOLUME" "$STATE_VOLUME"; do
       if podman volume exists "$vol" 2>/dev/null; then
         podman volume rm "$vol" >/dev/null
         info "removed shared volume $vol"
       fi
     done
-    info "next run will need a fresh /connect, repopulate caches, and re-pick a model"
+  else
+    warn "podman not reachable; shared volumes were NOT removed."
   fi
+  info "reset complete. Next run will need a fresh /connect, repopulate caches, and re-pick a model."
 }
 
-cmd_version() {
-  printf 'konrad CLI %s\n' "$KONRAD_VERSION"
-  printf 'active image: %s' "$IMAGE_NAME"
-  if [[ -n "${KONRAD_IMAGE:-}" ]]; then
-    printf ' (KONRAD_IMAGE override)'
-  fi
-  printf '\n'
-
-  if ! command -v podman >/dev/null 2>&1 || ! podman info >/dev/null 2>&1; then
-    printf 'image:  (cannot inspect — podman unavailable)\n'
-    return 0
-  fi
-  if ! podman image exists "$IMAGE_NAME"; then
-    if [[ "$IMAGE_NAME" == "$IMAGE_DEFAULT" ]]; then
-      printf 'image:  %s (not pulled — run: konrad update)\n' "$IMAGE_NAME"
-    elif [[ "$IMAGE_NAME" == "$IMAGE_LOCAL_TAG" ]]; then
-      printf 'image:  %s (not built — run: konrad rebuild)\n' "$IMAGE_NAME"
-    else
-      printf 'image:  %s (not present locally)\n' "$IMAGE_NAME"
-    fi
-    return 0
-  fi
-  local digest image_ver image_rev
-  digest="$(podman image inspect "$IMAGE_NAME" --format '{{.Id}}' 2>/dev/null \
-            || printf 'unknown')"
-  image_ver="$(podman image inspect "$IMAGE_NAME" \
-               --format '{{index .Labels "org.opencontainers.image.version"}}' 2>/dev/null || printf 'unknown')"
-  image_rev="$(podman image inspect "$IMAGE_NAME" \
-               --format '{{index .Labels "org.opencontainers.image.revision"}}' 2>/dev/null || printf 'unknown')"
-  printf 'image:  %s (%s)\n' "$IMAGE_NAME" "${digest:0:19}"
-  printf '        version=%s revision=%s\n' "$image_ver" "$image_rev"
-
-  # Both tags' state when neither override nor missing, so the user can
-  # see what else is sitting on their machine alongside the active one.
-  if [[ -z "${KONRAD_IMAGE:-}" ]]; then
-    if podman image exists "$IMAGE_LOCAL_TAG"; then
-      local local_rev
-      local_rev="$(podman image inspect "$IMAGE_LOCAL_TAG" \
-                   --format '{{index .Labels "org.opencontainers.image.revision"}}' 2>/dev/null || printf 'unknown')"
-      printf 'also present: %s (revision=%s)  — run with: KONRAD_IMAGE=%s konrad\n' \
-        "$IMAGE_LOCAL_TAG" "$local_rev" "$IMAGE_LOCAL_TAG"
-    fi
+do_help() {
+  # Help branches on basename so each binary only lists the flags that make
+  # sense for its world. konrad has --update; konrad-dev has --rebuild.
+  local self refresh_flag variant_blurb cross_pointer
+  self="$(basename -- "$0")"
+  if [[ "$self" == "konrad-dev" ]]; then
+    refresh_flag="  --rebuild             Rebuild the local dev image from image/ (writes konrad:local)."
+    variant_blurb="konrad-dev — contributor variant. Defaults to konrad:local (your local build),
+so anything you're testing stays out of the way of the stable konrad next to it on PATH."
+    cross_pointer="Your stable user CLI 'konrad' is unaffected by anything here. It lives next to
+this binary on PATH and pulls konrad:latest from ghcr.io ('konrad --update' to refresh)."
+  else
+    refresh_flag="  --update              Pull the latest image AND refresh the CLI itself."
+    variant_blurb="konrad — sandboxed opencode in a Podman container."
+    cross_pointer="Working on konrad itself? Install the contributor variant 'konrad-dev'
+alongside this stable CLI — see CONTRIBUTING.md."
   fi
 
-  # --manifest dumps the full build-manifest.json — apt/npm/pip snapshots
-  # plus build metadata. One container start; only on explicit request.
-  if [[ "${1:-}" == "--manifest" ]]; then
-    printf '\nbuild manifest (from /etc/konrad/build-manifest.json):\n'
-    podman run --rm --entrypoint cat "$IMAGE_NAME" \
-      /etc/konrad/build-manifest.json | jq .
-  fi
-}
-
-# --- Config subcommands ---
-
-cmd_config_path() {
-  printf '%s\n' "$USER_CFG_DIR/opencode.jsonc"
-}
-
-cmd_config_init() {
-  local target="$USER_CFG_DIR/opencode.jsonc"
-  if [[ -f "$target" ]]; then
-    die "$target already exists; refusing to overwrite"
-  fi
-  require_podman
-  require_image
-  mkdir -p "$USER_CFG_DIR"
-  podman run --rm --entrypoint cat "$IMAGE_NAME" /etc/konrad/opencode-defaults.jsonc > "$target"
-  info "wrote $target"
-  info "edit it to add providers (Anthropic, OpenRouter, etc.) or change the default model"
-}
-
-cmd_config_show() {
-  local user="$USER_CFG_DIR/opencode.jsonc"
-  if [[ ! -f "$user" ]]; then
-    info "no user override at $user"
-    info "run 'konrad config init' to create one from the baked default"
-    return 0
-  fi
-  require_podman
-  require_image
-  info "diff: baked default (-) vs your override (+)"
-  diff -u \
-    <(podman run --rm --entrypoint cat "$IMAGE_NAME" /etc/konrad/opencode-defaults.jsonc) \
-    "$user" || true
-}
-
-cmd_config() {
-  case "${1:-}" in
-    init)  cmd_config_init ;;
-    path)  cmd_config_path ;;
-    show)  cmd_config_show ;;
-    *)     die "unknown config subcommand: ${1:-<none>} — try: init / path / show" ;;
-  esac
-}
-
-cmd_help() {
   cat <<EOF
-konrad — sandboxed opencode in a Podman container.
+$variant_blurb
 
-Usage:
-  konrad                Run opencode against the current directory.
-  konrad shell          Open a bash shell in the container, same mounts.
-  konrad update         Pull the latest konrad image from the registry
-                          (writes konrad:latest).
-  konrad rebuild        Rebuild from local image/ (writes konrad:local —
-                          run with KONRAD_IMAGE=konrad:local konrad).
-  konrad clean          Remove the central log dir (~/.local/state/konrad/).
-  konrad clean --all    Also remove the shared volumes (auth, cache, state).
-  konrad config init    Copy the baked opencode.jsonc to your user override.
-  konrad config path    Print the path of your user override.
-  konrad config show    Diff your user override against the baked default.
-  konrad version        Print CLI + image version info.
-  konrad version --manifest
-                        Dump the full build manifest (apt/npm/pip snapshot).
-  konrad help           Show this message.
+Default: run opencode against the current directory. Pass a flag to do
+something else.
 
-Image tags:
-  konrad:latest    What 'konrad update' writes (= published image from ghcr.io).
-                   Default for 'konrad' and 'konrad shell'.
-  konrad:local     What 'konrad rebuild' writes (= your local build, for
-                   working ON konrad itself). Doesn't clobber konrad:latest.
+Flags:
+  -s, --shell           Open a bash shell in the container instead.
+  -v, --verbose         Per-phase timestamps + verbose opencode logs.
+  --version             Print CLI version + image tag/digest/revision.
+$refresh_flag
+  --reset               Wipe shared volumes + log dir (asks for confirmation).
+  -h, --help            Show this message.
+
+$cross_pointer
 
 Override which image runs:
-  KONRAD_IMAGE=konrad:local konrad           Run the dev build.
-  KONRAD_IMAGE=konrad:my-experiment konrad   Run a custom-tagged image.
-                                              (You must build/pull it first;
-                                              the CLI won't fetch arbitrary tags.)
-
-Debug:
-  KONRAD_DEBUG=1 konrad    Run with timestamped per-phase logs on both sides
-                           (CLI and container entrypoint), plus opencode set
-                           to verbose. Useful for chasing startup delays.
+  KONRAD_IMAGE=konrad:pr-42 $self    Test a published PR image.
+  KONRAD_IMAGE=konrad:my-tag $self   Run a custom-tagged image you built or pulled.
 
 Files in the workspace (.agent/ belongs to the agent end-to-end):
   .agent/task.md        Current task's plan + outcome (committable).
@@ -545,19 +543,62 @@ Files in ~/.config/konrad/ (all optional):
   AGENTS.md             Personal/org instructions, loaded on top of base.
   fonts/                .ttf / .otf / .ttc dropped here are loaded into
                         fontconfig on top of konrad's baked palette.
+
+Occasional maintenance (one-liners, not built into the CLI):
+  Edit your override:   \$EDITOR ~/.config/konrad/opencode.jsonc
+  Build-manifest dump:  podman run --rm --entrypoint cat $IMAGE_DEFAULT \\
+                          /etc/konrad/build-manifest.json | jq .
 EOF
 }
 
-# --- Dispatch ---
+# --- Flag parser + dispatch ---
 
-case "${1:-run}" in
-  run|"")              cmd_run ;;
-  shell)               cmd_shell ;;
-  update|pull)         cmd_update ;;
-  rebuild)             cmd_rebuild ;;
-  clean)               shift; cmd_clean "$@" ;;
-  config)              shift; cmd_config "$@" ;;
-  version|--version)   shift; cmd_version "$@" ;;
-  help|-h|--help)      cmd_help ;;
-  *)                   die "unknown command: $1 (try: konrad help)" ;;
+SHELL_MODE=0
+ACTION="run"
+
+# Each flag is its own token. Short flags bundle (-sv == -s -v). Long flags
+# stand alone. The action flags (--version / --update / --rebuild / --reset
+# / --help) are mutually exclusive; last one wins if multiple are passed.
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --shell)      SHELL_MODE=1;     shift ;;
+    --verbose)    KONRAD_DEBUG=1;   shift ;;
+    --version)    ACTION="version"; shift ;;
+    --update)     ACTION="update";  shift ;;
+    --rebuild)    ACTION="rebuild"; shift ;;
+    --reset)      ACTION="reset";   shift ;;
+    --help)       ACTION="help";    shift ;;
+    --)           shift; break ;;
+    --*)          die "unknown flag: $1 (try: $(basename -- "$0") --help)" ;;
+    -*)
+      # Short-flag bundle: explode -sv into -s -v.
+      flags="${1#-}"
+      shift
+      for (( i=0; i<${#flags}; i++ )); do
+        char="${flags:$i:1}"
+        case "$char" in
+          s) SHELL_MODE=1   ;;
+          v) KONRAD_DEBUG=1 ;;
+          h) ACTION="help"  ;;
+          *) die "unknown short flag: -$char (try: $(basename -- "$0") --help)" ;;
+        esac
+      done
+      ;;
+    *)            die "unexpected argument: $1 (try: $(basename -- "$0") --help)" ;;
+  esac
+done
+
+case "$ACTION" in
+  run)
+    if [[ "$SHELL_MODE" == "1" ]]; then
+      do_run shell
+    else
+      do_run agent
+    fi
+    ;;
+  version)  do_version ;;
+  update)   do_update  ;;
+  rebuild)  do_rebuild ;;
+  reset)    do_reset   ;;
+  help)     do_help    ;;
 esac

@@ -26,23 +26,32 @@ No CLA, no DCO. The license terms attach automatically.
 
 ## First-time setup
 
+Konrad keeps the user CLI and the dev CLI as separate binaries on `PATH`, so you can hack on the source without disturbing your day-to-day stable `konrad`:
+
+| Binary       | Source of CLI                  | Default image  | Refresh with                |
+| ------------ | ------------------------------ | -------------- | --------------------------- |
+| `konrad`     | Standalone install (curl\|sh)  | `konrad:latest` | `konrad --update`          |
+| `konrad-dev` | Symlink to your checkout       | `konrad:local`  | `konrad-dev --rebuild`     |
+
+Same script under the hood — `bin/konrad` picks its default image from `basename "$0"`. The two never collide, and you only need both if you want a stable agent alongside an in-flight dev build.
+
 ```sh
-# Fork on GitHub, then:
-git clone git@github.com:<your-username>/konrad.git
+# 1. The user CLI (skip if you already have it).
+curl -fsSL https://gitlab.git.nrw/jbauss2/konrad/-/raw/main/scripts/install-remote.sh | sh
+
+# 2. The dev CLI.
+git clone https://gitlab.git.nrw/jbauss2/konrad.git
 cd konrad
+mkdir -p ~/.local/bin && ln -sfn "$(pwd)/bin/konrad" ~/.local/bin/konrad-dev
 
-./scripts/install.sh              # symlinks bin/konrad into ~/.local/bin
-konrad update                     # pulls the current :latest from ghcr.io
-                                  # (until the package is public you'll need
-                                  #  a PAT — see the README's Install section)
-
-konrad rebuild                    # builds konrad:local from your checkout
+# 3. Build the dev image and smoke-test.
+konrad-dev --rebuild
 ./scripts/smoke-test.sh konrad:local
 ```
 
 You need:
 - Podman (Linux/macOS host; Docker is on the roadmap but not supported yet)
-- `~/.local/bin` on your `$PATH` (the installer warns if it isn't)
+- `~/.local/bin` on your `$PATH`
 
 The repo ships a Dev Container at `.devcontainer/` — "Reopen in Container" in VS Code gives you a portable edit-and-lint environment (shellcheck, jq, git, ripgrep, the Claude Code extension preinstalled). Building and running the konrad image itself stays on the host, since Podman-in-container would need privileged mode.
 
@@ -50,13 +59,13 @@ The repo ships a Dev Container at `.devcontainer/` — "Reopen in Container" in 
 
 ```sh
 # Edit files...
-konrad rebuild                                            # builds konrad:local
-KONRAD_IMAGE=konrad:local konrad shell                    # exercise the dev image
+konrad-dev --rebuild                                      # builds konrad:local
+konrad-dev --shell                                        # exercise the dev image
 shellcheck bin/konrad image/entrypoint.sh scripts/*.sh    # lint
 ./scripts/smoke-test.sh konrad:local                      # smoke
 ```
 
-`konrad rebuild` writes to `konrad:local` so it can't accidentally clobber the published `konrad:latest` you pulled with `konrad update`. Set `KONRAD_IMAGE=konrad:local` to run the dev image; default `konrad` always runs `konrad:latest`.
+`konrad-dev` defaults to the `konrad:local` image (the one its own `rebuild` writes), so you exercise your dev build with no env var fiddling. The stable `konrad` next to it on `PATH` keeps pointing at `konrad:latest` — your day-to-day agent work is unaffected by whatever you're testing.
 
 There's no traditional unit-test suite. The validation gates are:
 
@@ -64,7 +73,7 @@ There's no traditional unit-test suite. The validation gates are:
 - `shellcheck <script>` — static analysis, should stay clean
 - `./scripts/build-image.sh` — does the image build?
 - `./scripts/smoke-test.sh konrad:local` — does the image have the right binaries / Python deps / baked content, and does the docling round-trip work? CI runs this same script.
-- A live poke: `cd /tmp/konrad-test && konrad version --manifest` then `KONRAD_IMAGE=konrad:local konrad shell` to look around.
+- A live poke: `cd /tmp/konrad-test && konrad-dev --version` then `konrad-dev --shell` to look around. Dump the full build manifest with `podman run --rm --entrypoint cat konrad:local /etc/konrad/build-manifest.json | jq .`.
 
 **Always smoke-test locally before pushing changes that touch `image/`, `scripts/smoke-test.sh`, or `image/build-manifest.sh`.** CI catches the bug eventually but at a ~10 min round-trip cost per iteration vs. ~5.5 min locally (rebuild + smoke).
 
@@ -81,7 +90,7 @@ Workflow for maintainer / collaborators:
 5. Pull and test interactively:
    ```sh
    podman pull ghcr.io/jlbauss/konrad:pr-<num>
-   KONRAD_IMAGE=ghcr.io/jlbauss/konrad:pr-<num> konrad shell
+   KONRAD_IMAGE=ghcr.io/jlbauss/konrad:pr-<num> konrad --shell
    ```
 6. Merge when smoke is green and the PR image works
 7. Main pipeline runs and publishes under the real tags (`:latest`, `:0.X.YYYY-MM-DD`, etc.)

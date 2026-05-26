@@ -20,7 +20,7 @@ That meant:
 - The `.agent/` directory — which the planning contract claims as the
   *agent's* working memory — was also home to opencode framework state.
   Two owners, one path, no clear contract.
-- `konrad clean` had to be run per-project to keep workspaces from
+- A per-project cleanup step had to be run to keep workspaces from
   bloating.
 
 ## The contract
@@ -102,7 +102,7 @@ count unchanged at three.
 - **Workspace `.agent/quality-assurance/` and `.agent/scratch/`**: auto-pruned at
   every container start (>7d), in the entrypoint.
 - **Central log dir**: auto-pruned at every `bin/konrad` launch (>7d),
-  host-side. `konrad clean --all` also wipes it.
+  host-side. `konrad --reset` also wipes it.
 - **`.agent/artifacts/`, `.agent/task.md`**: hands-off. User
   manages. Documented in README.
 - **Legacy `.agent/opencode/`**: if it exists from before this change,
@@ -110,7 +110,7 @@ count unchanged at three.
   the user to `rm -rf .agent/opencode/`. We don't auto-delete it
   because the user might have a stale `auth.json` there from before
   the secrets-volume migration; let them inspect.
-- **Named volumes**: `konrad clean --all` wipes them as before.
+- **Named volumes**: `konrad --reset` wipes them as before.
 
 ## What does NOT change
 

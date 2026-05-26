@@ -2,7 +2,7 @@
 
 ## Why this doc exists
 
-Konrad ships as a container image. Users don't compile from source; they `konrad update` and get whatever's at `ghcr.io/jlbauss/konrad:latest`. That makes the version semantics user-facing: when a user reports a bug, "I'm on `0.3.2026-04-15`" needs to mean something unambiguous, and the upgrade path needs to be obvious.
+Konrad ships as a container image. Users don't compile from source; they `konrad --update` and get whatever's at `ghcr.io/jlbauss/konrad:latest`. That makes the version semantics user-facing: when a user reports a bug, "I'm on `0.3.2026-04-15`" needs to mean something unambiguous, and the upgrade path needs to be obvious.
 
 This doc captures the rules so they stay consistent across the project's lifetime.
 
@@ -82,7 +82,7 @@ Interactive testing recipe for reviewers:
 
 ```sh
 podman pull ghcr.io/jlbauss/konrad:pr-42
-KONRAD_IMAGE=ghcr.io/jlbauss/konrad:pr-42 konrad shell      # poke around
+KONRAD_IMAGE=ghcr.io/jlbauss/konrad:pr-42 konrad --shell    # poke around
 KONRAD_IMAGE=ghcr.io/jlbauss/konrad:pr-42 konrad            # run for real
 ```
 
@@ -99,7 +99,7 @@ Examples:
 | Add a new bundled skill | `0.1 → 0.2` | `1.2.3 → 1.3.0` (minor) |
 | Fix a bug in an existing skill | `0.1 → 0.2` | `1.2.3 → 1.2.4` (patch) |
 | Floating-pin refresh that pulled a security fix (daily CI) | no bump (date carries it) | no bump (date carries it) |
-| Rename `konrad shell` to `konrad bash` | `0.1 → 0.2` | `1.2.3 → 2.0.0` (major — breaking) |
+| Rename `konrad --shell` to `konrad --bash` | `0.1 → 0.2` | `1.2.3 → 2.0.0` (major — breaking) |
 | Add a new CLI flag | `0.1 → 0.2` | `1.2.3 → 1.3.0` (minor) |
 | Update README typo | no bump | no bump |
 | Update CI workflow | no bump | no bump |

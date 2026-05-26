@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build the konrad container image. Same as `konrad rebuild`, just
+# Build the konrad container image. Same as `konrad-dev --rebuild`, just
 # usable without having the CLI installed yet.
 #
 # The Dockerfile uses a 3-stage build:

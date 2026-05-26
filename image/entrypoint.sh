@@ -99,7 +99,7 @@ fi
 # auth.json where it expects it. The legacy migration path (pulling a stray
 # auth.json out of the now-gone .agent/opencode/ workspace bind) is no longer
 # reachable since the data dir is ephemeral; users with pre-2026-05-20
-# state get a one-shot warning from `konrad clean` if they still have
+# state get a one-shot warning at run time if they still have
 # .agent/opencode/ in a workspace.
 ln -sf "$SECRETS/auth.json" "$OPENCODE_DATA/auth.json"
 dbg "auth.json symlink ready"

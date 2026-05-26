@@ -8,12 +8,12 @@
 #
 # Knobs (env vars):
 #   KONRAD_INSTALL_DIR   target directory (default: $HOME/.local/bin)
-#   KONRAD_NO_PULL=1     skip the post-install `konrad update` (CLI only)
+#   KONRAD_NO_PULL=1     skip the post-install `konrad --update` (CLI only)
 #   KONRAD_REF=main      git ref on gitlab.git.nrw/jbauss2/konrad to fetch from
 #
-# Re-run any time to upgrade in place. Hacking on konrad itself? Use the
-# clone-based installer at scripts/install.sh instead — it symlinks the
-# CLI so your edits are live.
+# Re-run any time to upgrade in place. Hacking on konrad itself? Clone
+# the repo and symlink bin/konrad as `konrad-dev` next to your stable
+# konrad — see CONTRIBUTING.md for the full contributor setup.
 #
 # Written in POSIX sh on purpose: `curl | sh` users may not have bash.
 set -eu
@@ -128,19 +128,26 @@ fi
 
 # --- Pre-pull the image ------------------------------------------------------
 if [ "${KONRAD_NO_PULL:-0}" = "1" ]; then
-  say "skipping image pre-pull (KONRAD_NO_PULL=1). Run 'konrad update' when ready."
+  say "skipping image pre-pull (KONRAD_NO_PULL=1). Run 'konrad --update' when ready."
   exit 0
 fi
 
 if ! podman info >/dev/null 2>&1; then
   warn "podman is installed but not reachable (VM not started? socket missing?)."
   say  "  On macOS:  podman machine init && podman machine start"
-  say  "Skipping pre-pull. Run 'konrad update' once podman is up."
+  say  "Skipping pre-pull. Run 'konrad --update' once podman is up."
   exit 0
 fi
 
 say "pre-pulling konrad image (one-time download)…"
-if ! "$TARGET" update; then
+# Go directly through podman rather than the freshly-installed konrad —
+# `konrad --update` itself re-runs this very installer to refresh the CLI,
+# which would otherwise double-fetch bin/konrad on first install.
+REGISTRY_IMAGE="ghcr.io/jlbauss/konrad:latest"
+if podman pull "$REGISTRY_IMAGE"; then
+  podman tag "$REGISTRY_IMAGE" "konrad:latest"
+  say "tagged as konrad:latest"
+else
   warn "image pre-pull failed; konrad will retry on first run."
 fi
 

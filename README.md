@@ -56,24 +56,7 @@ present, so the explicit pre-pull is optional. If the registry is
 unreachable, konrad falls back to a local build — substantially
 slower, since it recompiles every layer and re-fetches model weights.
 
-### Hacking on konrad locally
-
-If you're working on konrad itself (editing the Dockerfile, agent prompts, skills, …), clone the repo and use the symlink installer instead — edits to `bin/konrad` then go live with no extra step:
-
-```sh
-git clone https://gitlab.git.nrw/jbauss2/konrad.git
-cd konrad
-./scripts/install.sh        # symlinks bin/konrad into ~/.local/bin
-```
-
-`konrad rebuild` then builds from your local checkout and tags the result `konrad:local` — distinct from `konrad:latest`, so your dev build doesn't clobber the published image. Run the dev build with:
-
-```sh
-KONRAD_IMAGE=konrad:local konrad
-KONRAD_IMAGE=konrad:local konrad shell
-```
-
-`konrad version` always shows which image is currently active, plus the other one if present, so you can tell at a glance whether you're running your local edits or the published image.
+Working on konrad itself? See [CONTRIBUTING.md](CONTRIBUTING.md) — it walks you through cloning the repo and installing a parallel `konrad-dev` CLI that tracks your checkout (the stable `konrad` next to it stays untouched).
 
 ## Use
 
@@ -84,22 +67,34 @@ konrad
 
 That's the whole UX: the current directory is mounted at `/workspace` inside the container, opencode starts pointing at LM Studio (or whatever you've configured), and you go.
 
-### Subcommands
+### Flags
 
-| Command                       | What it does                                                          |
-| ----------------------------- | --------------------------------------------------------------------- |
-| `konrad`                      | Default. Runs opencode against the current directory.                 |
-| `konrad shell`                | Opens a bash shell in the container — same mounts, no agent.          |
-| `konrad update`               | Pulls the latest image from the registry, tags it `konrad:latest`.    |
-| `konrad rebuild`              | Builds locally from this repo's `image/`, tags it `konrad:local` (does *not* clobber `konrad:latest`). |
-| `konrad clean`                | Removes the central log dir at `~/.local/state/konrad/log/`.          |
-| `konrad clean --all`          | Also drops the shared volumes (auth, cache, opencode state). Forces fresh login. |
-| `konrad config init`          | Copies the baked default `opencode.jsonc` to your user override.      |
-| `konrad config path`          | Prints the path of your user override.                                |
-| `konrad config show`          | Diffs your user override against the baked default.                   |
-| `konrad version`              | Prints CLI version + image version/revision.                          |
-| `konrad version --manifest`   | Dumps the full build manifest (apt/npm/pip snapshot, build metadata). |
-| `konrad help`                 | Show usage.                                                           |
+| Flag                     | What it does                                                            |
+| ------------------------ | ----------------------------------------------------------------------- |
+| _(none)_                 | Default. Runs opencode against the current directory.                   |
+| `-s`, `--shell`          | Open a bash shell in the container instead of opencode.                 |
+| `-v`, `--verbose`        | Per-phase timestamps + verbose opencode logs. Useful for chasing slow startup. |
+| `--version`              | Print CLI version + image tag/digest/revision.                          |
+| `--update`               | Pull the latest image from `ghcr.io/jlbauss/konrad:latest` and refresh the CLI script itself. |
+| `--reset`                | Wipe shared volumes + log dir. Asks for a typed `RESET` confirmation; affects all workspaces. |
+| `-h`, `--help`           | Show usage.                                                             |
+
+Short flags bundle (`konrad -sv` is `konrad -s -v`).
+
+Working on konrad itself? `konrad-dev` is the contributor binary — same flags, except `--rebuild` replaces `--update` (it builds `konrad:local` from your checkout rather than pulling). See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+### Occasional maintenance (one-liners)
+
+Operations rare enough that the CLI doesn't ship a verb for them:
+
+| Goal                                 | Command                                                                                       |
+| ------------------------------------ | --------------------------------------------------------------------------------------------- |
+| Edit your user override              | `$EDITOR ~/.config/konrad/opencode.jsonc`                                                     |
+| Start from the baked default         | `podman run --rm --entrypoint cat ghcr.io/jlbauss/konrad:latest /etc/konrad/opencode-defaults.jsonc > ~/.config/konrad/opencode.jsonc` |
+| Diff your override vs. baked default | `diff -u <(podman run --rm --entrypoint cat ghcr.io/jlbauss/konrad:latest /etc/konrad/opencode-defaults.jsonc) ~/.config/konrad/opencode.jsonc` |
+| Dump the build manifest              | `podman run --rm --entrypoint cat ghcr.io/jlbauss/konrad:latest /etc/konrad/build-manifest.json \| jq .` |
+| Clear just the log dir               | `rm -rf ~/.local/state/konrad/log/`                                                           |
+| Nuclear reset                        | `konrad --reset` (wipes log dir + all shared volumes; types `RESET` to confirm)               |
 
 ## Configuration
 
@@ -137,9 +132,17 @@ opencode Zen is the upstream's paid hosted model gateway. konrad is local-first,
 ### Quick start: edit your override
 
 ```sh
-konrad config init          # copies the baked default to ~/.config/konrad/opencode.jsonc
-$EDITOR "$(konrad config path)"
-konrad config show          # diff against the baked default to see what you changed
+# 1. Start your override from the baked default.
+podman run --rm --entrypoint cat ghcr.io/jlbauss/konrad:latest \
+  /etc/konrad/opencode-defaults.jsonc > ~/.config/konrad/opencode.jsonc
+
+# 2. Edit it.
+$EDITOR ~/.config/konrad/opencode.jsonc
+
+# 3. Diff against the baked default to see what you changed.
+diff -u <(podman run --rm --entrypoint cat ghcr.io/jlbauss/konrad:latest \
+            /etc/konrad/opencode-defaults.jsonc) \
+        ~/.config/konrad/opencode.jsonc
 ```
 
 ### Recipes
@@ -241,15 +244,15 @@ There's no `konrad logs` subcommand — the path is standard, and `tail`/`less`/
 
 **Ephemeral, inside the container.** opencode's `~/.local/share/opencode/` (sessions, SQLite conversation DB) lives in the container's writable layer and dies on `--rm`. Each `konrad` run is a fresh session — durable task memory is `.agent/task.md`, not the framework's conversation DB.
 
-The opencode binary itself is **not** in a named volume — it's installed root-owned into the image at build time, so the runtime user can't mutate it. Updates flow through `konrad update` (or `konrad rebuild` if you're working on konrad locally).
+The opencode binary itself is **not** in a named volume — it's installed root-owned into the image at build time, so the runtime user can't mutate it. Updates flow through `konrad --update` (or `konrad-dev --rebuild` if you're working on konrad locally).
 
-`konrad clean` wipes the central log dir (`~/.local/state/konrad/log/`). `konrad clean --all` *also* drops all three shared volumes (next run requires a fresh `/connect`, repopulates caches, and asks you to pick a model again). Workspace `.agent/` is yours — konrad never deletes it (auto-prune only touches the ephemeral subdirs).
+`konrad --reset` drops the central log dir *and* all three shared volumes after a typed `RESET` confirmation (next run requires a fresh `/connect`, repopulates caches, and asks you to pick a model again). For a log-only wipe, `rm -rf ~/.local/state/konrad/log/`. Workspace `.agent/` is yours — konrad never deletes it (auto-prune only touches the ephemeral subdirs).
 
 ## Pinning strategy
 
 Every meaningful input is digest- or version-locked in [image/locks/](image/locks/). The [`.gitlab-ci.yml`](.gitlab-ci.yml) `resolve-locks` job runs on GitLab daily, re-resolves each upstream, diffs against the committed lock, and opens (auto-merges) an MR when anything moved. The merge mirrors to GitHub and triggers a real rebuild via the `image/**` path filter — so builds only fire when there is something genuinely new to build. There is no scheduled cron rebuild on GitHub.
 
-**Locked inputs.** Each lock keys exactly one Dockerfile concern. Docker's layer cache reuses the layer when the lock is byte-identical to last time; rebuilds (and everything downstream) when it moves. Local `konrad rebuild` reads the same lock files as CI, so a developer's local build and the published image resolve to identical digests.
+**Locked inputs.** Each lock keys exactly one Dockerfile concern. Docker's layer cache reuses the layer when the lock is byte-identical to last time; rebuilds (and everything downstream) when it moves. Local `konrad-dev --rebuild` reads the same lock files as CI, so a developer's local build and the published image resolve to identical digests.
 
 | Component | Lock | Source | Notes |
 | --- | --- | --- | --- |
@@ -259,7 +262,7 @@ Every meaningful input is digest- or version-locked in [image/locks/](image/lock
 | `opencode-ai`, `npm` | `npm.lock` | `npm view <pkg> version` | |
 | `typst` | `typst.lock` | GitHub releases API for `typst/typst` | |
 
-The win: a typical "only opencode-ai bumped" day rebuilds only the npm layer and downstream — ~80 MB user pull on the next `konrad update`. No-op days fire no build at all — the user pull is a manifest poll, ~0 MB.
+The win: a typical "only opencode-ai bumped" day rebuilds only the npm layer and downstream — small user pull on the next `konrad --update`. No-op days fire no build at all — the user pull is a manifest poll only.
 
 **Floating (one input).**
 
@@ -279,14 +282,14 @@ Published at `ghcr.io/jlbauss/konrad`. CI builds run on GitHub Actions against a
 | --- | --- | --- |
 | `:<ver>.<date>` | immutable | e.g. `0.1.2026-05-23` — konrad codebase at that version + packages as of that day. The rollback handle. |
 | `:<ver>` | rolling | Latest passing build on the current VERSION line. |
-| `:latest` | rolling | Alias for the newest `<ver>` passing build. The default for `konrad update`. |
+| `:latest` | rolling | Alias for the newest `<ver>` passing build. The default for `konrad --update`. |
 | `:<short-sha>` | immutable | Per-commit tag, for bisecting. |
 
 konrad's own version lives in the top-level [VERSION](VERSION) file. Bump it for any functional change to `image/`, `bin/konrad`, or baked skills/agents (date flips alone don't warrant a version bump — that's what the date tag carries). When `VERSION` bumps (e.g. `0.1 → 0.2`), the previous line stops getting new daily rebuilds; users on `:0.1` stay on their last passing build until they upgrade. Pre-1.0 simplicity; revisit at 1.0.
 
 ### Diagnosing regressions
 
-Every published image carries `/etc/konrad/build-manifest.json` — a snapshot of dpkg / npm / pip versions plus build metadata. View it with `konrad version --manifest`. To diff two builds when something worked yesterday and broke today:
+Every published image carries `/etc/konrad/build-manifest.json` — a snapshot of dpkg / npm / pip versions plus build metadata. Dump it with `podman run --rm --entrypoint cat ghcr.io/jlbauss/konrad:latest /etc/konrad/build-manifest.json | jq .`. To diff two builds when something worked yesterday and broke today:
 
 ```sh
 podman run --rm --entrypoint cat \
@@ -325,17 +328,10 @@ konrad/
 │   ├── build-image.sh               # Local build — passes KONRAD_VERSION + GIT_SHA build args
 │   ├── smoke-test.sh                # CI smoke gate — also runnable locally
 │   ├── fetch-fonts.sh               # One-shot — pulls fonts from upstream when bumping versions
-│   ├── install.sh                   # Clone-based install: symlinks bin/konrad into ~/.local/bin
 │   └── install-remote.sh            # curl|sh installer: fetches CLI standalone, bakes VERSION in
 └── devcontainer/                    # Experimental: VS Code entry point as a second consumption path (see ROADMAP)
     └── devcontainer.json
 ```
-
-## Two ways to work with konrad
-
-**Using konrad as a user.** Run the curl|sh one-liner from the Install section. No clone needed — you get the CLI on `PATH` and the image pulled in one shot. From then on, `cd` to whatever folder you want the agent to operate on and run `konrad`.
-
-**Hacking on konrad itself.** Clone the repo and use `./scripts/install.sh` instead — it symlinks `bin/konrad` from the clone so your edits go live immediately. Changes anywhere under `image/` still need a rebuild (`konrad rebuild`) which writes to `konrad:local` — distinct from `konrad:latest` so your dev build doesn't clobber the published image. Run it with `KONRAD_IMAGE=konrad:local konrad`. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full development loop, including branching, PRs, and the versioning rules. (The `devcontainer/` folder is an experimental second consumption path — not the recommended dev environment yet; see [ROADMAP.md](ROADMAP.md).)
 
 ## Design decisions
 
@@ -359,13 +355,13 @@ A short, opinionated record of the load-bearing choices, so future-you can tell 
 | ---------------------------------------------------------------- | ------------------------------------------- | ----------------------------------------------------------------------------------------- |
 | `Cannot connect to Podman` / `connection refused`                | Podman VM not running (macOS)               | `podman machine init` (once), then `podman machine start`                                 |
 | `konrad: LM Studio not reachable at http://localhost:1234`       | LM Studio off or listening on a wrong port  | Open LM Studio → Developer → Start Server, port 1234. (Or you're on Ollama / llama.cpp — see [Configuration](#configuration) to set your model and ignore this warning.) |
-| `EACCES: permission denied, mkdir '/home/node/.local/state'`     | Stale image (pre-permission-fix)            | `konrad rebuild`                                                                          |
+| `EACCES: permission denied, mkdir '/home/node/.local/state'`     | Stale image (pre-permission-fix)            | `konrad --update`                                                                         |
 | Agent can't find the file you mentioned                          | You ran `konrad` in the wrong directory     | The cwd is what gets mounted at `/workspace`. Always `cd` first.                          |
 | `konrad: warning: LM Studio not reachable …` but you started it  | Wrong host: `host.containers.internal`      | Inside container it's `host.containers.internal`; from the host it's `localhost`. The CLI checks the host side — make sure your host `curl localhost:1234/v1/models` returns JSON. |
-| `merge-config: failed to parse ~/.config/konrad/opencode.jsonc`  | Syntax error in your user override          | `konrad config show` to see the file; check the JSONC syntax. Comments are fine.          |
-| Want to wipe and start over                                      | —                                           | `konrad clean --all`, then `konrad update` (or `konrad rebuild` if hacking locally)        |
+| `merge-config: failed to parse ~/.config/konrad/opencode.jsonc`  | Syntax error in your user override          | `cat ~/.config/konrad/opencode.jsonc` and check the JSONC syntax. Comments are fine.      |
+| Want to wipe and start over                                      | —                                           | `konrad --reset` (types `RESET` to confirm), then `konrad --update`                       |
 
-If a problem isn't listed here, run `konrad shell` to poke around inside the container with the same mounts opencode would see.
+If a problem isn't listed here, run `konrad -s` to poke around inside the container with the same mounts opencode would see.
 
 ## Debugging opencode
 
@@ -376,9 +372,9 @@ ls -t ~/.local/state/konrad/log/                                  # newest first
 tail -f ~/.local/state/konrad/log/$(ls -t ~/.local/state/konrad/log/*.log | head -1)
 ```
 
-Both `*.log` and `*-session.txt` are auto-pruned >7d on every `konrad` launch, so the dir doesn't grow without bound. To wipe immediately: `konrad clean`.
+Both `*.log` and `*-session.txt` are auto-pruned >7d on every `konrad` launch, so the dir doesn't grow without bound. To wipe immediately: `rm -rf ~/.local/state/konrad/log/`.
 
-For deeper digging, set `KONRAD_DEBUG=1` before invoking konrad. This adds per-phase timestamps to the CLI and entrypoint, and turns on Bun's `BUN_CONFIG_VERBOSE_FETCH` so every HTTP call opencode makes appears in the log. Note: `OPENCODE_LOG_LEVEL` and `DEBUG=opencode:*` don't exist in opencode's source (don't waste time setting them); the default file log is what gives you visibility.
+For deeper digging, pass `-v` / `--verbose` (or export `KONRAD_DEBUG=1` for the equivalent effect). This adds per-phase timestamps to the CLI and entrypoint, and turns on Bun's `BUN_CONFIG_VERBOSE_FETCH` so every HTTP call opencode makes appears in the log. Note: `OPENCODE_LOG_LEVEL` and `DEBUG=opencode:*` don't exist in opencode's source (don't waste time setting them); the default file log is what gives you visibility.
 
 If startup is slow, the highest-probability suspects (per opencode's own issue tracker) and the env vars that disable each:
 
@@ -390,7 +386,7 @@ If startup is slow, the highest-probability suspects (per opencode's own issue t
 | `OPENCODE_DISABLE_CLAUDE_CODE_SKILLS=1`  | scanning `.claude/skills/` (none in our container)            |
 | `--pure` (CLI flag)                      | external plugins entirely — useful for bisecting plugin cost  |
 
-Add the ones you want as env vars in `~/.config/konrad/opencode.jsonc` (via the merged config's `env` key) or pass them via `podman run -e` if iterating manually inside `konrad shell`.
+Add the ones you want as env vars in `~/.config/konrad/opencode.jsonc` (via the merged config's `env` key) or pass them via `podman run -e` if iterating manually inside `konrad --shell`.
 
 ## License and attribution
 
