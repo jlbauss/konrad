@@ -313,7 +313,7 @@ The diff names every package whose version changed between the two builds, which
 konrad/
 ├── bin/konrad                       # The CLI
 ├── VERSION                          # konrad's current semver (drives the tag scheme)
-├── .github/workflows/build-image.yml  # CI: build → smoke → publish (amd64 today)
+├── .github/workflows/build-image.yml  # CI: build → smoke → publish (multi-arch: amd64 + arm64)
 ├── image/                           # Container build context — the canonical artifact
 │   ├── Dockerfile                   # Pinning surface at the top — bump there
 │   ├── entrypoint.sh                # Composes opencode.jsonc + layers user content at start

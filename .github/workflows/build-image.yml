@@ -23,19 +23,24 @@
 # `schedule:` trigger on this workflow — a build only fires when there
 # is something genuinely new to build.
 #
-# Smoke-gated publish: if the smoke job fails, publish never runs and
-# `:latest` stays pointed at the last good build.
+# Smoke-gated publish: if either arch's smoke job fails, publish never
+# runs and `:latest` stays pointed at the last good build.
 #
-# Tag scheme (all pushed by every successful pipeline):
-#   :<ver>.<date>      immutable; e.g. 0.1.2026-05-23 — the rollback handle
+# Tag scheme (all pushed by every successful pipeline; each tag is a
+# multi-arch manifest list spanning linux/amd64 and linux/arm64):
+#   :<ver>.<date>      immutable; e.g. 0.2.2026-05-26 — the rollback handle
 #   :<ver>             rolling; latest passing build on the current VERSION
 #   :latest            rolling alias for the newest <ver> passing build
 #   :<short-sha>       immutable; for bisecting
 #
-# Architecture: amd64-only today. arm64 hosted runners on GitHub Actions
-# are free for public repos but paid for private ones. Re-enable arm64 in
-# the build matrix when the GitHub mirror is flipped to public — see the
-# ROADMAP entry.
+# Architecture: amd64 + arm64. Each arch builds natively on its own
+# runner (ubuntu-latest / ubuntu-24.04-arm) in parallel, smokes natively
+# on the same arch, then the publish job stitches the two per-arch
+# manifests into a multi-arch manifest list per public tag. arm64 is a
+# premium runner on private GitHub repos (billable minutes) but the
+# locks-driven CI cadence keeps the cost negligible; arm64 runner
+# minutes go free once the mirror flips public. Apple Silicon users get
+# native arm64 transparently instead of QEMU emulation.
 # =============================================================================
 
 name: Build and publish konrad image
@@ -73,19 +78,33 @@ env:
 
 jobs:
   # ---------------------------------------------------------------------------
-  # Build — produces an amd64 image pushed to ghcr.io under a transient
-  # tag scoped to this CI run. Smoke and publish jobs consume that tag.
+  # Build — matrix over (amd64, arm64). Each cell runs natively on a
+  # matching runner and pushes its arch's image to a per-arch transient
+  # tag (ci-<run_id>-<arch>). The publish job merges both into a multi-
+  # arch manifest list.
+  #
+  # fail-fast: false → an arm64-only break still lets the amd64 cell
+  # finish so we have full diagnostic data, not just "the first failure
+  # cancelled the rest."
+  #
+  # Cache scopes are arch-specific (scope=amd64 / scope=arm64) so the
+  # two parallel cells don't clobber each other's GHA cache.
   # ---------------------------------------------------------------------------
   build:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+            arch: amd64
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
       packages: write
-    outputs:
-      transient-tag: ${{ steps.metadata.outputs.transient }}
-      konrad-version: ${{ steps.metadata.outputs.version }}
-      build-date: ${{ steps.metadata.outputs.date }}
-      short-sha: ${{ steps.metadata.outputs.sha }}
     steps:
       - uses: actions/checkout@v5
 
@@ -109,10 +128,12 @@ jobs:
           # the GitHub username/repo has any. ghcr.io rejects uppercase
           # in image paths, so lowercase it here.
           IMG=$(echo "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}" | tr '[:upper:]' '[:lower:]')
-          TRANSIENT="$IMG:ci-${{ github.run_id }}"
+          # Per-arch transient tag so the two parallel matrix builds
+          # write to distinct tags. Publish merges them later.
+          TRANSIENT="$IMG:ci-${{ github.run_id }}-${{ matrix.arch }}"
           # Pinned image refs (full name@digest) from the lock files. Local
-          # `konrad rebuild` reads the same files, so the CI build resolves
-          # to identical digests as a developer's local build.
+          # `konrad-dev --rebuild` reads the same files, so the CI build
+          # resolves to identical digests as a developer's local build.
           BASE_IMAGE=$(cat image/locks/base.lock)
           UV_IMAGE=$(cat image/locks/uv.lock)
           [ -n "$BASE_IMAGE" ] || { echo "empty image/locks/base.lock" >&2; exit 1; }
@@ -128,6 +149,7 @@ jobs:
             echo "uv_image=$UV_IMAGE"
           } >> "$GITHUB_OUTPUT"
           echo "konrad $VER @ $SHA (build $DATE, commit $COMMIT_DATE)"
+          echo "platform: ${{ matrix.platform }} on ${{ matrix.runner }}"
           echo "base: $BASE_IMAGE"
           echo "uv:   $UV_IMAGE"
 
@@ -139,11 +161,11 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push (transient tag)
+      - name: Build and push (transient tag, ${{ matrix.arch }})
         uses: docker/build-push-action@v6
         with:
           context: image/
-          platforms: linux/amd64
+          platforms: ${{ matrix.platform }}
           tags: ${{ steps.metadata.outputs.transient }}
           build-args: |
             BASE_IMAGE=${{ steps.metadata.outputs.base_image }}
@@ -157,8 +179,12 @@ jobs:
           # addressed), so it's off. Base + uv updates flow in through the
           # GitLab resolve-locks bot, not through a daily registry re-pull.
           pull: false
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # Arch-specific cache scopes so the two matrix cells don't
+          # clobber each other's GHA cache. Without these, both arches
+          # would fight over the same cache and rebuild from scratch on
+          # every commit.
+          cache-from: type=gha,scope=${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
           # Reproducible layers. SOURCE_DATE_EPOCH=0 + rewrite-timestamp=true
           # makes BuildKit walk every file in every exported layer and
           # rewrite its mtime to 1970-01-01 before tar'ing. Result: when a
@@ -184,12 +210,28 @@ jobs:
           outputs: type=image,push=true,rewrite-timestamp=true
 
   # ---------------------------------------------------------------------------
-  # Smoke — pull the transient image, run the smoke suite against it.
-  # Failure here blocks the publish job.
+  # Smoke — matrix over (amd64, arm64). Each cell pulls its arch's
+  # transient image and runs the smoke suite natively on a matching
+  # runner. Real-environment signal per arch: if e.g. an arm64-only
+  # wheel is missing or a layer's binaries refuse to execute, the
+  # corresponding cell fails and publish is blocked.
+  #
+  # The transient tag name is reconstructed deterministically from
+  # github.run_id + matrix.arch rather than threaded through matrix
+  # job outputs (those are awkward in GHA — only one cell's output is
+  # visible to downstream jobs).
   # ---------------------------------------------------------------------------
   smoke:
     needs: build
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            arch: amd64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
       packages: read
@@ -202,22 +244,25 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Pull transient image
-        env:
-          TRANSIENT: ${{ needs.build.outputs.transient-tag }}
+      - name: Pull transient image (${{ matrix.arch }})
         run: |
+          IMG=$(echo "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}" | tr '[:upper:]' '[:lower:]')
+          TRANSIENT="$IMG:ci-${{ github.run_id }}-${{ matrix.arch }}"
+          echo "smoking $TRANSIENT on ${{ matrix.arch }}"
           docker pull "$TRANSIENT"
           docker tag  "$TRANSIENT" konrad:latest
 
-      - name: Run smoke test
+      - name: Run smoke test (${{ matrix.arch }})
         env:
           CONTAINER_ENGINE: docker
         run: ./scripts/smoke-test.sh konrad:latest
 
   # ---------------------------------------------------------------------------
-  # Publish — only runs if smoke passed. `imagetools create -t newtag oldtag`
-  # retags without re-pulling/re-pushing layers; copies the manifest to
-  # each public tag in one fast operation per tag.
+  # Publish — only runs if both arches' smoke jobs passed. `imagetools
+  # create` with two source manifests produces a multi-arch manifest
+  # list — a single pull against the resulting tag auto-selects amd64 or
+  # arm64 to match the host architecture. The retag operation copies
+  # manifest metadata only; no layer data moves.
   #
   # Tag list depends on the trigger:
   #   - push to main / workflow_dispatch on main → :<ver>.<date>, :<ver>,
@@ -245,6 +290,8 @@ jobs:
       contents: read
       packages: write
     steps:
+      - uses: actions/checkout@v5
+
       - uses: docker/setup-buildx-action@v3
 
       - uses: docker/login-action@v3
@@ -253,26 +300,28 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Retag transient → public tags
+      - name: Create multi-arch manifest list, push public tags
         env:
-          TRANSIENT: ${{ needs.build.outputs.transient-tag }}
-          VER: ${{ needs.build.outputs.konrad-version }}
-          DATE: ${{ needs.build.outputs.build-date }}
-          SHA: ${{ needs.build.outputs.short-sha }}
-          IMG: ${{ needs.build.outputs.transient-tag }}
           PR_NUM: ${{ github.event.pull_request.number }}
           EVENT: ${{ github.event_name }}
         run: |
-          # Strip the :ci-${run_id} suffix to get the registry path
-          BASE="${IMG%:*}"
+          IMG=$(echo "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}" | tr '[:upper:]' '[:lower:]')
+          VER=$(cat VERSION)
+          DATE=$(date -u +%Y-%m-%d)
+          SHA=${GITHUB_SHA::7}
+          AMD64="$IMG:ci-${{ github.run_id }}-amd64"
+          ARM64="$IMG:ci-${{ github.run_id }}-arm64"
           if [ "$EVENT" = "pull_request" ]; then
             TAGS="pr-$PR_NUM"
           else
             TAGS="$VER.$DATE $VER latest $SHA"
           fi
+          # imagetools create with two source manifests produces a multi-
+          # arch manifest list — `podman pull` against the resulting tag
+          # auto-selects amd64 or arm64 to match the host architecture.
           for TAG in $TAGS; do
             docker buildx imagetools create \
-              --tag "$BASE:$TAG" \
-              "$TRANSIENT"
-            echo "published $BASE:$TAG"
+              --tag "$IMG:$TAG" \
+              "$AMD64" "$ARM64"
+            echo "published $IMG:$TAG (multi-arch: amd64 + arm64)"
           done
