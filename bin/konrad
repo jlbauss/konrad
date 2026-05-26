@@ -444,12 +444,10 @@ EOF
 }
 
 do_reset() {
-  # Strong confirmation: y/N is too easy to fat-finger when the action is
-  # destructive across all workspaces. Demand the literal word RESET.
   cat >&2 <<EOF
 
 ==============================================================================
-WARNING — konrad --reset will permanently delete:
+WARNING — --reset will permanently delete:
 
   - the central log dir:
       $KONRAD_LOG_DIR
@@ -462,13 +460,13 @@ This affects ALL workspaces, not just the current one. There is no undo.
 ==============================================================================
 
 EOF
-  printf 'konrad: type RESET to confirm (anything else aborts): ' >&2
+  printf 'konrad: proceed with reset? [y/N]: ' >&2
   local confirmation=""
   read -r confirmation || true
-  if [[ "$confirmation" != "RESET" ]]; then
-    info "aborted; nothing was deleted."
-    exit 0
-  fi
+  case "$confirmation" in
+    y|Y|yes|YES) ;;
+    *) info "aborted; nothing was deleted."; exit 0 ;;
+  esac
 
   if [[ -d "$KONRAD_LOG_DIR" ]]; then
     rm -rf "$KONRAD_LOG_DIR"
@@ -485,6 +483,88 @@ EOF
     warn "podman not reachable; shared volumes were NOT removed."
   fi
   info "reset complete. Next run will need a fresh /connect, repopulate caches, and re-pick a model."
+}
+
+do_uninstall() {
+  # Removes this binary's installation (the CLI on PATH + its dedicated
+  # image, plus build-cache images for konrad-dev). Shared state — user
+  # config, volumes, log dir — is intentionally left alone; that's
+  # --reset's job. Composes: --reset first to wipe shared state, then
+  # --uninstall on each binary you've installed.
+  local self other_name other_path target_image cache_note
+  self="$(basename -- "$0")"
+  if [[ "$self" == "konrad-dev" ]]; then
+    other_name="konrad"
+    target_image="$IMAGE_LOCAL_TAG"
+    cache_note="
+  - intermediate build-cache images:
+      • konrad-python-base:cache
+      • konrad-python-models:cache"
+  else
+    other_name="konrad-dev"
+    target_image="konrad:latest"
+    cache_note=""
+  fi
+  other_path="$(command -v "$other_name" 2>/dev/null || true)"
+
+  cat >&2 <<EOF
+
+==============================================================================
+WARNING — $self --uninstall will remove:
+
+  - the CLI binary at: $0
+  - the image:         $target_image$cache_note
+
+This does NOT remove (your call):
+  - your config:    $USER_CFG_DIR/
+  - shared volumes: $SECRETS_VOLUME, $CACHE_VOLUME, $STATE_VOLUME
+  - log dir:        $KONRAD_LOG_DIR/
+
+(Use --reset first to wipe the shared state; rm -rf the config dir
+if you want that gone too.)
+==============================================================================
+
+EOF
+  printf 'konrad: proceed with uninstall? [y/N]: ' >&2
+  local confirmation=""
+  read -r confirmation || true
+  case "$confirmation" in
+    y|Y|yes|YES) ;;
+    *) info "aborted; nothing was removed."; exit 0 ;;
+  esac
+
+  # Remove images first (podman). Quiet if missing.
+  if command -v podman >/dev/null 2>&1 && podman info >/dev/null 2>&1; then
+    if podman image exists "$target_image" 2>/dev/null; then
+      podman image rm "$target_image" >/dev/null
+      info "removed image $target_image"
+    fi
+    if [[ "$self" == "konrad-dev" ]]; then
+      local img
+      for img in konrad-python-base:cache konrad-python-models:cache; do
+        if podman image exists "$img" 2>/dev/null; then
+          podman image rm "$img" >/dev/null
+          info "removed image $img"
+        fi
+      done
+    fi
+  else
+    warn "podman not reachable; image(s) were NOT removed. Delete manually with: podman image rm $target_image"
+  fi
+
+  # Delete the binary last. Bash has already mmap'd this script, so the
+  # remainder of execution is safe. For konrad-dev, $0 is a symlink — rm
+  # removes the symlink only, not the checkout it points at.
+  if rm -f "$0" 2>/dev/null; then
+    info "removed $0"
+  else
+    warn "failed to remove $0 (permissions?); delete manually."
+  fi
+
+  if [[ -n "$other_path" ]]; then
+    info "$other_name is still installed at $other_path — uninstall separately with: $other_name --uninstall"
+  fi
+  info "$self uninstalled."
 }
 
 do_help() {
@@ -516,7 +596,9 @@ Flags:
   -v, --verbose         Per-phase timestamps + verbose opencode logs.
   --version             Print CLI version + image tag/digest/revision.
 $refresh_flag
-  --reset               Wipe shared volumes + log dir (asks for confirmation).
+  --reset               Wipe shared volumes + log dir. Prompts [y/N].
+  --uninstall           Remove this binary's CLI + image. Prompts [y/N].
+                        Leaves shared state alone — use --reset for that.
   -h, --help            Show this message.
 
 $cross_pointer
@@ -567,6 +649,7 @@ while [[ $# -gt 0 ]]; do
     --update)     ACTION="update";  shift ;;
     --rebuild)    ACTION="rebuild"; shift ;;
     --reset)      ACTION="reset";   shift ;;
+    --uninstall)  ACTION="uninstall"; shift ;;
     --help)       ACTION="help";    shift ;;
     --)           shift; break ;;
     --*)          die "unknown flag: $1 (try: $(basename -- "$0") --help)" ;;
@@ -596,9 +679,10 @@ case "$ACTION" in
       do_run agent
     fi
     ;;
-  version)  do_version ;;
-  update)   do_update  ;;
-  rebuild)  do_rebuild ;;
-  reset)    do_reset   ;;
-  help)     do_help    ;;
+  version)   do_version   ;;
+  update)    do_update    ;;
+  rebuild)   do_rebuild   ;;
+  reset)     do_reset     ;;
+  uninstall) do_uninstall ;;
+  help)      do_help      ;;
 esac
