@@ -4,7 +4,7 @@ Thanks for your interest. Konrad is early-stage / alpha software — the runtime
 
 ## Before you start
 
-If you're proposing something larger than a typo fix, **open an issue first** to discuss. A short "I'd like to add X — does that fit?" conversation saves rework when the maintainer would have steered you elsewhere. For tiny things (typos, broken links, obvious one-line bugs), skip straight to a PR.
+If you're proposing something larger than a typo fix, **open a GitLab issue first** to discuss. A short "I'd like to add X — does that fit?" conversation saves rework when the maintainer would have steered you elsewhere. For tiny things (typos, broken links, obvious one-line bugs), skip straight to a merge request.
 
 What "larger" means in practice:
 - A new bundled skill or agent
@@ -79,30 +79,34 @@ There's no traditional unit-test suite. The validation gates are:
 
 ## Branching and pull requests
 
-Trunk-based with PR-gated merges. `main` is always deployable — what's at `ghcr.io/jlbauss/konrad:latest` mirrors `main`'s current state.
+Trunk-based: `main` is always deployable — what's at `ghcr.io/jlbauss/konrad:latest` mirrors `main`'s current state. The primary repo is **GitLab** (`gitlab.git.nrw/jbauss2/konrad`, public). The GitHub mirror is a **private CI execution surface only** — it exists because gitlab.git.nrw's shared runners can't run the privileged Podman build (see [docs/design/design-decisions.md](docs/design/design-decisions.md)). You never need a GitHub account to contribute.
 
-Workflow for maintainer / collaborators:
+**Maintainer** (direct repo access) — trunk-based via the git CLI, no MR ceremony:
 
 1. Branch off main: `git checkout -b feat/short-name`
-2. Commit your changes (and bump `VERSION` — see below)
-3. Push the branch and open a PR on GitHub
-4. CI builds the PR image and publishes it as `ghcr.io/jlbauss/konrad:pr-<num>`
-5. Pull and test interactively:
-   ```sh
-   podman pull ghcr.io/jlbauss/konrad:pr-<num>
-   KONRAD_IMAGE=ghcr.io/jlbauss/konrad:pr-<num> konrad --shell
-   ```
-6. Merge when smoke is green and the PR image works
-7. Main pipeline runs and publishes under the real tags (`:latest`, `:0.X.YYYY-MM-DD`, etc.)
+2. Commit (bump `VERSION` — see below)
+3. `git checkout main && git merge --ff-only feat/short-name && git push origin main`
 
-Workflow for fork-based contributors:
+For a higher-risk change, optionally push the branch to the private GitHub mirror and open a PR there to get a `:pr-<num>` test image first (see *Testing a change as an image* below); merge on GitLab once it checks out.
 
-1. Fork on GitHub, push your branch to your fork
-2. Open a PR against `jlbauss/konrad:main`
-3. CI runs build + smoke against your branch. **Publish to `:pr-<num>` is skipped from forks** — GitHub doesn't grant fork CI write access to the upstream registry. Smoke passing is the primary signal that your change is sound.
-4. If the maintainer wants to test the PR image, they'll push your branch up to the upstream repo as `pr/<num>` to trigger a registry-publishing run
+**Collaborators** (have GitLab repo access) — branch on the repo, push, then either hand the maintainer the branch to fast-forward, or open a **GitLab MR** if you want a review thread.
 
-Branch naming: `feat/<short>`, `fix/<short>`, `docs/<short>`, `chore/<short>`. Keep the slug short — the descriptive bit lives in the PR title.
+**External contributors** (the public) — everything happens on GitLab:
+
+1. **Fork** the GitLab repo and branch off `main`.
+2. Commit (bump `VERSION`, follow the commit style below) and push to your fork.
+3. Open a **GitLab MR** against `main` — that's the review surface.
+4. A fork MR gets human review automatically, but **no automatic image build**: the build runs on the GitHub mirror, which only mirrors the main repo's branches, not fork MRs. When the change is worth exercising in a container, the maintainer pulls your branch in (or pushes it to the mirror as `pr/<num>`) to produce a `:pr-<num>` image.
+5. The maintainer merges on GitLab.
+
+**Testing a change as an image** (`:pr-<num>`). PR builds go through the same build → smoke gate as `main` but publish *only* to `:pr-<num>` — never `:latest` or a release tag. Because the GHCR package is public, once a PR image exists anyone can pull and run it, no GitHub access needed:
+
+```sh
+podman pull ghcr.io/jlbauss/konrad:pr-<num>
+KONRAD_IMAGE=ghcr.io/jlbauss/konrad:pr-<num> konrad --shell
+```
+
+Branch naming: `feat/<short>`, `fix/<short>`, `docs/<short>`, `chore/<short>`. Keep the slug short — the descriptive bit lives in the MR title.
 
 ## Versioning
 
