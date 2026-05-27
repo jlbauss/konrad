@@ -116,18 +116,39 @@ Pre-1.0 rules (where we are today):
 
 The full design — including post-1.0 semver semantics, the tag scheme on the registry, when 1.0 happens, and when git tags / GitHub Releases get cut — lives in [docs/design/versioning-and-releases.md](docs/design/versioning-and-releases.md).
 
-## What goes where
+## Repo layout — what goes where
 
-| Concern | Lives in |
-| --- | --- |
-| The container artifact | `image/` (Dockerfile + bundled `opencode/` config + fonts) |
-| The host-side CLI | `bin/konrad` |
-| Install / build helpers | `scripts/` |
-| Container CI (build + smoke + publish) | `.github/workflows/build-image.yml` |
-| Design rationale + dated changelog | `docs/design/` + ROADMAP `## Implemented` |
-| VS Code Dev Container for working **on** konrad (Claude Code preinstalled) | `.devcontainer/` |
-| Roadmap and idea backlog | `ROADMAP.md` |
-| Upstream attribution | `NOTICE` |
+```
+konrad/
+├── bin/konrad                         # The host-side CLI (the only thing on your PATH)
+├── VERSION                            # Drives the image tag scheme (see versioning doc)
+├── image/                             # Container build context — the canonical artifact
+│   ├── Dockerfile                     # Pinning surface as a comment block at the top
+│   ├── entrypoint.sh                  # Composes opencode.jsonc + layers user content at start
+│   ├── merge-config.js                # Deep-merge for the JSONC config layering
+│   ├── build-manifest.sh              # Snapshots apt/npm/pip versions → /etc/konrad/build-manifest.json
+│   ├── locks/                         # Digest/version locks, one per build input (bot-maintained)
+│   ├── konrad-defaults/               # → /etc/konrad/ (not opencode-discoverable)
+│   │   └── opencode-defaults.jsonc    # Baked config defaults
+│   ├── opencode/                      # → ~/.config/opencode/ in the image
+│   │   ├── environment.md             # Runtime environment manifest (tools, libs, layout)
+│   │   ├── agents/                    # Built-in primary agents (konrad, manual-transformer)
+│   │   └── skills/                    # Bundled skills (do-it-manually, spreadsheets, pdf, quality-assurance)
+│   └── fonts/konrad/                  # → /usr/local/share/fonts/konrad/ (seven OFL families)
+├── scripts/
+│   ├── build-image.sh                 # Local build (KONRAD_VERSION + GIT_SHA build args)
+│   ├── smoke-test.sh                  # Smoke gate — CI runs this same script
+│   ├── install-remote.sh              # curl|sh installer — fetches the CLI standalone, bakes VERSION in
+│   └── fetch-fonts.sh                 # One-shot — pulls fonts from upstream when bumping versions
+├── .github/workflows/build-image.yml  # CI: build → smoke → publish (multi-arch amd64 + arm64)
+├── .gitlab-ci.yml                     # Lock-resolver bot (source of truth; mirrors to GitHub)
+├── docs/design/                       # Long-form design rationale (the "why" notes)
+├── ROADMAP.md                         # Backlog tiers + dated `## Implemented` changelog
+├── CLAUDE.md                          # Repo instructions for agents working ON konrad
+├── NOTICE                             # Upstream attribution
+├── .devcontainer/                     # VS Code Dev Container for working ON konrad (Claude Code preinstalled)
+└── devcontainer/                      # Experimental: Dev Container as a way to USE konrad (see ROADMAP)
+```
 
 If a change touches multiple concerns, prefer separate commits per concern. The git log is the project's primary design history — keep it useful.
 
@@ -161,10 +182,6 @@ Keep all three tight — every byte competes with task context inside the model'
 
 Be kind, be specific, assume good faith. We follow the [Contributor Covenant v2.1](https://www.contributor-covenant.org/version/2/1/code_of_conduct/). Report unacceptable behavior to the maintainer via private channel (email in the git log).
 
-## Out of scope right now
+## Backlog and known gaps
 
-- Windows host support. Podman with `--userns=keep-id` is Linux/macOS only. Docker support is on the roadmap (Tier 2).
-- A traditional unit-test suite. The smoke test gates publish; "image actually does what users need" is currently exercised by hand.
-- Multi-language UI. English-only today; multi-language support is on the roadmap (Tier 1).
-
-See [ROADMAP.md](ROADMAP.md) for the full backlog and how items are prioritized.
+See [ROADMAP.md](ROADMAP.md) for the full backlog and how items are prioritized — including the known shortcomings (Windows support, automated tests, multi-language UI) tracked there as accepted trade-offs. The user-facing [README Status section](README.md#status) summarises what to expect today.
