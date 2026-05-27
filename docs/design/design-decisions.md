@@ -82,8 +82,11 @@ upstream registries (see below).
   runs build → smoke → publish to `ghcr.io/jlbauss/konrad`. The GitHub side is
   purely a CI execution surface — no issues, no MRs, no day-to-day work. Why:
   gitlab.git.nrw's shared runners don't permit the privileged-container
-  operations Podman-in-Docker needs, and GitHub Actions gives free hosted
-  runners (multi-arch becomes free once the mirror is public). Trade-off
+  operations Podman-in-Docker needs, and GitHub Actions gives hosted runners
+  (free for amd64; the arm64 runners are billable premium minutes while the
+  mirror stays private — it's kept private by choice for now, and the
+  lock-driven CI cadence keeps that cost negligible. Flipping the mirror
+  public would make arm64 free, but that's an option, not a plan). Trade-off
   accepted: CI status visibility lives on GitHub, not GitLab MRs, until a
   GitLab Commit Status API webhook is wired up.
 

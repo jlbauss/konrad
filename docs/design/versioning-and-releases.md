@@ -86,7 +86,7 @@ KONRAD_IMAGE=ghcr.io/jlbauss/konrad:pr-42 konrad --shell    # poke around
 KONRAD_IMAGE=ghcr.io/jlbauss/konrad:pr-42 konrad            # run for real
 ```
 
-**Fork PRs.** Contributors pushing from a fork can't write to `ghcr.io` (GitHub's default token scope on fork PRs is read-only). For external contributions, the maintainer pushes the contributor's branch to the upstream repo as a branch (e.g. `pr/123`) so CI can publish a `:pr-<num>` tag. Trade-off accepted: external contributors don't get auto-published PR images out of the gate, but their code still runs through CI smoke; the maintainer pulls the branch up when they want to test interactively.
+**PR images are a maintainer-internal convenience.** The GitHub mirror is private, so external contributors can't open PRs there — outside contributions come through **GitLab MRs** (or branches the maintainer pulls up). The `:pr-<num>` flow exists for the maintainer/collaborators with mirror access: push a feature branch to the private GitHub mirror, CI builds and publishes `:pr-<num>`, pull it to test interactively before merging on GitLab. To test an external contributor's branch this way, the maintainer pushes it to the mirror as `pr/<num>` so CI can build it; the contributor's code still runs through CI smoke regardless of where it lands.
 
 ## When to bump VERSION
 
@@ -110,12 +110,14 @@ If a single PR bundles multiple concerns (rare; we prefer separate commits per c
 ## Git tags
 
 - **Pre-1.0**: optional. Tag `v0.X` at moments that feel like a release. The image tag `:0.X` already serves as the immutable handle for users; the git tag is for humans navigating the history.
-- **Post-1.0**: every MAJOR or MINOR release gets a git tag `vX.Y.0`. PATCH releases skip the git tag (CI tags the image, which is enough). MAJOR releases also get a GitHub Release with a written changelog.
+- **Post-1.0**: every MAJOR or MINOR release gets a git tag `vX.Y.0`. PATCH releases skip the git tag (CI tags the image, which is enough). MAJOR releases also get a GitLab Release with a written changelog.
 
-## GitHub Releases
+## Releases
 
-- **Pre-1.0**: skip. The ROADMAP `## Implemented` section serves as the dated changelog.
-- **Post-1.0**: for each MAJOR/MINOR — title `konrad vX.Y.0`, body with "what's new / what's broken / migration notes for breaking changes," linked to the git tag.
+Releases live on **GitLab** — the primary, public repo. The GitHub mirror is a private CI execution surface only (no releases, issues, or human-facing artifacts there), and stays private for now; if it ever flips public that doesn't change where releases live.
+
+- **Pre-1.0**: a short GitLab Release note per `v0.X` tag is nice-to-have, not required — the ROADMAP `## Implemented` section is the authoritative dated changelog. `v0.2` (the first public alpha) is the natural anchor for a one-paragraph "first public alpha" note.
+- **Post-1.0**: for each MAJOR/MINOR — a GitLab Release titled `konrad vX.Y.0`, body with "what's new / what's broken / migration notes for breaking changes," attached to the git tag.
 
 ## Day-zero history
 
@@ -123,4 +125,4 @@ The pre-1.0 chapter started on **2026-05-23** with `VERSION=0.1`, when the regis
 
 **`0.1` is the pre-public stabilization line** — the version that existed while the repo was still private and CI / publishing / smoke gates were getting their final shakedown. Functional changes during this phase didn't always bump (the bump-in-same-PR rule itself landed mid-stream); the dated image tags `:0.1.YYYY-MM-DD` are the authoritative per-day history.
 
-**`0.2` will be the first public alpha** — bumped as part of the "Set public" ROADMAP work. The bump signals the regime change: from this point forward, every functional change bumps `VERSION` in its PR, and the version line a user is on actually means something to them. Treat it as the day-one anchor for outside contributors and consumers.
+**`0.2` is the first public alpha** — shipped 2026-05-27 as the "public-alpha flip" (see ROADMAP `## Implemented`). "Public" means the **GitLab** repo + the GHCR package; the GitHub mirror stays private. The bump signals the regime change: from this point forward, every functional change bumps `VERSION` in its commit, and the version line a user is on actually means something to them. It's the day-one anchor for outside consumers.
