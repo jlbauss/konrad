@@ -285,11 +285,40 @@ do_run() {
   fi
 }
 
+# Compose the immutable dated tag (0.X.YYYY-MM-DD) from an image's version
+# and created labels. The dated tag is the registry's rollback handle; we
+# reconstruct it from labels so it's readable without a container run.
+# SOURCE_DATE_EPOCH=0 reproducible builds used to stamp 1970 into the
+# created label — guard against that (and against images predating the
+# label) by falling back to the bare version.
+image_dated_tag() {
+  local ver="$1" date="${2%%T*}"
+  if [[ "$ver" != "unknown" && "$date" == ????-??-?? && "$date" != "1970-01-01" ]]; then
+    printf '%s.%s' "$ver" "$date"
+  else
+    printf '%s' "$ver"
+  fi
+}
+
+# Report whether the CLI and the image line up after an update. They should:
+# Konrad ships as one artifact, so the CLI and image share a version. Compares
+# the pure versions (the image's dated suffix is its build identifier, not a
+# different version).
+update_sync_note() {
+  local cli="$1" img="$2"
+  if [[ "$cli" != "dev" && "$img" != "unknown" && "$cli" == "$img" ]]; then
+    info "now at $cli — CLI and image in sync"
+  else
+    warn "version skew: CLI is $cli, image is $img — they should match (Konrad is one artifact). 'konrad --version' for detail."
+  fi
+}
+
 do_version() {
-  printf 'konrad CLI %s\n' "$KONRAD_VERSION"
+  printf 'konrad %s\n' "$KONRAD_VERSION"
+  printf '  CLI:    %s\n' "$KONRAD_VERSION"
 
   if ! command -v podman >/dev/null 2>&1 || ! podman info >/dev/null 2>&1; then
-    printf 'image: %s (cannot inspect — podman unavailable)\n' "$IMAGE_NAME"
+    printf '  image:  %s (cannot inspect — podman unavailable)\n' "$IMAGE_NAME"
     return 0
   fi
   if ! podman image exists "$IMAGE_NAME"; then
@@ -299,20 +328,35 @@ do_version() {
     else
       hint="not pulled — run: konrad --update"
     fi
-    printf 'image: %s (%s)\n' "$IMAGE_NAME" "$hint"
+    printf '  image:  %s (%s)\n' "$IMAGE_NAME" "$hint"
     return 0
   fi
-  local digest image_ver image_rev
+
+  local digest image_ver image_rev image_created image_tag
   digest="$(podman image inspect "$IMAGE_NAME" --format '{{.Id}}' 2>/dev/null \
             || printf 'unknown')"
   image_ver="$(podman image inspect "$IMAGE_NAME" \
-               --format '{{index .Labels "org.opencontainers.image.version"}}' 2>/dev/null || printf 'unknown')"
+               --format '{{index .Labels "org.opencontainers.image.version"}}' 2>/dev/null)"
+  [[ -z "$image_ver" ]] && image_ver="unknown"
   image_rev="$(podman image inspect "$IMAGE_NAME" \
-               --format '{{index .Labels "org.opencontainers.image.revision"}}' 2>/dev/null || printf 'unknown')"
+               --format '{{index .Labels "org.opencontainers.image.revision"}}' 2>/dev/null)"
+  [[ -z "$image_rev" ]] && image_rev="unknown"
+  image_created="$(podman image inspect "$IMAGE_NAME" \
+                   --format '{{index .Labels "org.opencontainers.image.created"}}' 2>/dev/null)"
+  image_tag="$(image_dated_tag "$image_ver" "$image_created")"
+
   local override_note=""
-  [[ -n "${KONRAD_IMAGE:-}" ]] && override_note=" (KONRAD_IMAGE override)"
-  printf 'image: %s (%s) version=%s revision=%s%s\n' \
-    "$IMAGE_NAME" "${digest:0:19}" "$image_ver" "$image_rev" "$override_note"
+  [[ -n "${KONRAD_IMAGE:-}" ]] && override_note="  (KONRAD_IMAGE override)"
+  printf '  image:  %s   (%s)%s\n' "$image_tag" "$IMAGE_NAME" "$override_note"
+  printf '          %s · rev %s\n' "${digest:0:19}" "$image_rev"
+
+  # CLI and image are one artifact and should share a version. Compare the
+  # pure versions (ignore the dated suffix); warn only when both are real.
+  if [[ "$KONRAD_VERSION" != "dev" && "$image_ver" != "unknown" \
+        && "$KONRAD_VERSION" != "$image_ver" ]]; then
+    printf '  ! CLI %s vs image %s — run '\''konrad --update'\'' to sync\n' \
+      "$KONRAD_VERSION" "$image_ver"
+  fi
 }
 
 do_update() {
@@ -331,16 +375,14 @@ do_update() {
     die "registry pull failed (offline? registry unreachable?)"
   fi
   podman tag "$REGISTRY_IMAGE" "$IMAGE_DEFAULT"
-  local ver date
-  ver="$(podman image inspect "$IMAGE_DEFAULT" \
-         --format '{{index .Labels "org.opencontainers.image.version"}}' 2>/dev/null || printf 'unknown')"
-  date="$(podman image inspect "$IMAGE_DEFAULT" \
-          --format '{{index .Labels "org.opencontainers.image.created"}}' 2>/dev/null || printf '')"
-  if [[ -n "$date" ]]; then
-    info "image refreshed to $ver (built $date)"
-  else
-    info "image refreshed to $ver"
-  fi
+  local image_ver image_created image_tag
+  image_ver="$(podman image inspect "$IMAGE_DEFAULT" \
+               --format '{{index .Labels "org.opencontainers.image.version"}}' 2>/dev/null)"
+  [[ -z "$image_ver" ]] && image_ver="unknown"
+  image_created="$(podman image inspect "$IMAGE_DEFAULT" \
+                   --format '{{index .Labels "org.opencontainers.image.created"}}' 2>/dev/null)"
+  image_tag="$(image_dated_tag "$image_ver" "$image_created")"
+  info "image refreshed to $image_tag"
 
   # 2. Self-update the CLI. Skip for symlink installs — those track a
   #    checkout and update via `git pull` in the user's clone, not from
@@ -349,10 +391,12 @@ do_update() {
   #      - symlink       → clone-symlink install  → leave alone
   if [[ -L "$0" ]]; then
     info "CLI is a symlink — update with 'git pull' inside the checkout it points at."
+    update_sync_note "$KONRAD_VERSION" "$image_ver"
     return 0
   fi
   if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
     warn "neither curl nor wget available; CLI was not refreshed."
+    update_sync_note "$KONRAD_VERSION" "$image_ver"
     return 0
   fi
   info "refreshing CLI from $INSTALL_REMOTE_URL…"
@@ -368,6 +412,14 @@ do_update() {
     KONRAD_NO_PULL=1 KONRAD_INSTALL_DIR="$install_dir" \
       wget -qO- "$INSTALL_REMOTE_URL" | sh
   fi
+
+  # This running process still holds the pre-update $KONRAD_VERSION; the
+  # installer just rewrote the on-disk script. Read the freshly baked
+  # version straight off disk so the sync report is accurate.
+  local new_cli_ver
+  new_cli_ver="$(sed -n 's/^KONRAD_VERSION_BAKED="\(.*\)".*/\1/p' "$0" 2>/dev/null | head -1)"
+  [[ -z "$new_cli_ver" ]] && new_cli_ver="$KONRAD_VERSION"
+  update_sync_note "$new_cli_ver" "$image_ver"
 }
 
 do_rebuild() {
@@ -594,7 +646,7 @@ something else.
 Flags:
   -s, --shell           Open a bash shell in the container instead.
   -v, --verbose         Per-phase timestamps + verbose opencode logs.
-  --version             Print CLI version + image tag/digest/revision.
+  --version             Print CLI + image versions (dated tag, digest, revision); flags any skew.
 $refresh_flag
   --reset               Wipe shared volumes + log dir. Prompts [y/N].
   --uninstall           Remove this binary's CLI + image. Prompts [y/N].

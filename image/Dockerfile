@@ -273,7 +273,8 @@ ARG KONRAD_VERSION=dev
 ARG GIT_SHA=unknown
 ARG BUILD_DATE=unknown
 LABEL org.opencontainers.image.version="${KONRAD_VERSION}" \
-    org.opencontainers.image.revision="${GIT_SHA}"
+    org.opencontainers.image.revision="${GIT_SHA}" \
+    org.opencontainers.image.created="${BUILD_DATE}"
 COPY build-manifest.sh /tmp/build-manifest.sh
 RUN bash /tmp/build-manifest.sh "$KONRAD_VERSION" "$GIT_SHA" "$BUILD_DATE" \
     && rm /tmp/build-manifest.sh
