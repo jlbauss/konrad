@@ -53,9 +53,9 @@ docling-core==2.77.1
     #   docling-slim
 docling-ibm-models==3.13.2
     # via docling-slim
-docling-parse==5.11.0
+docling-parse==6.2.0
     # via docling-slim
-docling-slim==2.95.0
+docling-slim==2.96.0
     # via -r python.spec
 et-xmlfile==2.0.0
     # via openpyxl
@@ -83,14 +83,14 @@ httpx==0.28.1
     # via
     #   docling-slim
     #   huggingface-hub
-huggingface-hub==1.16.4
+huggingface-hub==1.17.0
     # via
     #   accelerate
     #   docling-ibm-models
     #   docling-slim
     #   tokenizers
     #   transformers
-idna==3.16
+idna==3.17
     # via
     #   anyio
     #   httpx
@@ -114,7 +114,7 @@ lxml==6.1.1
     #   python-pptx
 markdown-it-py==4.2.0
     # via rich
-marko==2.2.2
+marko==2.2.3
     # via docling-slim
 markupsafe==3.0.3
     # via jinja2
@@ -252,7 +252,7 @@ rich==15.0.0
     # via
     #   docling-slim
     #   typer
-rpds-py==0.30.0
+rpds-py==2026.5.1
     # via
     #   jsonschema
     #   referencing
