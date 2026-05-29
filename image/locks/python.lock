@@ -13,7 +13,7 @@ colorlog==6.10.1
 cryptography==48.0.0
 defusedxml==0.7.1
 dill==0.4.1
-docling-core==2.77.1
+docling-core==2.78.0
 docling-ibm-models==3.13.2
 docling-parse==6.2.0
 docling-slim==2.96.0
