@@ -4,13 +4,16 @@
 
 _Raw ideas land here. Promote into the appropriate tier after a refinement pass._
 
+- Bug: konrad --update
+/Users/jan-luca/.local/bin/konrad: line 373: REGISTRY_IMAGE�: unbound variable
+- improve install/update: It should show the progress of image pulling. It should do --version at the end so the user sees which version is installed/pulled
 
 ## Tier 1 — alpha → beta
 
 _Work done after the repo goes public as alpha. Gates the beta declaration._
 
 - [ ] **lock file optimizations** remove npm from the lock and dockerfile as we use the one from the base image as well? + remove comments from python.lock to ensure less probability of changes that are not really changes?
-- [ ] **reevaluate versioning paradigm.** maybe subversions even before 1.0? 
+- [ ] **reevaluate versioning paradigm.** maybe subversions even before 1.0? Goal: There must be an update if a change to the codebase happens?
 - [ ] **Add helpful ready-made skills** 1. matt hancock grill me + skill builder, 2. anthropic frontend design
 - [ ] **PDF GENERATE route — flesh out beyond the stub.** A minimal `generate.md` route now ships on the `pdf` skill (bare-bones single-page reportlab output, no design, no content trees, no themed templates — see [image/opencode/skills/pdf/generate.md](image/opencode/skills/pdf/generate.md)). What's still open: structured content trees that flow across pages (likely `reportlab.platypus` or equivalent), HTML-to-PDF for richer layouts (Playwright / WeasyPrint), and themed/branded output. Likely path: bring in or adapt minimax-pdf's CREATE / REFORMAT pipelines (reportlab body + Playwright cover, MIT). Pairs with the Tier-2 Design skill bullet for the aesthetic layer above pure structure.
 - [ ] **`docx` skill — Word document authoring + editing.** Mirror the existing `pdf` and `spreadsheets` skills for `.docx`: read/extract (text, tables, styles, comments, tracked changes), edit (find-replace, table operations, paragraph styles, header/footer/letterhead), produce from scratch (memos, letters, reports, templates with proper heading hierarchy + TOC). Likely path: bundle `python-docx` plus a small skill scaffold; consider importing an MIT-licensed upstream like `minimax-docx` as a starting point the way `spreadsheets` started as a near-verbatim `minimax-xlsx` import. Fills the Word axis of the doc-surface lineup (PDF / XLSX / DOCX / future slides / future mail / future markdown / future HTML).
