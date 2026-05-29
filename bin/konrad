@@ -294,7 +294,7 @@ do_run() {
 image_dated_tag() {
   local ver="$1" date="${2%%T*}"
   if [[ "$ver" != "unknown" && "$date" == ????-??-?? && "$date" != "1970-01-01" ]]; then
-    printf '%s.%s' "$ver" "$date"
+    printf '%s-%s' "$ver" "$date"
   else
     printf '%s' "$ver"
   fi

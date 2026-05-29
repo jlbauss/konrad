@@ -7,13 +7,13 @@ _Raw ideas land here. Promote into the appropriate tier after a refinement pass.
 - Bug: konrad --update
 /Users/jan-luca/.local/bin/konrad: line 373: REGISTRY_IMAGE�: unbound variable
 - improve install/update: It should show the progress of image pulling. It should do --version at the end so the user sees which version is installed/pulled
+- find a way to make it easy for orgs to supply their own opencode.jsonc, e.g. with additional models. Maybe as another override instance?
 
 ## Tier 1 — alpha → beta
 
 _Work done after the repo goes public as alpha. Gates the beta declaration._
 
 - [ ] **lock file optimizations** remove npm from the lock and dockerfile as we use the one from the base image as well? + remove comments from python.lock to ensure less probability of changes that are not really changes?
-- [ ] **reevaluate versioning paradigm.** maybe subversions even before 1.0? Goal: There must be an update if a change to the codebase happens?
 - [ ] **Add helpful ready-made skills** 1. matt hancock grill me + skill builder, 2. anthropic frontend design
 - [ ] **PDF GENERATE route — flesh out beyond the stub.** A minimal `generate.md` route now ships on the `pdf` skill (bare-bones single-page reportlab output, no design, no content trees, no themed templates — see [image/opencode/skills/pdf/generate.md](image/opencode/skills/pdf/generate.md)). What's still open: structured content trees that flow across pages (likely `reportlab.platypus` or equivalent), HTML-to-PDF for richer layouts (Playwright / WeasyPrint), and themed/branded output. Likely path: bring in or adapt minimax-pdf's CREATE / REFORMAT pipelines (reportlab body + Playwright cover, MIT). Pairs with the Tier-2 Design skill bullet for the aesthetic layer above pure structure.
 - [ ] **`docx` skill — Word document authoring + editing.** Mirror the existing `pdf` and `spreadsheets` skills for `.docx`: read/extract (text, tables, styles, comments, tracked changes), edit (find-replace, table operations, paragraph styles, header/footer/letterhead), produce from scratch (memos, letters, reports, templates with proper heading hierarchy + TOC). Likely path: bundle `python-docx` plus a small skill scaffold; consider importing an MIT-licensed upstream like `minimax-docx` as a starting point the way `spreadsheets` started as a near-verbatim `minimax-xlsx` import. Fills the Word axis of the doc-surface lineup (PDF / XLSX / DOCX / future slides / future mail / future markdown / future HTML).
@@ -52,6 +52,10 @@ _Work done after the repo goes public as beta. Mostly speculative or aspirationa
 *_tbc_*
 
 ## Implemented
+
+### Tier 1 — alpha → beta
+
+- [x] **2026-05-29 — Three-segment pre-1.0 versions (`0.X.Y`) + hyphen-separated dated tags.** Reworked the pre-1.0 versioning rule so `X` (minor) and `Y` (patch) carry distinct meaning instead of `X` inflating on every functional change. **The rule.** Bump `Y` for a bug fix with no surface change (same flags, same outputs, same behavior on the happy path); bump `X` for new functionality, behavior change, base-image major bump, or anything a user might notice (reset `Y` to 0). No MAJOR slot pre-1.0 — would-be-major changes land as minor under the leading `0.`. Doc-only / CI-only / ROADMAP-only changes still don't bump. Post-1.0 stays full semver, unchanged. **Why.** The previous "bump `X` for any functional change" rule made `X` inflate fast enough that the minor lifetime measured in hours, not features — `X` had stopped signalling anything to users. Splitting fixes (patch) from features (minor) at the version level matches what npm/cargo already assume for `0.x.y`, and gives users a coarse "quiet refresh vs changed something" signal without forcing a 1.0 declaration before we're ready. **Tag-scheme touch-up.** The dated immutable tag's separator flipped from dot to hyphen (`:0.2.YYYY-MM-DD` → `:0.2.1-YYYY-MM-DD`) — a dot would have made the tag read as a four-segment version. New `:0.X.Y` rolling tag tracks the patch line; existing `:0.X` rolling tag now resolves through the new patch slot to mean "latest patch on the `0.X` line." `:latest` and `:<sha>` unchanged. CLI's `image_dated_tag()` in [bin/konrad](bin/konrad) tracks the same separator so `konrad --version` and the registry agree. **Surface inventory.** Edited: [CLAUDE.md](CLAUDE.md) (versioning working-agreement bullet + trunk-flow tag scheme parenthetical), [docs/design/versioning-and-releases.md](docs/design/versioning-and-releases.md) (Pre-1.0 section, pre-1.0 tag table, examples table, day-zero history entry for `0.2.1`, intro example), [.github/workflows/build-image.yml](.github/workflows/build-image.yml) (publish step generates new tag list via `${VER%.*}` for the minor float; header comments updated), [bin/konrad](bin/konrad) (`image_dated_tag` dot → hyphen). No `:0.2.0` tag was ever published — the line skips straight from `:0.2.<date>` (old format, last seen 2026-05-29) to `:0.2.1-<date>` (new format) at the transition. The first `0.2.1` bump rides commit with the `--update` unbound-variable fix immediately after this commit.
 
 ### Tier 0 — pre-public
 

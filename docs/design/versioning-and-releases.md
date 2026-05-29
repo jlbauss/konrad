@@ -2,7 +2,7 @@
 
 ## Why this doc exists
 
-Konrad ships as a container image. Users don't compile from source; they `konrad --update` and get whatever's at `ghcr.io/jlbauss/konrad:latest`. That makes the version semantics user-facing: when a user reports a bug, "I'm on `0.3.2026-04-15`" needs to mean something unambiguous, and the upgrade path needs to be obvious.
+Konrad ships as a container image. Users don't compile from source; they `konrad --update` and get whatever's at `ghcr.io/jlbauss/konrad:latest`. That makes the version semantics user-facing: when a user reports a bug, "I'm on `0.3.0-2026-06-04`" needs to mean something unambiguous, and the upgrade path needs to be obvious.
 
 This doc captures the rules so they stay consistent across the project's lifetime.
 
@@ -12,13 +12,15 @@ Konrad's lifecycle has two version regimes.
 
 ### Pre-1.0 (where we are today)
 
-`VERSION` at the repo root holds a value like `0.X`. No PATCH is written.
+`VERSION` at the repo root holds a value like `0.X.Y`.
 
 - **MAJOR is always 0.** We don't promise non-breaking upgrades yet.
-- **X bumps for any functional change** to `image/`, `bin/konrad`, baked skills/agents, or `image/konrad-defaults/`. Doc-only, CI-only, and ROADMAP-only changes don't bump.
-- **The date suffix on image tags acts as the patch identifier.** `0.1.2026-05-23` is "konrad code at 0.1 + packages as of 2026-05-23." Two builds with the same `VERSION` but different dates differ only in floating-pin re-resolution.
+- **Y (PATCH) bumps for a bug fix with no surface change** — same flags, same outputs, same behavior on the happy path. The fix to `konrad --update`'s `REGISTRY_IMAGE` unbound-variable error (2026-05-29) is a textbook patch.
+- **X (MINOR) bumps for new functionality, behavior change, or anything a user might notice.** New bundled skill or agent, new CLI flag, renamed path, base-image major bump — all minor. There is no MAJOR slot pre-1.0, so changes that *would* be major post-1.0 land as minor here (the leading `0.` already telegraphs "may break"). Reset `Y` to 0 on a minor bump.
+- **Doc-only, CI-only, and ROADMAP-only changes don't bump.**
+- **The date suffix on image tags is the build-day identifier.** `0.2.1-2026-05-29` is "konrad code at 0.2.1 + packages as of 2026-05-29." Two builds with the same `VERSION` but different dates differ only in floating-pin re-resolution — that's not a code change, so it doesn't bump `Y`.
 
-Why no third number pre-1.0? The bump cadence is so coarse (every functional change is more-or-less a minor) that a third digit would be noise. The date is more honest about what makes two builds differ — it's "what was the upstream world like on the day of this build."
+Why a third number pre-1.0? Without one, every functional change inflates `X`, and the minor lifetime starts measuring in hours rather than features — `X` stops signalling anything to users. Splitting fixes (patch) from features (minor) at the version level matches what npm/cargo already assume for `0.x.y` (compatible patches, potentially-breaking minors), and gives users a coarse "this is a quiet refresh" vs "this changed something" signal without forcing a 1.0 declaration before we're ready.
 
 ### Post-1.0
 
@@ -50,12 +52,16 @@ All published at `ghcr.io/jlbauss/konrad`. Two tag families, plus PR tags.
 
 | Tag | Mutable? | Meaning |
 | --- | --- | --- |
-| `:0.X.YYYY-MM-DD` | immutable | konrad code at `0.X` + packages as of that day. The rollback handle. |
-| `:0.X` | rolling | newest passing daily build on the `0.X` line |
+| `:0.X.Y-YYYY-MM-DD` | immutable | konrad code at `0.X.Y` + packages as of that day. The rollback handle. |
+| `:0.X.Y` | rolling | newest passing daily build for that specific patch version |
+| `:0.X` | rolling | newest passing patch on the `0.X` minor line |
 | `:latest` | rolling | newest passing build, currently of the newest minor line |
 | `:<short-sha>` | immutable | per-commit; for bisecting |
 
-When `VERSION` bumps `0.X → 0.X+1`: `:0.X` stops getting new builds (frozen at last good). Users on `:0.X` see no fresh updates until they upgrade. The immutable `:0.X.<date>` tags remain pullable indefinitely.
+When `VERSION` bumps `0.X.Y → 0.X.Y+1` (patch): `:0.X.Y` freezes at the last passing build of that patch; `:0.X` rolls forward to the new patch. Users on `:0.X` get the fix automatically.
+When `VERSION` bumps `0.X.Y → 0.X+1.0` (minor): `:0.X` stops getting new builds (frozen at last good). Users on `:0.X` see no fresh updates until they upgrade to `:0.X+1`. The immutable `:0.X.Y-<date>` tags remain pullable indefinitely.
+
+The `:0.X.Y-YYYY-MM-DD` separator is a **hyphen**, not a dot — the dot would make the whole tag read as a four-segment version number. This matches the post-1.0 `:X.Y.Z-YYYY-MM-DD` form below.
 
 ### Post-1.0
 
@@ -96,14 +102,15 @@ Examples:
 
 | Change | Pre-1.0 bump | Post-1.0 bump |
 | --- | --- | --- |
-| Add a new bundled skill | `0.1 → 0.2` | `1.2.3 → 1.3.0` (minor) |
-| Fix a bug in an existing skill | `0.1 → 0.2` | `1.2.3 → 1.2.4` (patch) |
+| Add a new bundled skill | `0.2.1 → 0.3.0` (minor) | `1.2.3 → 1.3.0` (minor) |
+| Fix a bug in an existing skill with no surface change | `0.2.1 → 0.2.2` (patch) | `1.2.3 → 1.2.4` (patch) |
+| Fix to `konrad --update`'s `REGISTRY_IMAGE` unbound-variable crash (no flag or output change) | `0.2.0 → 0.2.1` (patch) | `1.2.3 → 1.2.4` (patch) |
 | Floating-pin refresh that pulled a security fix (daily CI) | no bump (date carries it) | no bump (date carries it) |
-| Rename `konrad --shell` to `konrad --bash` | `0.1 → 0.2` | `1.2.3 → 2.0.0` (major — breaking) |
-| Add a new CLI flag | `0.1 → 0.2` | `1.2.3 → 1.3.0` (minor) |
+| Rename `konrad --shell` to `konrad --bash` | `0.2.1 → 0.3.0` (minor — no MAJOR pre-1.0) | `1.2.3 → 2.0.0` (major — breaking) |
+| Add a new CLI flag | `0.2.1 → 0.3.0` (minor) | `1.2.3 → 1.3.0` (minor) |
 | Update README typo | no bump | no bump |
 | Update CI workflow | no bump | no bump |
-| Bump Debian base from trixie to forky | `0.1 → 0.2` | `1.2.3 → 2.0.0` (major) |
+| Bump Debian base from trixie to forky | `0.2.1 → 0.3.0` (minor — no MAJOR pre-1.0) | `1.2.3 → 2.0.0` (major) |
 
 If a single PR bundles multiple concerns (rare; we prefer separate commits per concern — see CONTRIBUTING.md), the highest-impact change determines the bump.
 
@@ -126,3 +133,5 @@ The pre-1.0 chapter started on **2026-05-23** with `VERSION=0.1`, when the regis
 **`0.1` is the pre-public stabilization line** — the version that existed while the repo was still private and CI / publishing / smoke gates were getting their final shakedown. Functional changes during this phase didn't always bump (the bump-in-same-PR rule itself landed mid-stream); the dated image tags `:0.1.YYYY-MM-DD` are the authoritative per-day history.
 
 **`0.2` is the first public alpha** — shipped 2026-05-27 as the "public-alpha flip" (see ROADMAP `## Implemented`). "Public" means the **GitLab** repo + the GHCR package; the GitHub mirror stays private. The bump signals the regime change: from this point forward, every functional change bumps `VERSION` in its commit, and the version line a user is on actually means something to them. It's the day-one anchor for outside consumers.
+
+**`0.2.1` is the first patch-slot bump** — landed 2026-05-29 alongside the introduction of three-segment pre-1.0 versions. Before this, `VERSION` held `0.X` and every functional change bumped `X`; the patch slot splits "bug fix with no surface change" out so `X` once again signals something meaningful to users. Existing `0.2` semantically equals `0.2.0` retroactively, but no `0.2.0` image tag was ever published — the line went `:0.2.YYYY-MM-DD` (old two-segment format, dot before date) directly to `:0.2.1-YYYY-MM-DD` (new three-segment format, hyphen before date) at the transition. The `:0.2` rolling tag's meaning carries over cleanly: it still gives users the newest passing build on the `0.2` line, now resolved through the new patch slot.

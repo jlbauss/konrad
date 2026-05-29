@@ -27,10 +27,19 @@
 # runs and `:latest` stays pointed at the last good build.
 #
 # Tag scheme (all pushed by every successful pipeline; each tag is a
-# multi-arch manifest list spanning linux/amd64 and linux/arm64):
-#   :<ver>.<date>      immutable; e.g. 0.2.2026-05-26 — the rollback handle
-#   :<ver>             rolling; latest passing build on the current VERSION
-#   :latest            rolling alias for the newest <ver> passing build
+# multi-arch manifest list spanning linux/amd64 and linux/arm64). VERSION
+# pre-1.0 is `0.X.Y` (X = minor, Y = patch); the docs/design/versioning-
+# and-releases.md doc has the full rules.
+#   :<ver>-<date>      immutable; e.g. 0.2.1-2026-05-29 — the rollback handle.
+#                      Hyphen (not dot) so the tag doesn't read as four
+#                      version segments.
+#   :<ver>             rolling; latest passing build for that exact patch
+#                      version (0.X.Y)
+#   :<minor>           rolling; latest passing patch on the 0.X line.
+#                      Derived from VER as ${VER%.*} (strips the trailing
+#                      .Y). Users on `:0.X` get patches automatically and
+#                      stop getting updates when X bumps.
+#   :latest            rolling alias for the newest passing build overall
 #   :<short-sha>       immutable; for bisecting
 #
 # Architecture: amd64 + arm64. Each arch builds natively on its own
@@ -265,8 +274,10 @@ jobs:
   # manifest metadata only; no layer data moves.
   #
   # Tag list depends on the trigger:
-  #   - push to main / workflow_dispatch on main → :<ver>.<date>, :<ver>,
-  #                                                 :latest, :<sha>
+  #   - push to main / workflow_dispatch on main → :<ver>-<date>, :<ver>,
+  #                                                 :<minor>, :latest, :<sha>
+  #                                                 (where <minor> = 0.X
+  #                                                 derived from <ver>=0.X.Y)
   #   - pull_request from same repo   → :pr-<num> only (transient, replaced
   #                                      on every push to the PR branch)
   #   - pull_request from a fork      → SKIPPED (GITHUB_TOKEN is read-only
@@ -314,7 +325,10 @@ jobs:
           if [ "$EVENT" = "pull_request" ]; then
             TAGS="pr-$PR_NUM"
           else
-            TAGS="$VER.$DATE $VER latest $SHA"
+            # VER is 0.X.Y pre-1.0 (X.Y.Z post-1.0). MINOR strips the
+            # trailing .Y / .Z, leaving the floating tag for the patch line.
+            MINOR="${VER%.*}"
+            TAGS="$VER-$DATE $VER $MINOR latest $SHA"
           fi
           # imagetools create with two source manifests produces a multi-
           # arch manifest list — `podman pull` against the resulting tag
