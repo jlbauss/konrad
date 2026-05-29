@@ -61,14 +61,12 @@ on:
       - 'image/**'
       - 'scripts/smoke-test.sh'
       - '.github/workflows/build-image.yml'
-      - 'VERSION'
   pull_request:
     branches: [main]
     paths:
       - 'image/**'
       - 'scripts/smoke-test.sh'
       - '.github/workflows/build-image.yml'
-      - 'VERSION'
   workflow_dispatch:
 
 env:

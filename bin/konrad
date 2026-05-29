@@ -466,14 +466,11 @@ do_version() {
   [[ -n "${KONRAD_IMAGE:-}" ]] && override_note="  (KONRAD_IMAGE override)"
   printf '  image:  %s   (%s)%s\n' "$image_tag" "$IMAGE_NAME" "$override_note"
   printf '          %s · rev %s\n' "${digest:0:19}" "$image_rev"
-
-  # CLI and image are one artifact and should share a version. Compare the
-  # pure versions (ignore the dated suffix); warn only when both are real.
-  if [[ "$KONRAD_VERSION" != "dev" && "$image_ver" != "unknown" \
-        && "$KONRAD_VERSION" != "$image_ver" ]]; then
-    printf '  ! CLI %s vs image %s — run '\''konrad --update'\'' to sync\n' \
-      "$KONRAD_VERSION" "$image_ver"
-  fi
+  # No CLI-vs-image skew warning by design. CLI-only patches don't trigger
+  # an image rebuild (the workflow's paths: filter excludes VERSION), so a
+  # patch-line drift between CLI and image labels is normal and harmless —
+  # the contract between them is thin (env vars + mount paths + `opencode`
+  # entrypoint). Both numbers are shown; the user judges.
 }
 
 do_pull_image() {
@@ -779,7 +776,7 @@ something else.
 Flags:
   -s, --shell           Open a bash shell in the container instead.
   -v, --verbose         Per-phase timestamps + verbose opencode logs.
-  --version             Print CLI + image versions (dated tag, digest, revision); flags any skew.
+  --version             Print CLI + image versions (dated tag, digest, revision).
 $refresh_flag
   --reset               Wipe shared volumes + log dir. Prompts [y/N].
   --uninstall           Remove this binary's CLI + image. Prompts [y/N].
