@@ -127,6 +127,12 @@ if ! command -v podman >/dev/null 2>&1; then
 fi
 
 # --- Pre-pull the image ------------------------------------------------------
+# The pull goes through the freshly-installed `konrad --pull-image` rather
+# than a bare `podman pull` so the layer counter (jq + curl manifest
+# preflight + awk wrapper) has one implementation. KONRAD_NO_PULL=1 is set
+# by `konrad --update` when it re-runs this installer for the CLI refresh —
+# in that case the caller already pulled and already prints --version, so
+# both steps are short-circuited.
 if [ "${KONRAD_NO_PULL:-0}" = "1" ]; then
   say "skipping image pre-pull (KONRAD_NO_PULL=1). Run 'konrad --update' when ready."
   exit 0
@@ -139,17 +145,10 @@ if ! podman info >/dev/null 2>&1; then
   exit 0
 fi
 
-say "pre-pulling konrad image (one-time download)…"
-# Go directly through podman rather than the freshly-installed konrad —
-# `konrad --update` itself re-runs this very installer to refresh the CLI,
-# which would otherwise double-fetch bin/konrad on first install.
-REGISTRY_IMAGE="ghcr.io/jlbauss/konrad:latest"
-if podman pull "$REGISTRY_IMAGE"; then
-  podman tag "$REGISTRY_IMAGE" "konrad:latest"
-  say "tagged as konrad:latest"
-else
+if ! "$TARGET" --pull-image; then
   warn "image pre-pull failed; konrad will retry on first run."
 fi
 
 printf '\n'
+"$TARGET" --version || true
 say "done. Run: konrad"

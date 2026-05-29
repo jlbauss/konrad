@@ -103,6 +103,136 @@ dbg() {
   printf 'konrad [debug +%ss]: %s\n' "$SECONDS" "$*" >&2
 }
 
+# --- Image-pull progress (manifest preflight + awk layer counter) ---
+#
+# Why this shape: podman doesn't expose byte-level pull progress anywhere
+# (libpod & docker-compat endpoints, events, debug log — all silent on bytes;
+# containers/podman issue #24887 is open). The ceiling is a layer counter.
+# We fetch the platform-specific manifest via curl+jq to learn the total
+# layer count M, then pipe `podman pull` through awk to render `[N/M]` per
+# `Copying blob sha256:…` line. jq is a soft-dep — missing jq → warn once
+# and fall back to bare `podman pull`. Whole flow is registry-agnostic in
+# shape but the token endpoint is ghcr.io-specific today (the only registry
+# konrad pulls from).
+
+# Fetch the layer count for the platform-specific manifest of $1.
+# Prints the count on stdout, or nothing on any failure / unknown registry.
+# Always returns 0 so callers can `total="$(manifest_total_layers ... )"`.
+manifest_total_layers() {
+  local image_ref="$1"
+  command -v jq   >/dev/null 2>&1 || return 0
+  command -v curl >/dev/null 2>&1 || return 0
+
+  # Parse <registry>/<repo>:<tag> (repo may contain slashes).
+  local tag repo_part registry repo
+  case "$image_ref" in
+    *:*) tag="${image_ref##*:}";   repo_part="${image_ref%:*}" ;;
+    *)   tag="latest";             repo_part="$image_ref"      ;;
+  esac
+  registry="${repo_part%%/*}"
+  repo="${repo_part#*/}"
+
+  # Anonymous token (ghcr.io serves a free one for public repos).
+  local token_url token
+  case "$registry" in
+    ghcr.io) token_url="https://ghcr.io/token?service=ghcr.io&scope=repository:${repo}:pull" ;;
+    *)       return 0 ;;
+  esac
+  token="$(curl -fsS --max-time 5 "$token_url" 2>/dev/null \
+           | jq -r '.token // .access_token // empty' 2>/dev/null)"
+  [[ -z "$token" ]] && return 0
+
+  # Detect target arch (Podman's VM matches host arch on both macOS and Linux).
+  local arch
+  case "$(uname -m)" in
+    x86_64|amd64)   arch="amd64" ;;
+    aarch64|arm64)  arch="arm64" ;;
+    *)              arch="amd64" ;;
+  esac
+
+  local accept manifest media_type
+  accept='application/vnd.docker.distribution.manifest.list.v2+json,application/vnd.oci.image.index.v1+json,application/vnd.docker.distribution.manifest.v2+json,application/vnd.oci.image.manifest.v1+json'
+  manifest="$(curl -fsS --max-time 5 \
+                -H "Authorization: Bearer $token" \
+                -H "Accept: $accept" \
+                "https://${registry}/v2/${repo}/manifests/${tag}" 2>/dev/null)"
+  [[ -z "$manifest" ]] && return 0
+
+  media_type="$(printf '%s' "$manifest" | jq -r '.mediaType // empty' 2>/dev/null)"
+  case "$media_type" in
+    *manifest.list*|*image.index*)
+      local platform_digest platform_manifest
+      platform_digest="$(printf '%s' "$manifest" \
+        | jq -r --arg a "$arch" '
+            .manifests[]
+            | select(.platform.architecture == $a
+                     and (.platform.os == "linux" or .platform.os == null))
+            | .digest' 2>/dev/null | head -1)"
+      [[ -z "$platform_digest" ]] && return 0
+      platform_manifest="$(curl -fsS --max-time 5 \
+                            -H "Authorization: Bearer $token" \
+                            -H "Accept: $accept" \
+                            "https://${registry}/v2/${repo}/manifests/${platform_digest}" 2>/dev/null)"
+      [[ -z "$platform_manifest" ]] && return 0
+      printf '%s' "$platform_manifest" | jq -r '.layers | length' 2>/dev/null
+      ;;
+    *)
+      printf '%s' "$manifest" | jq -r '.layers | length' 2>/dev/null
+      ;;
+  esac
+  return 0
+}
+
+# Run `podman pull <image>` with an aggregated [N/M] layer counter on stderr.
+# TTY-aware: when stderr is a TTY the counter overwrites a single line via
+# \r; otherwise per-line for CI/logged contexts. Falls back to a bare pull
+# (no counter) when the manifest preflight returns nothing — keeping the
+# happy path moving when offline-resolution failed, jq is missing, or a
+# non-ghcr registry was passed.
+pull_with_progress() {
+  local image_ref="$1"
+  local total
+  total="$(manifest_total_layers "$image_ref" 2>/dev/null || true)"
+  if [[ -z "$total" ]] || ! [[ "$total" =~ ^[0-9]+$ ]] || (( total <= 0 )); then
+    if ! command -v jq >/dev/null 2>&1; then
+      warn "jq not installed; pull-progress counter disabled (install jq for the [N/M] aggregation)."
+    fi
+    podman pull "$image_ref"
+    return $?
+  fi
+
+  local tty_mode=0
+  [[ -t 2 ]] && tty_mode=1
+
+  # `2>&1` merges podman's stderr into the pipe (its progress lives there;
+  # the final image digest is on stdout — both pass through unchanged for
+  # any line that doesn't match the blob/manifest patterns). PIPESTATUS[0]
+  # captures podman's exit independent of awk; `|| rc=...` keeps `set -e`
+  # from aborting and grabs the value before any later command clobbers
+  # PIPESTATUS.
+  local rc=0
+  podman pull "$image_ref" 2>&1 \
+    | awk -v M="$total" -v tty="$tty_mode" '
+        /^Copying blob sha256:/ {
+          n++; if (n > M) n = M
+          if (tty == 1) {
+            printf "\r  [%d/%d] %s\033[K", n, M, $0
+            fflush()
+          } else {
+            printf "  [%d/%d] %s\n", n, M, $0
+          }
+          next
+        }
+        /^Writing manifest to image destination/ {
+          if (tty == 1) { printf "\n"; fflush() }
+          print
+          next
+        }
+        { print }
+      ' >&2 || rc=${PIPESTATUS[0]}
+  return "$rc"
+}
+
 # --- Preflight checks ---
 
 require_podman() {
@@ -147,7 +277,7 @@ require_image() {
   # and re-downloads model weights, so it's substantially slower. The
   # registry path is the default user experience.
   info "image '$IMAGE_NAME' not found locally — pulling ${REGISTRY_IMAGE}…"
-  if podman pull "$REGISTRY_IMAGE" >/dev/null 2>&1; then
+  if pull_with_progress "$REGISTRY_IMAGE"; then
     podman tag "$REGISTRY_IMAGE" "$IMAGE_NAME"
     info "pulled and tagged as $IMAGE_NAME"
     return 0
@@ -300,19 +430,6 @@ image_dated_tag() {
   fi
 }
 
-# Report whether the CLI and the image line up after an update. They should:
-# Konrad ships as one artifact, so the CLI and image share a version. Compares
-# the pure versions (the image's dated suffix is its build identifier, not a
-# different version).
-update_sync_note() {
-  local cli="$1" img="$2"
-  if [[ "$cli" != "dev" && "$img" != "unknown" && "$cli" == "$img" ]]; then
-    info "now at $cli — CLI and image in sync"
-  else
-    warn "version skew: CLI is $cli, image is $img — they should match (Konrad is one artifact). 'konrad --version' for detail."
-  fi
-}
-
 do_version() {
   printf 'konrad %s\n' "$KONRAD_VERSION"
   printf '  CLI:    %s\n' "$KONRAD_VERSION"
@@ -359,6 +476,32 @@ do_version() {
   fi
 }
 
+do_pull_image() {
+  # Internal verb: pull REGISTRY_IMAGE through the layer-counter wrapper and
+  # tag it as IMAGE_DEFAULT. Owned here so the POSIX install-remote.sh and
+  # bash do_update share one implementation of the bash-only pipeline
+  # (jq + curl manifest preflight + awk counter). Not in --help — internal.
+  if [[ "$(basename -- "$0")" == "konrad-dev" ]]; then
+    die "konrad-dev doesn't pull from the registry. To rebuild the dev image: konrad-dev --rebuild."
+  fi
+  require_podman
+  info "pulling ${REGISTRY_IMAGE}…"
+  if ! pull_with_progress "$REGISTRY_IMAGE"; then
+    die "registry pull failed (offline? registry unreachable?)"
+  fi
+  podman tag "$REGISTRY_IMAGE" "$IMAGE_DEFAULT"
+}
+
+# Re-read the KONRAD_VERSION_BAKED placeholder off disk after install-remote.sh
+# has rewritten $0. The in-memory $KONRAD_VERSION is whatever this process
+# started with (pre-refresh); on disk is the new value. Used by do_update's
+# tail so the final --version block reflects what the user just installed.
+reread_baked_version() {
+  local v
+  v="$(sed -n 's/^KONRAD_VERSION_BAKED="\(.*\)".*/\1/p' "$0" 2>/dev/null | head -1)"
+  [[ -n "$v" ]] && KONRAD_VERSION="$v"
+}
+
 do_update() {
   # Hard gate: --update refreshes the published image and the stable CLI
   # itself. konrad-dev's image (konrad:local) comes from --rebuild, and
@@ -367,22 +510,9 @@ do_update() {
   if [[ "$(basename -- "$0")" == "konrad-dev" ]]; then
     die "konrad-dev doesn't update. To rebuild the dev image: konrad-dev --rebuild. To refresh the stable konrad CLI next to it on PATH: konrad --update. To update this script: git pull inside the checkout the symlink points at."
   fi
-  require_podman
 
-  # 1. Pull the image.
-  info "pulling ${REGISTRY_IMAGE}…"
-  if ! podman pull "$REGISTRY_IMAGE"; then
-    die "registry pull failed (offline? registry unreachable?)"
-  fi
-  podman tag "$REGISTRY_IMAGE" "$IMAGE_DEFAULT"
-  local image_ver image_created image_tag
-  image_ver="$(podman image inspect "$IMAGE_DEFAULT" \
-               --format '{{index .Labels "org.opencontainers.image.version"}}' 2>/dev/null)"
-  [[ -z "$image_ver" ]] && image_ver="unknown"
-  image_created="$(podman image inspect "$IMAGE_DEFAULT" \
-                   --format '{{index .Labels "org.opencontainers.image.created"}}' 2>/dev/null)"
-  image_tag="$(image_dated_tag "$image_ver" "$image_created")"
-  info "image refreshed to $image_tag"
+  # 1. Pull the image (with the layer counter).
+  do_pull_image
 
   # 2. Self-update the CLI. Skip for symlink installs — those track a
   #    checkout and update via `git pull` in the user's clone, not from
@@ -391,20 +521,23 @@ do_update() {
   #      - symlink       → clone-symlink install  → leave alone
   if [[ -L "$0" ]]; then
     info "CLI is a symlink — update with 'git pull' inside the checkout it points at."
-    update_sync_note "$KONRAD_VERSION" "$image_ver"
+    printf '\n'
+    do_version
     return 0
   fi
   if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
     warn "neither curl nor wget available; CLI was not refreshed."
-    update_sync_note "$KONRAD_VERSION" "$image_ver"
+    printf '\n'
+    do_version
     return 0
   fi
   info "refreshing CLI from ${INSTALL_REMOTE_URL}…"
   local install_dir
   install_dir="$(dirname "$0")"
   # KONRAD_NO_PULL=1 tells the installer to skip its own image-pull step
-  # (we just did one). KONRAD_INSTALL_DIR pins the target so the refresh
-  # lands at the same path the user originally installed to.
+  # (we just did one) and its own --version display (we print one below
+  # against the fresh on-disk version). KONRAD_INSTALL_DIR pins the target
+  # so the refresh lands at the same path the user originally installed to.
   if command -v curl >/dev/null 2>&1; then
     KONRAD_NO_PULL=1 KONRAD_INSTALL_DIR="$install_dir" \
       curl -fsSL "$INSTALL_REMOTE_URL" | sh
@@ -413,13 +546,13 @@ do_update() {
       wget -qO- "$INSTALL_REMOTE_URL" | sh
   fi
 
-  # This running process still holds the pre-update $KONRAD_VERSION; the
-  # installer just rewrote the on-disk script. Read the freshly baked
-  # version straight off disk so the sync report is accurate.
-  local new_cli_ver
-  new_cli_ver="$(sed -n 's/^KONRAD_VERSION_BAKED="\(.*\)".*/\1/p' "$0" 2>/dev/null | head -1)"
-  [[ -z "$new_cli_ver" ]] && new_cli_ver="$KONRAD_VERSION"
-  update_sync_note "$new_cli_ver" "$image_ver"
+  # 3. Full version block from the freshly baked CLI. Re-reads the
+  # KONRAD_VERSION_BAKED placeholder off disk so the CLI: line reflects
+  # what install-remote.sh just wrote, then do_version queries podman
+  # for the live image labels.
+  reread_baked_version
+  printf '\n'
+  do_version
 }
 
 do_rebuild() {
@@ -699,6 +832,7 @@ while [[ $# -gt 0 ]]; do
     --verbose)    KONRAD_DEBUG=1;   shift ;;
     --version)    ACTION="version"; shift ;;
     --update)     ACTION="update";  shift ;;
+    --pull-image) ACTION="pull-image"; shift ;;
     --rebuild)    ACTION="rebuild"; shift ;;
     --reset)      ACTION="reset";   shift ;;
     --uninstall)  ACTION="uninstall"; shift ;;
@@ -731,9 +865,10 @@ case "$ACTION" in
       do_run agent
     fi
     ;;
-  version)   do_version   ;;
-  update)    do_update    ;;
-  rebuild)   do_rebuild   ;;
+  version)    do_version    ;;
+  update)     do_update     ;;
+  pull-image) do_pull_image ;;
+  rebuild)    do_rebuild    ;;
   reset)     do_reset     ;;
   uninstall) do_uninstall ;;
   help)      do_help      ;;
