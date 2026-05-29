@@ -6,7 +6,6 @@ _Raw ideas land here. Promote into the appropriate tier after a refinement pass.
 
 - improve install/update: It should show the progress of image pulling. It should do --version at the end so the user sees which version is installed/pulled
 - find a way to make it easy for orgs to supply their own opencode.jsonc, e.g. with additional models. Maybe as another override instance?
-- should and could we limit daily builds to once (in the night) even when changes hit? i.e. 
 
 ## Tier 1 — alpha → beta
 
