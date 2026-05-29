@@ -146,7 +146,7 @@ require_image() {
   # Pull fetches a known-good image; local build recompiles every layer
   # and re-downloads model weights, so it's substantially slower. The
   # registry path is the default user experience.
-  info "image '$IMAGE_NAME' not found locally — pulling $REGISTRY_IMAGE…"
+  info "image '$IMAGE_NAME' not found locally — pulling ${REGISTRY_IMAGE}…"
   if podman pull "$REGISTRY_IMAGE" >/dev/null 2>&1; then
     podman tag "$REGISTRY_IMAGE" "$IMAGE_NAME"
     info "pulled and tagged as $IMAGE_NAME"
@@ -370,7 +370,7 @@ do_update() {
   require_podman
 
   # 1. Pull the image.
-  info "pulling $REGISTRY_IMAGE…"
+  info "pulling ${REGISTRY_IMAGE}…"
   if ! podman pull "$REGISTRY_IMAGE"; then
     die "registry pull failed (offline? registry unreachable?)"
   fi
@@ -399,7 +399,7 @@ do_update() {
     update_sync_note "$KONRAD_VERSION" "$image_ver"
     return 0
   fi
-  info "refreshing CLI from $INSTALL_REMOTE_URL…"
+  info "refreshing CLI from ${INSTALL_REMOTE_URL}…"
   local install_dir
   install_dir="$(dirname "$0")"
   # KONRAD_NO_PULL=1 tells the installer to skip its own image-pull step
