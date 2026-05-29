@@ -7,9 +7,13 @@
 #   curl -fsSL https://gitlab.git.nrw/jbauss2/konrad/-/raw/main/scripts/install-remote.sh | sh
 #
 # Knobs (env vars):
-#   KONRAD_INSTALL_DIR   target directory (default: $HOME/.local/bin)
-#   KONRAD_NO_PULL=1     skip the post-install `konrad --update` (CLI only)
-#   KONRAD_REF=main      git ref on gitlab.git.nrw/jbauss2/konrad to fetch from
+#   KONRAD_INSTALL_DIR     target directory (default: $HOME/.local/bin)
+#   KONRAD_NO_PULL=1       skip the post-install `konrad --update` (CLI only)
+#   KONRAD_QUIET_INSTALL=1 suppress play-by-play (fetching… / skip notices);
+#                          keep the one "installed …" confirmation. Set by
+#                          `konrad --update` since the caller already framed
+#                          the operation.
+#   KONRAD_REF=main        git ref on gitlab.git.nrw/jbauss2/konrad to fetch from
 #
 # Re-run any time to upgrade in place. Hacking on konrad itself? Clone
 # the repo and symlink bin/konrad as `konrad-dev` next to your stable
@@ -27,6 +31,10 @@ VERSION_URL="${BASE_URL}/VERSION"
 say()  { printf 'konrad-install: %s\n' "$*"; }
 warn() { printf 'konrad-install: warning: %s\n' "$*" >&2; }
 die()  { printf 'konrad-install: %s\n' "$*" >&2; exit 1; }
+# chatter() is for play-by-play that's useful in a standalone `curl|sh` run
+# but redundant when re-invoked from `konrad --update` (the caller already
+# said "refreshing CLI"). Honors KONRAD_QUIET_INSTALL=1.
+chatter() { [ "${KONRAD_QUIET_INSTALL:-0}" = "1" ] || say "$@"; }
 
 # --- Pick a download tool ----------------------------------------------------
 if command -v curl >/dev/null 2>&1; then
@@ -55,11 +63,11 @@ fi
 TARGET="${TARGET_DIR}/konrad"
 
 # --- Fetch VERSION + CLI -----------------------------------------------------
-say "fetching VERSION from $VERSION_URL"
+chatter "fetching VERSION from $VERSION_URL"
 VER=$(fetch "$VERSION_URL") || die "failed to fetch VERSION (network? wrong ref '$REF'?)"
 [ -n "$VER" ] || die "fetched empty VERSION; aborting."
 
-say "fetching CLI from $CLI_URL"
+chatter "fetching CLI from $CLI_URL"
 TMP=$(mktemp 2>/dev/null || mktemp -t konrad-install)
 trap 'rm -f "$TMP" "$TMP.baked"' EXIT INT TERM
 fetch "$CLI_URL" > "$TMP" || die "failed to fetch bin/konrad"
@@ -134,7 +142,7 @@ fi
 # in that case the caller already pulled and already prints --version, so
 # both steps are short-circuited.
 if [ "${KONRAD_NO_PULL:-0}" = "1" ]; then
-  say "skipping image pre-pull (KONRAD_NO_PULL=1). Run 'konrad --update' when ready."
+  chatter "skipping image pre-pull (KONRAD_NO_PULL=1). Run 'konrad --update' when ready."
   exit 0
 fi
 

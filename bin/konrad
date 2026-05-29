@@ -103,7 +103,7 @@ dbg() {
   printf 'konrad [debug +%ss]: %s\n' "$SECONDS" "$*" >&2
 }
 
-# --- Image-pull progress (manifest preflight + awk layer counter) ---
+# --- Image-pull progress + registry probes (manifest preflight + awk counter) ---
 #
 # Why this shape: podman doesn't expose byte-level pull progress anywhere
 # (libpod & docker-compat endpoints, events, debug log — all silent on bytes;
@@ -114,54 +114,61 @@ dbg() {
 # and fall back to bare `podman pull`. Whole flow is registry-agnostic in
 # shape but the token endpoint is ghcr.io-specific today (the only registry
 # konrad pulls from).
+#
+# The same primitives also power `--check-updates`: token + platform
+# manifest + config blob → `org.opencontainers.image.version` label, which
+# we compare against the locally-installed image to tell the user whether
+# a pull would change anything.
 
-# Fetch the layer count for the platform-specific manifest of $1.
-# Prints the count on stdout, or nothing on any failure / unknown registry.
-# Always returns 0 so callers can `total="$(manifest_total_layers ... )"`.
-manifest_total_layers() {
-  local image_ref="$1"
-  command -v jq   >/dev/null 2>&1 || return 0
-  command -v curl >/dev/null 2>&1 || return 0
-
-  # Parse <registry>/<repo>:<tag> (repo may contain slashes).
-  local tag repo_part registry repo
+# Split `<registry>/<repo>:<tag>` into three space-separated tokens on stdout.
+# Defaults `tag` to `latest`. Repo may contain slashes; tokens won't.
+_parse_image_ref() {
+  local image_ref="$1" tag repo_part
   case "$image_ref" in
-    *:*) tag="${image_ref##*:}";   repo_part="${image_ref%:*}" ;;
-    *)   tag="latest";             repo_part="$image_ref"      ;;
+    *:*) tag="${image_ref##*:}"; repo_part="${image_ref%:*}" ;;
+    *)   tag="latest";            repo_part="$image_ref"      ;;
   esac
-  registry="${repo_part%%/*}"
-  repo="${repo_part#*/}"
+  printf '%s %s %s' "${repo_part%%/*}" "${repo_part#*/}" "$tag"
+}
 
-  # Anonymous token (ghcr.io serves a free one for public repos).
-  local token_url token
+# Detect the target arch for podman pull. Podman's VM matches host arch on
+# both macOS and Linux, so `uname -m` on the host is the right answer.
+_pull_arch() {
+  case "$(uname -m)" in
+    x86_64|amd64)  printf 'amd64' ;;
+    aarch64|arm64) printf 'arm64' ;;
+    *)             printf 'amd64' ;;
+  esac
+}
+
+# Fetch an anonymous pull-scoped bearer token for the given registry/repo.
+# Echoes the token or returns silently empty. ghcr.io only today.
+_registry_anon_token() {
+  local registry="$1" repo="$2" url
   case "$registry" in
-    ghcr.io) token_url="https://ghcr.io/token?service=ghcr.io&scope=repository:${repo}:pull" ;;
+    ghcr.io) url="https://ghcr.io/token?service=ghcr.io&scope=repository:${repo}:pull" ;;
     *)       return 0 ;;
   esac
-  token="$(curl -fsS --max-time 5 "$token_url" 2>/dev/null \
-           | jq -r '.token // .access_token // empty' 2>/dev/null)"
-  [[ -z "$token" ]] && return 0
+  curl -fsS --max-time 5 "$url" 2>/dev/null \
+    | jq -r '.token // .access_token // empty' 2>/dev/null
+}
 
-  # Detect target arch (Podman's VM matches host arch on both macOS and Linux).
-  local arch
-  case "$(uname -m)" in
-    x86_64|amd64)   arch="amd64" ;;
-    aarch64|arm64)  arch="arm64" ;;
-    *)              arch="amd64" ;;
-  esac
-
-  local accept manifest media_type
+# Fetch the platform-specific image manifest JSON for ${registry}/${repo}:${tag}.
+# Echoes the JSON on stdout, or nothing on failure. Handles both single-
+# manifest and multi-arch manifest-list / OCI-index shapes.
+_registry_platform_manifest() {
+  local registry="$1" repo="$2" tag="$3" token="$4"
+  local arch accept manifest media_type platform_digest
+  arch="$(_pull_arch)"
   accept='application/vnd.docker.distribution.manifest.list.v2+json,application/vnd.oci.image.index.v1+json,application/vnd.docker.distribution.manifest.v2+json,application/vnd.oci.image.manifest.v1+json'
   manifest="$(curl -fsS --max-time 5 \
                 -H "Authorization: Bearer $token" \
                 -H "Accept: $accept" \
                 "https://${registry}/v2/${repo}/manifests/${tag}" 2>/dev/null)"
   [[ -z "$manifest" ]] && return 0
-
   media_type="$(printf '%s' "$manifest" | jq -r '.mediaType // empty' 2>/dev/null)"
   case "$media_type" in
     *manifest.list*|*image.index*)
-      local platform_digest platform_manifest
       platform_digest="$(printf '%s' "$manifest" \
         | jq -r --arg a "$arch" '
             .manifests[]
@@ -169,17 +176,54 @@ manifest_total_layers() {
                      and (.platform.os == "linux" or .platform.os == null))
             | .digest' 2>/dev/null | head -1)"
       [[ -z "$platform_digest" ]] && return 0
-      platform_manifest="$(curl -fsS --max-time 5 \
-                            -H "Authorization: Bearer $token" \
-                            -H "Accept: $accept" \
-                            "https://${registry}/v2/${repo}/manifests/${platform_digest}" 2>/dev/null)"
-      [[ -z "$platform_manifest" ]] && return 0
-      printf '%s' "$platform_manifest" | jq -r '.layers | length' 2>/dev/null
+      curl -fsS --max-time 5 \
+        -H "Authorization: Bearer $token" \
+        -H "Accept: $accept" \
+        "https://${registry}/v2/${repo}/manifests/${platform_digest}" 2>/dev/null
       ;;
     *)
-      printf '%s' "$manifest" | jq -r '.layers | length' 2>/dev/null
+      printf '%s' "$manifest"
       ;;
   esac
+}
+
+# Fetch the layer count for the platform-specific manifest of $1.
+# Prints the count on stdout, or nothing on any failure / unknown registry.
+# Always returns 0 so callers can `total="$(manifest_total_layers ... )"`.
+manifest_total_layers() {
+  command -v jq   >/dev/null 2>&1 || return 0
+  command -v curl >/dev/null 2>&1 || return 0
+  local registry repo tag token
+  read -r registry repo tag <<<"$(_parse_image_ref "$1")"
+  token="$(_registry_anon_token "$registry" "$repo")"
+  [[ -z "$token" ]] && return 0
+  _registry_platform_manifest "$registry" "$repo" "$tag" "$token" \
+    | jq -r '.layers | length' 2>/dev/null
+  return 0
+}
+
+# Fetch the `org.opencontainers.image.version` label from the registry's
+# platform-specific image config blob. Three HTTP calls (token, manifest,
+# config blob). Prints the label on stdout, or nothing on failure.
+# Always returns 0.
+registry_image_version() {
+  command -v jq   >/dev/null 2>&1 || return 0
+  command -v curl >/dev/null 2>&1 || return 0
+  local registry repo tag token pm config_digest
+  read -r registry repo tag <<<"$(_parse_image_ref "$1")"
+  token="$(_registry_anon_token "$registry" "$repo")"
+  [[ -z "$token" ]] && return 0
+  pm="$(_registry_platform_manifest "$registry" "$repo" "$tag" "$token")"
+  [[ -z "$pm" ]] && return 0
+  config_digest="$(printf '%s' "$pm" | jq -r '.config.digest // empty' 2>/dev/null)"
+  [[ -z "$config_digest" || "$config_digest" == "null" ]] && return 0
+  # -L follows redirects: GHCR (and most OCI registries) serve blobs by
+  # returning a 307 redirect to a CDN-signed URL. Manifest endpoints don't
+  # redirect, but `-L` is harmless there.
+  curl -fsSL --max-time 5 \
+    -H "Authorization: Bearer $token" \
+    "https://${registry}/v2/${repo}/blobs/${config_digest}" 2>/dev/null \
+    | jq -r '.config.Labels["org.opencontainers.image.version"] // empty' 2>/dev/null
   return 0
 }
 
@@ -205,30 +249,50 @@ pull_with_progress() {
   [[ -t 2 ]] && tty_mode=1
 
   # `2>&1` merges podman's stderr into the pipe (its progress lives there;
-  # the final image digest is on stdout — both pass through unchanged for
-  # any line that doesn't match the blob/manifest patterns). PIPESTATUS[0]
-  # captures podman's exit independent of awk; `|| rc=...` keeps `set -e`
-  # from aborting and grabs the value before any later command clobbers
-  # PIPESTATUS.
-  local rc=0
+  # the final image digest is on stdout — both pass through, then most lines
+  # get filtered by the awk). PIPESTATUS[0] captures podman's exit
+  # independent of awk; `|| rc=...` keeps `set -e` from aborting and grabs
+  # the value before any later command clobbers PIPESTATUS.
+  #
+  # Filtering rules (default quiet — pass everything in KONRAD_DEBUG=1):
+  #   - `^Copying blob sha256:`            → [N/M] counter (the show)
+  #   - `^Copying config sha256:`          → silent (config blob, not a layer)
+  #   - `^Trying to pull`                  → silent (we already said "pulling X")
+  #   - `^Getting image source signatures` → silent (boilerplate)
+  #   - `^Writing manifest to image dest…` → silent (boilerplate)
+  #   - `^Storing signatures`              → silent (boilerplate)
+  #   - `^[0-9a-f]{64}$`                   → silent (final image-ID hex digest)
+  #   - anything else                      → pass through (errors land here)
+  # Plus: any non-blob line in TTY mode prints a leading \n so a hanging
+  # \r-overwritten counter line is sealed before the next line draws —
+  # without this, "Copying config sha256:…" concatenates onto the blob line.
+  local rc=0 verbose=0
+  [[ "$KONRAD_DEBUG" == "1" ]] && verbose=1
   podman pull "$image_ref" 2>&1 \
-    | awk -v M="$total" -v tty="$tty_mode" '
+    | awk -v M="$total" -v tty="$tty_mode" -v verbose="$verbose" '
+        function seal() {
+          if (in_run == 1 && tty == 1) { printf "\n"; fflush(); in_run = 0 }
+        }
         /^Copying blob sha256:/ {
           n++; if (n > M) n = M
           if (tty == 1) {
             printf "\r  [%d/%d] %s\033[K", n, M, $0
             fflush()
+            in_run = 1
           } else {
             printf "  [%d/%d] %s\n", n, M, $0
           }
           next
         }
-        /^Writing manifest to image destination/ {
-          if (tty == 1) { printf "\n"; fflush() }
-          print
-          next
-        }
-        { print }
+        # Boilerplate noise — swallow unless KONRAD_DEBUG=1.
+        /^Copying config sha256:/             { if (verbose) { seal(); print } next }
+        /^Trying to pull/                     { if (verbose) { seal(); print } next }
+        /^Getting image source signatures/    { if (verbose) { seal(); print } next }
+        /^Writing manifest to image destination/ { if (verbose) { seal(); print } next }
+        /^Storing signatures/                 { if (verbose) { seal(); print } next }
+        /^[0-9a-f]{64}$/                      { if (verbose) { seal(); print } next }
+        { seal(); print }
+        END { seal() }
       ' >&2 || rc=${PIPESTATUS[0]}
   return "$rc"
 }
@@ -470,7 +534,62 @@ do_version() {
   # an image rebuild (the workflow's paths: filter excludes VERSION), so a
   # patch-line drift between CLI and image labels is normal and harmless —
   # the contract between them is thin (env vars + mount paths + `opencode`
-  # entrypoint). Both numbers are shown; the user judges.
+  # entrypoint). For "is there anything new in the registry?", that's what
+  # `konrad --check-updates` answers.
+}
+
+# Probe the registry (CLI source + image label) and report whether an update
+# is available. Two network calls (gitlab raw + ghcr manifest+config), both
+# capped at 5s via curl --max-time. Offline doesn't break the command — the
+# verdict degrades to "couldn't reach …" and exit stays 0.
+do_check_updates() {
+  printf 'konrad — checking for updates…\n'
+  printf '\n'
+
+  local cli_remote=""
+  if command -v curl >/dev/null 2>&1; then
+    cli_remote="$(curl -fsS --max-time 5 \
+                    'https://gitlab.git.nrw/jbauss2/konrad/-/raw/main/VERSION' 2>/dev/null \
+                  | head -1 | tr -d '[:space:]')"
+  fi
+
+  local image_local_ver="" image_remote_ver=""
+  if command -v podman >/dev/null 2>&1 \
+     && podman info >/dev/null 2>&1 \
+     && podman image exists "$IMAGE_NAME" 2>/dev/null; then
+    image_local_ver="$(podman image inspect "$IMAGE_NAME" \
+                         --format '{{index .Labels "org.opencontainers.image.version"}}' 2>/dev/null)"
+  fi
+  image_remote_ver="$(registry_image_version "$REGISTRY_IMAGE" 2>/dev/null || true)"
+
+  printf '  CLI:    %s (local) → %s (registry)\n' \
+    "$KONRAD_VERSION" "${cli_remote:-unreachable}"
+  printf '  image:  %s (local) → %s (registry)\n' \
+    "${image_local_ver:-not pulled}" "${image_remote_ver:-unreachable}"
+  printf '\n'
+
+  # "Drift" only counts as actionable when *both* sides of a comparison are
+  # known (i.e. not "dev", not "unreachable", not "not pulled"). Anything
+  # ambiguous → "partial check" verdict.
+  local cli_drift=0 image_drift=0 cli_known=0 image_known=0
+  if [[ -n "$cli_remote" && "$KONRAD_VERSION" != "dev" ]]; then
+    cli_known=1
+    [[ "$KONRAD_VERSION" != "$cli_remote" ]] && cli_drift=1
+  fi
+  if [[ -n "$image_remote_ver" && -n "$image_local_ver" ]]; then
+    image_known=1
+    [[ "$image_local_ver" != "$image_remote_ver" ]] && image_drift=1
+  fi
+
+  if (( cli_drift || image_drift )); then
+    printf 'Update available — run: konrad --update\n'
+    return 0
+  fi
+  if (( cli_known && image_known )); then
+    printf 'Up to date.\n'
+    return 0
+  fi
+  printf "Couldn't reach all sources — partial check. Try again when online.\n"
 }
 
 do_pull_image() {
@@ -528,19 +647,21 @@ do_update() {
     do_version
     return 0
   fi
-  info "refreshing CLI from ${INSTALL_REMOTE_URL}…"
+  info "refreshing CLI…"
   local install_dir
   install_dir="$(dirname "$0")"
-  # KONRAD_NO_PULL=1 tells the installer to skip its own image-pull step
-  # (we just did one) and its own --version display (we print one below
-  # against the fresh on-disk version). KONRAD_INSTALL_DIR pins the target
-  # so the refresh lands at the same path the user originally installed to.
+  # Env-var prefix on the *right* side of the pipe — `VAR=x curl … | sh` only
+  # sets the var for curl, not for the `sh` consuming the pipe (env-prefix
+  # applies to one command, not to the whole pipeline). The installer needs
+  # KONRAD_NO_PULL (skip the second image pull) and KONRAD_INSTALL_DIR (land
+  # at the same path) and KONRAD_QUIET_INSTALL (we already said "refreshing
+  # CLI" — its play-by-play would be redundant on this path).
   if command -v curl >/dev/null 2>&1; then
-    KONRAD_NO_PULL=1 KONRAD_INSTALL_DIR="$install_dir" \
-      curl -fsSL "$INSTALL_REMOTE_URL" | sh
+    curl -fsSL "$INSTALL_REMOTE_URL" \
+      | KONRAD_NO_PULL=1 KONRAD_INSTALL_DIR="$install_dir" KONRAD_QUIET_INSTALL=1 sh
   else
-    KONRAD_NO_PULL=1 KONRAD_INSTALL_DIR="$install_dir" \
-      wget -qO- "$INSTALL_REMOTE_URL" | sh
+    wget -qO- "$INSTALL_REMOTE_URL" \
+      | KONRAD_NO_PULL=1 KONRAD_INSTALL_DIR="$install_dir" KONRAD_QUIET_INSTALL=1 sh
   fi
 
   # 3. Full version block from the freshly baked CLI. Re-reads the
@@ -761,7 +882,8 @@ so anything you're testing stays out of the way of the stable konrad next to it 
     cross_pointer="Your stable user CLI 'konrad' is unaffected by anything here. It lives next to
 this binary on PATH and pulls konrad:latest from ghcr.io ('konrad --update' to refresh)."
   else
-    refresh_flag="  --update              Pull the latest image AND refresh the CLI itself."
+    refresh_flag="  --update              Pull the latest image AND refresh the CLI itself.
+  --check-updates       Compare local vs registry; print 'up to date' or 'update available'."
     variant_blurb="konrad — sandboxed opencode in a Podman container."
     cross_pointer="Working on konrad itself? Install the contributor variant 'konrad-dev'
 alongside this stable CLI — see CONTRIBUTING.md."
@@ -829,6 +951,7 @@ while [[ $# -gt 0 ]]; do
     --verbose)    KONRAD_DEBUG=1;   shift ;;
     --version)    ACTION="version"; shift ;;
     --update)     ACTION="update";  shift ;;
+    --check-updates) ACTION="check-updates"; shift ;;
     --pull-image) ACTION="pull-image"; shift ;;
     --rebuild)    ACTION="rebuild"; shift ;;
     --reset)      ACTION="reset";   shift ;;
@@ -862,9 +985,10 @@ case "$ACTION" in
       do_run agent
     fi
     ;;
-  version)    do_version    ;;
-  update)     do_update     ;;
-  pull-image) do_pull_image ;;
+  version)       do_version       ;;
+  update)        do_update        ;;
+  check-updates) do_check_updates ;;
+  pull-image)    do_pull_image    ;;
   rebuild)    do_rebuild    ;;
   reset)     do_reset     ;;
   uninstall) do_uninstall ;;
