@@ -34,7 +34,7 @@ to identical digests.
 | Base image (`node:26-trixie-slim`) | `base.lock` | Docker Registry HTTP API v2 | Full ref: `name:tag@sha256:…`. Major-bump the `:tag` part by hand (e.g., `node:26 → node:27`); the bot resolves the new digest on its next run. |
 | `uv` source image (`ghcr.io/astral-sh/uv:latest`) | `uv.lock` | Same | Same shape as `base.lock`. |
 | Python deps (`docling-slim[standard]`, `pypdf`, `pdfplumber`, `pdf2image`, `reportlab`, `openpyxl`, `pandas`, `onnxruntime`) | `python.lock` from `python.spec` | `uv pip compile --torch-backend=cpu --python-version=3.13` | |
-| `opencode-ai`, `npm` | `npm.lock` | `npm view <pkg> version` | |
+| `opencode-ai` | `npm.lock` | `npm view opencode-ai version` | npm itself is whatever the base image ships — `base.lock` already pins the base by digest, so pinning npm here too was belt-and-suspenders. |
 | `typst` | `typst.lock` | GitHub releases API for `typst/typst` | |
 
 The win: a typical "only opencode-ai bumped" day rebuilds only the npm layer

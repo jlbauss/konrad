@@ -7,7 +7,8 @@
 #        - base    (locks/base.lock: full ref node:26-trixie-slim@sha256:…)
 #        - uv      (locks/uv.lock:  full ref ghcr.io/astral-sh/uv@sha256:…)
 #        - python  (locks/python.lock from locks/python.spec)
-#        - npm     (locks/npm.lock: opencode-ai + npm)
+#        - npm     (locks/npm.lock: opencode-ai; npm itself comes from
+#                   the base image, already pinned by base.lock)
 #        - typst   (locks/typst.lock: pinned version string)
 #      Each lock keys exactly one Dockerfile layer (or the FROM chain for
 #      base); Docker's layer cache reuses the layer when the lock didn't
@@ -232,13 +233,16 @@ WORKDIR /workspace
 
 # ── npm: install opencode ────────────────────────────────────────────────────
 # Installed as root into /home/node/.npm-global so the runtime user can't
-# mutate it. Versions come from locks/npm.lock so this layer caches when
-# the lock is unchanged. The daily resolve-locks workflow re-queries the
-# npm registry and opens a PR when opencode-ai or npm itself bumps.
+# mutate it. The opencode-ai version comes from locks/npm.lock so this
+# layer caches when the lock is unchanged. npm itself is whatever the
+# base image ships — base.lock already pins the base image by digest,
+# so the bundled npm is deterministic; pinning it again here was
+# belt-and-suspenders, and every weekly npm release used to bust this
+# layer's cache for no real benefit. The daily resolve-locks workflow
+# re-queries the npm registry and opens a PR when opencode-ai bumps.
 COPY locks/npm.lock /tmp/npm.lock
-RUN NPM_VERSION="$(jq -r '.npm' /tmp/npm.lock)" \
-    && OPENCODE_VERSION="$(jq -r '."opencode-ai"' /tmp/npm.lock)" \
-    && npm install -g "npm@${NPM_VERSION}" "opencode-ai@${OPENCODE_VERSION}" \
+RUN OPENCODE_VERSION="$(jq -r '."opencode-ai"' /tmp/npm.lock)" \
+    && npm install -g "opencode-ai@${OPENCODE_VERSION}" \
     && npm cache clean --force \
     && rm /tmp/npm.lock
 
