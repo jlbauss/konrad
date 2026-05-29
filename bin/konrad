@@ -228,11 +228,11 @@ registry_image_version() {
 }
 
 # Run `podman pull <image>` with an aggregated [N/M] layer counter on stderr.
-# TTY-aware: when stderr is a TTY the counter overwrites a single line via
-# \r; otherwise per-line for CI/logged contexts. Falls back to a bare pull
-# (no counter) when the manifest preflight returns nothing — keeping the
-# happy path moving when offline-resolution failed, jq is missing, or a
-# non-ghcr registry was passed.
+# Single-line `\r`-overwrite shape: each blob redraws one line in place,
+# sealed with a `\n` at the end. Falls back to a bare pull (no counter)
+# when the manifest preflight returns nothing — keeping the happy path
+# moving when offline-resolution failed, jq is missing, or a non-ghcr
+# registry was passed.
 pull_with_progress() {
   local image_ref="$1"
   local total
@@ -245,55 +245,65 @@ pull_with_progress() {
     return $?
   fi
 
-  local tty_mode=0
-  [[ -t 2 ]] && tty_mode=1
-
-  # `2>&1` merges podman's stderr into the pipe (its progress lives there;
-  # the final image digest is on stdout — both pass through, then most lines
-  # get filtered by the awk). PIPESTATUS[0] captures podman's exit
-  # independent of awk; `|| rc=...` keeps `set -e` from aborting and grabs
-  # the value before any later command clobbers PIPESTATUS.
+  # Why a bash `while read` loop instead of awk: the previous awk wrapper
+  # used `\r` + `\033[K` for in-place overwrite, but on at least one real
+  # macOS Terminal + fish setup the counter rendered as 23 stacked lines
+  # instead of one updating line. Most likely cause is awk-side stdio
+  # buffering — BSD awk on macOS line-buffers stdout when it sees a TTY,
+  # and a `printf` without `\n` doesn't trigger that flush, while
+  # `fflush()` on a `>&2`-redirected fd isn't reliably reaching the
+  # underlying terminal synchronously. bash's `printf` is a builtin —
+  # writes go straight to fd2, which libc treats as unbuffered by default
+  # — so the bytes hit the terminal in the order and timing the terminal
+  # needs to interpret `\r` correctly.
   #
-  # Filtering rules (default quiet — pass everything in KONRAD_DEBUG=1):
-  #   - `^Copying blob sha256:`            → [N/M] counter (the show)
-  #   - `^Copying config sha256:`          → silent (config blob, not a layer)
-  #   - `^Trying to pull`                  → silent (we already said "pulling X")
-  #   - `^Getting image source signatures` → silent (boilerplate)
-  #   - `^Writing manifest to image dest…` → silent (boilerplate)
-  #   - `^Storing signatures`              → silent (boilerplate)
-  #   - `^[0-9a-f]{64}$`                   → silent (final image-ID hex digest)
-  #   - anything else                      → pass through (errors land here)
-  # Plus: any non-blob line in TTY mode prints a leading \n so a hanging
-  # \r-overwritten counter line is sealed before the next line draws —
-  # without this, "Copying config sha256:…" concatenates onto the blob line.
+  # `2>&1` merges podman's stderr (progress lives there) and stdout (final
+  # image digest) into the pipe. The brace block reads line-by-line. After
+  # the pipe closes, `|| rc=${PIPESTATUS[0]}` captures podman's exit code
+  # (PIPESTATUS[0], evaluated before any later command clobbers it; the
+  # `||` keeps `set -e` from aborting on a non-zero pull). Note that the
+  # brace block runs in a subshell (right side of a pipe), so `$n` doesn't
+  # escape — that's why the seal `\n` is inside the brace, not after.
+  #
+  # Filtering (default quiet — pass everything in KONRAD_DEBUG=1):
+  #   - `Copying blob sha256:` → counter (the show)
+  #   - `Copying config sha256:`, `Trying to pull`, `Getting image source
+  #     signatures`, `Writing manifest …`, `Storing signatures`, the bare
+  #     64-hex final image-ID → swallowed
+  #   - everything else → pass through (errors land here)
   local rc=0 verbose=0
   [[ "$KONRAD_DEBUG" == "1" ]] && verbose=1
-  podman pull "$image_ref" 2>&1 \
-    | awk -v M="$total" -v tty="$tty_mode" -v verbose="$verbose" '
-        function seal() {
-          if (in_run == 1 && tty == 1) { printf "\n"; fflush(); in_run = 0 }
-        }
-        /^Copying blob sha256:/ {
-          n++; if (n > M) n = M
-          if (tty == 1) {
-            printf "\r  [%d/%d] %s\033[K", n, M, $0
-            fflush()
-            in_run = 1
-          } else {
-            printf "  [%d/%d] %s\n", n, M, $0
-          }
-          next
-        }
-        # Boilerplate noise — swallow unless KONRAD_DEBUG=1.
-        /^Copying config sha256:/             { if (verbose) { seal(); print } next }
-        /^Trying to pull/                     { if (verbose) { seal(); print } next }
-        /^Getting image source signatures/    { if (verbose) { seal(); print } next }
-        /^Writing manifest to image destination/ { if (verbose) { seal(); print } next }
-        /^Storing signatures/                 { if (verbose) { seal(); print } next }
-        /^[0-9a-f]{64}$/                      { if (verbose) { seal(); print } next }
-        { seal(); print }
-        END { seal() }
-      ' >&2 || rc=${PIPESTATUS[0]}
+  podman pull "$image_ref" 2>&1 | {
+    n=0
+    while IFS= read -r line; do
+      case "$line" in
+        "Copying blob sha256:"*)
+          ((n+=1))
+          if (( n > total )); then n=$total; fi
+          if (( verbose )); then
+            printf '  [%d/%d] %s\n' "$n" "$total" "$line" >&2
+          else
+            printf '\r  [%d/%d] %s\033[K' "$n" "$total" "$line" >&2
+          fi
+          ;;
+        "Copying config sha256:"*|\
+        "Trying to pull"*|\
+        "Getting image source signatures"|\
+        "Writing manifest to image destination"|\
+        "Storing signatures")
+          if (( verbose )); then printf '%s\n' "$line" >&2; fi
+          ;;
+        *)
+          if [[ "$line" =~ ^[0-9a-f]{64}$ ]]; then
+            if (( verbose )); then printf '%s\n' "$line" >&2; fi
+          else
+            printf '%s\n' "$line" >&2
+          fi
+          ;;
+      esac
+    done
+    if (( n > 0 )) && (( verbose == 0 )); then printf '\n' >&2; fi
+  } || rc=${PIPESTATUS[0]}
   return "$rc"
 }
 
@@ -587,6 +597,13 @@ do_check_updates() {
   fi
   if (( cli_known && image_known )); then
     printf 'Up to date.\n'
+    # If CLI and image labels differ but both match the registry, the user
+    # is current — just sitting on the by-design drift from CLI-only
+    # patches. One line of context so it doesn't read as a problem.
+    if [[ -n "$image_local_ver" && "$KONRAD_VERSION" != "dev" \
+          && "$KONRAD_VERSION" != "$image_local_ver" ]]; then
+      printf '  (CLI patches alone do not trigger an image rebuild — drift is by design.)\n'
+    fi
     return 0
   fi
   printf "Couldn't reach all sources — partial check. Try again when online.\n"
@@ -638,13 +655,13 @@ do_update() {
   if [[ -L "$0" ]]; then
     info "CLI is a symlink — update with 'git pull' inside the checkout it points at."
     printf '\n'
-    do_version
+    do_check_updates
     return 0
   fi
   if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
     warn "neither curl nor wget available; CLI was not refreshed."
     printf '\n'
-    do_version
+    do_check_updates
     return 0
   fi
   info "refreshing CLI…"
@@ -664,13 +681,17 @@ do_update() {
       | KONRAD_NO_PULL=1 KONRAD_INSTALL_DIR="$install_dir" KONRAD_QUIET_INSTALL=1 sh
   fi
 
-  # 3. Full version block from the freshly baked CLI. Re-reads the
+  # 3. Registry comparison from the freshly baked CLI. Re-reads the
   # KONRAD_VERSION_BAKED placeholder off disk so the CLI: line reflects
-  # what install-remote.sh just wrote, then do_version queries podman
-  # for the live image labels.
+  # what install-remote.sh just wrote, then do_check_updates does the
+  # local-vs-registry probe. We replace what used to be do_version here:
+  # right after --update, the comparison view + "Up to date." verdict is
+  # more useful than the standalone digest/rev forensics (still available
+  # via `konrad --version`), and it directly answers the "why is image
+  # older than CLI?" question that the version block alone leaves open.
   reread_baked_version
   printf '\n'
-  do_version
+  do_check_updates
 }
 
 do_rebuild() {
