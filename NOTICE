@@ -42,6 +42,35 @@ pdf (PDF skill — image/opencode/skills/pdf/)
         Copyright (c) docling-project
         MIT License
 
+image-editing (image-editing skill — image/opencode/skills/image-editing/)
+    The skill and its scripts/image_edit.py are vendored from
+    Image-Editing-Claude-Skill, adapted for konrad (invocation switched
+    from `uv run` to the baked /opt/venv, plus a quality-assurance step):
+        https://github.com/jlouage/Image-Editing-Claude-Skill
+        Copyright (c) jlouage
+        MIT License
+
+grill-me (grill-me skill — image/opencode/skills/grill-me/)
+    Adapted from Matt Pocock's skills (productivity/grill-me) — the
+    general-purpose (non-coding) variant from the author's write-up:
+        https://github.com/mattpocock/skills
+        Copyright (c) 2026 Matt Pocock
+        MIT License
+
+write-a-skill (write-a-skill skill — image/opencode/skills/write-a-skill/)
+    Vendored from Matt Pocock's skills (productivity/write-a-skill), with a
+    short konrad-specific note prepended; the rest is upstream:
+        https://github.com/mattpocock/skills
+        Copyright (c) 2026 Matt Pocock
+        MIT License
+
+frontend-design (frontend-design skill — image/opencode/skills/frontend-design/)
+    Vendored verbatim from anthropics/skills (skills/frontend-design); the
+    Apache-2.0 license text ships alongside the skill as LICENSE.txt:
+        https://github.com/anthropics/skills
+        Copyright (c) Anthropic
+        Apache License 2.0
+
 OpenAgentsControl
     https://github.com/darrenhinde/OpenAgentsControl
     Copyright (c) 2025 Darren Hinde
