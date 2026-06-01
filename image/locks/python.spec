@@ -10,3 +10,4 @@ pdfplumber
 pdf2image
 reportlab
 onnxruntime
+pillow-heif

@@ -36,7 +36,9 @@ Two Debian binaries are renamed; symlinks under canonical names exist:
 
 Active by default. Top-level deps: `docling-slim[standard]`, `pypdf`,
 `pdfplumber`, `pdf2image`, `reportlab`, `openpyxl`, `pandas`,
-`onnxruntime`. Transitives include the usual suspects (`numpy`, `scipy`,
+`onnxruntime`, `pillow-heif` (HEIC/HEIF support for the image-editing
+skill — `pillow` and `numpy` come along, used directly by that skill's
+CLI). Transitives include the usual suspects (`numpy`, `scipy`,
 `pillow`, `requests`, `httpx`, `beautifulsoup4`, `lxml`, `pydantic`,
 `rich`, `huggingface-hub`, `transformers`, `torch` cpu, `python-docx`,
 `python-pptx`, `xlsxwriter`, `pypdfium2`, `pdfminer.six`). Full pinned
