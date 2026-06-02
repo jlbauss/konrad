@@ -1,0 +1,36 @@
+// Example org-layer opencode config.
+//
+// This file lands at ~/.config/konrad/org/opencode.jsonc and is merged
+// BETWEEN konrad's baked defaults and each user's ~/.config/konrad/user/
+// override (precedence: baked < org < user). Objects merge recursively,
+// arrays replace, later layers win — so anything here is a default a user
+// can still override or add to.
+//
+// Adapt the provider endpoint and model list to your organization.
+{
+  "$schema": "https://opencode.ai/config.json",
+
+  // An internal, org-hosted inference gateway, pre-wired so users don't each
+  // have to configure it. openai-compatible is the common shape; swap the npm
+  // package / options for whatever your gateway speaks.
+  "provider": {
+    "acme-internal": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "ACME internal gateway",
+      "options": {
+        // Point this at your real endpoint. {env:VAR} placeholders resolve
+        // from the host environment if your gateway needs a key/token.
+        "baseURL": "https://llm.acme.example/v1"
+        // "apiKey": "{env:ACME_LLM_TOKEN}"
+      },
+      // Declare the models your org has actually deployed. konrad ships no
+      // model lists by design — this is where an org fills them in for its fleet.
+      "models": {
+        "acme-qwen3-coder": { "name": "ACME Qwen3 Coder" }
+      }
+    }
+  }
+
+  // Note: no top-level "model" key. Let opencode keep persisting each user's
+  // last choice (konrad's design) rather than forcing one fleet-wide.
+}
