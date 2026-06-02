@@ -1,0 +1,39 @@
+{
+  "permissions": {
+    "defaultMode": "acceptEdits",
+    "allow": [
+      "Bash(python3:*)",
+      "Bash(uv:*)",
+      "Bash(node:*)",
+      "Bash(shellcheck:*)",
+      "Bash(yamllint:*)",
+      "Bash(bash -n:*)",
+      "Bash(git:*)",
+      "Bash(podman:*)",
+      "Bash(command -v:*)",
+      "Bash(chmod:*)",
+      "Bash(apt list:*)",
+      "Skill(skill-creator:*)",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:api.github.com)",
+      "WebFetch(domain:deepwiki.com)",
+      "WebFetch(domain:opencode.ai)",
+      "Read(//tmp/**)",
+      "Read(//workspace/**)"
+    ],
+    "deny": [
+      "Bash(git push:*)",
+      "Read(.env)",
+      "Read(**/.env)",
+      "Read(**/.env.*)",
+      "Read(~/.ssh/**)",
+      "Read(~/.aws/**)",
+      "Read(~/.config/gh/**)"
+    ],
+    "additionalDirectories": [
+      "/var/home/jan-luca/Projects/konrad/image/opencode/skills/do-it-manually"
+    ]
+  }
+}
