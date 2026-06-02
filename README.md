@@ -4,10 +4,10 @@
 
 **An open-source AI coworker that runs on your machine and your models — so even your most sensitive files stay yours.**
 
-![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)
-![version](https://img.shields.io/badge/version-0.2-informational)
-![status](https://img.shields.io/badge/status-alpha-orange)
-![image](https://img.shields.io/badge/image-ghcr.io%2Fjlbauss%2Fkonrad-blue)
+[![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
+[![version](https://img.shields.io/badge/dynamic/yaml?url=https://gitlab.git.nrw/jbauss2/konrad/-/raw/main/VERSION&query=$&label=version&color=informational)](ROADMAP.md#implemented)
+[![status](https://img.shields.io/badge/status-alpha-orange)](#status)
+[![image](https://img.shields.io/badge/image-ghcr.io%2Fjlbauss%2Fkonrad-blue)](https://github.com/jlbauss/konrad/pkgs/container/konrad)
 
 </div>
 
