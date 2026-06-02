@@ -162,7 +162,10 @@ RUN ln -sf /usr/bin/fdfind /usr/local/bin/fd \
 #
 # Per-family attribution lives in image/fonts/konrad/<family>/LICENSE.txt;
 # see NOTICE for the consolidated list.
-COPY fonts/konrad/ /usr/local/share/fonts/konrad/
+# --chmod=0755: see the konrad-entrypoint COPY below — fontconfig runs as the
+# non-root node user and must be able to traverse these dirs and read the .ttf
+# files, so we can't rely on the build context preserving their mode.
+COPY --chmod=0755 fonts/konrad/ /usr/local/share/fonts/konrad/
 RUN fc-cache -f
 
 # Install Typst — version comes from locks/typst.lock so layer caches
@@ -221,9 +224,15 @@ RUN install -d -o node -g node \
 # Ordered rarest-to-change first so that editing these files invalidates as
 # few downstream layers as possible. environment.md is NOT here — it lives
 # in opencode/ below so edits to it never touch the npm layer.
-COPY merge-config.js   /etc/konrad/merge-config.js
-COPY entrypoint.sh     /usr/local/bin/konrad-entrypoint
-COPY konrad-defaults/  /etc/konrad/
+COPY --chmod=0644 merge-config.js /etc/konrad/merge-config.js
+# --chmod=0755 is load-bearing: this file is the ENTRYPOINT, so crun must be
+# able to exec it. Plain COPY inherits the build-context mode, which is not
+# preserved reliably when the context ships to a remote builder (e.g. the
+# podman-machine VM on macOS) — a dropped +x bit there bakes a non-executable
+# entrypoint and the container dies with "is not executable: OCI permission
+# denied". Setting the mode explicitly removes that dependency entirely.
+COPY --chmod=0755 entrypoint.sh /usr/local/bin/konrad-entrypoint
+COPY --chmod=0755 konrad-defaults/ /etc/konrad/
 
 ENV NODE_OPTIONS=--max-old-space-size=4096 \
     PATH="/opt/venv/bin:/home/node/.npm-global/bin:/home/node/.local/bin:$PATH" \
