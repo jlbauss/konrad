@@ -21,6 +21,17 @@ plugin was dropped, the deep-merge is a tiny self-contained step rather than a
 framework, and the whole pinning/rebuild story is delegated to a bot plus
 upstream registries (see below).
 
+The same principle has a second face: **simple, logical, and smooth beats
+clever.** Konrad should stay tidy and resist sprawl — a solution that *feels*
+illogical or surprising (e.g. the runtime user not having write access
+everywhere in its own home) is treated as a smell, not a quirk to live with,
+because today's quiet workaround is tomorrow's unexpected-consequence. Prefer
+the obvious shape over the ingenious one; when an accommodation starts to feel
+like whack-a-mole, that's the signal to step back and fix the structural cause
+rather than add another patch. Accumulating complexity is debt to be paid down
+deliberately, not a tax to keep paying — periodic cleanliness passes are part
+of the maintenance story, not separate from it.
+
 ## The artifact and the runtime
 
 - **Podman, not Docker.** Open-source, free for commercial use, ergonomic on
