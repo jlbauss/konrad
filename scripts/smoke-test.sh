@@ -139,5 +139,86 @@ grep -qi smoke /tmp/out/smoke.md
 ' || fail "docling round-trip failed"
 pass "docling extracted a generated PDF"
 
+# --- 8. Org config layer: entrypoint composes baked < org < user ---
+# Unlike the checks above, this RUNS the real entrypoint (not --entrypoint "")
+# with org/ and user/ layers bind-mounted, then inspects the composed config.
+# /workspace is baked node-owned, so the entrypoint's .agent bootstrap works
+# without a workspace mount. ':ro,z' relabels for SELinux hosts (Fedora local
+# podman) and is accepted/ignored by docker in CI.
+info "org config layer (entrypoint compose)"
+ORG_TMP="$(mktemp -d)"
+USER_TMP="$(mktemp -d)"
+cleanup_org() { rm -rf "$ORG_TMP" "$USER_TMP"; }
+trap cleanup_org EXIT
+# Org layer: an internal provider + declared model, an AGENTS.md, and a skill.
+cat > "$ORG_TMP/opencode.jsonc" <<'JSON'
+{ "provider": { "acme": { "npm": "@ai-sdk/openai-compatible", "name": "ACME (org)", "models": { "m1": { "name": "M1" } } } } }
+JSON
+printf '# org rules\n' > "$ORG_TMP/AGENTS.md"
+mkdir -p "$ORG_TMP/skills/house-style"
+printf -- '---\nname: house-style\ndescription: example\n---\n# House\n' \
+  > "$ORG_TMP/skills/house-style/SKILL.md"
+# User layer: override the org provider's display name — the user must win.
+cat > "$USER_TMP/opencode.jsonc" <<'JSON'
+{ "provider": { "acme": { "name": "ACME (user override)" } } }
+JSON
+# mktemp -d makes dirs 0700. The smoke test doesn't use --userns=keep-id (it
+# must also run under docker in CI), so the container's `node` uid isn't the
+# owner of these host dirs and couldn't traverse 0700. Open them up so the
+# bind mounts are readable regardless of uid mapping (',z' below handles
+# SELinux separately). Real konrad doesn't need this — keep-id maps the host
+# user to node so its own ~/.config/konrad files are readable as-is.
+chmod -R a+rX "$ORG_TMP" "$USER_TMP"
+# The in-container assertions are a quoted heredoc fed to `bash -s` on stdin
+# (-i keeps stdin open) — quoted so the $cfg / $(...) below are the container
+# shell's, not this script's.
+"$ENGINE" run --rm -i \
+  -v "$ORG_TMP:/home/node/.config/konrad/org:ro,z" \
+  -v "$USER_TMP:/home/node/.config/konrad/user:ro,z" \
+  "$IMAGE" bash -s <<'CONTAINER' || fail "org-layer compose/precedence/instructions/skill assertion failed"
+set -e
+cfg=/home/node/.config/opencode/opencode.jsonc
+# org provider + model merged in
+jq -e '.provider.acme.models.m1' "$cfg" >/dev/null
+# baked default survived the merge (proves the fold, not a clobber)
+jq -e '.provider.lmstudio' "$cfg" >/dev/null
+# USER precedence: user override of the name wins over org
+[ "$(jq -r '.provider.acme.name' "$cfg")" = "ACME (user override)" ]
+# org AGENTS.md appended to .instructions (the system channel)
+jq -e '.instructions | index("/home/node/.config/konrad/org/AGENTS.md")' "$cfg" >/dev/null
+# org skill copied into the opencode skills dir
+test -f /home/node/.config/opencode/skills/house-style/SKILL.md
+CONTAINER
+pass "org layer merges under user precedence; instructions append; skill loads"
+
+# --- 9. Host-side: flat → user/ config migration (bin/konrad) ---
+# Migration lives in bin/konrad (host CLI), not the image. Source it with the
+# KONRAD_SOURCE_ONLY=1 test seam so migrate_flat_config runs in isolation
+# against a throwaway $HOME.
+info "config migration (host-side)"
+SMOKE_REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+if [[ -f "$SMOKE_REPO_ROOT/bin/konrad" ]]; then
+  MIG_HOME="$(mktemp -d)"
+  mkdir -p "$MIG_HOME/.config/konrad/agents"
+  printf '{}\n'      > "$MIG_HOME/.config/konrad/opencode.jsonc"
+  printf '# rules\n' > "$MIG_HOME/.config/konrad/AGENTS.md"
+  # shellcheck source=/dev/null
+  ( HOME="$MIG_HOME" KONRAD_SOURCE_ONLY=1 . "$SMOKE_REPO_ROOT/bin/konrad"
+    set +eu; migrate_flat_config >/dev/null 2>&1 )
+  test -f "$MIG_HOME/.config/konrad/user/opencode.jsonc" || fail "migration: opencode.jsonc not moved into user/"
+  test -d "$MIG_HOME/.config/konrad/user/agents"         || fail "migration: agents/ not moved into user/"
+  test -f "$MIG_HOME/.config/konrad/user/AGENTS.md"      || fail "migration: AGENTS.md not moved into user/"
+  test ! -e "$MIG_HOME/.config/konrad/opencode.jsonc"    || fail "migration: flat opencode.jsonc still present after move"
+  # Idempotent: a second run (user/ now exists) must no-op without error.
+  # shellcheck source=/dev/null
+  ( HOME="$MIG_HOME" KONRAD_SOURCE_ONLY=1 . "$SMOKE_REPO_ROOT/bin/konrad"
+    set +eu; migrate_flat_config >/dev/null 2>&1 )
+  test -f "$MIG_HOME/.config/konrad/user/opencode.jsonc" || fail "migration: not idempotent"
+  rm -rf "$MIG_HOME"
+  pass "flat config migrated into user/ (idempotent)"
+else
+  printf '  \033[33mSKIP\033[0m  config migration (bin/konrad not found next to smoke-test.sh)\n'
+fi
+
 # --- All clear ---
 printf '\n\033[32mall checks passed for %s\033[0m\n' "$IMAGE"
