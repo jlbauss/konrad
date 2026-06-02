@@ -7,7 +7,7 @@
 [![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
 [![version](https://img.shields.io/badge/dynamic/yaml?url=https://gitlab.git.nrw/jbauss2/konrad/-/raw/main/VERSION&query=$&label=version&color=informational)](ROADMAP.md#implemented)
 [![status](https://img.shields.io/badge/status-alpha-orange)](#status)
-[![image](https://img.shields.io/badge/image-ghcr.io%2Fjlbauss%2Fkonrad-blue)](https://github.com/jlbauss/konrad/pkgs/container/konrad)
+[![image](https://img.shields.io/badge/image-ghcr.io%2Fjlbauss%2Fkonrad-blue)](https://github.com/users/jlbauss/packages/container/package/konrad)
 
 </div>
 
