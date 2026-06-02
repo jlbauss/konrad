@@ -2,13 +2,15 @@
 //
 // This file is COPIED into the image at /etc/konrad/opencode-defaults.jsonc.
 // It is NOT loaded by opencode directly. At container start, the entrypoint
-// deep-merges this file with the user's optional override
-// (~/.config/konrad/opencode.jsonc on the host, bind-mounted in) and writes
-// the result to /home/node/.config/opencode/opencode.jsonc, which opencode
-// then reads as its global config.
+// left-folds up to three layers and writes the result to
+// /home/node/.config/opencode/opencode.jsonc, which opencode then reads as its
+// global config:
+//   1. this file                              (baked into the image)
+//   2. ~/.config/konrad/org/opencode.jsonc    (org layer, optional)
+//   3. ~/.config/konrad/user/opencode.jsonc   (user layer, optional)
 //
-// User overrides win on conflicting keys; new keys from either side come
-// through; arrays replace. See README → Configuration.
+// Later layers win on conflicting keys (precedence: baked < org < user); new
+// keys from any layer come through; arrays replace. See README → Configuration.
 {
   // Points to the official opencode JSON schema.
   "$schema": "https://opencode.ai/config.json",

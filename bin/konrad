@@ -45,8 +45,17 @@ SECRETS_VOLUME="konrad-secrets"
 CACHE_VOLUME="konrad-cache"
 STATE_VOLUME="konrad-state"
 
-# Where the user keeps their personal konrad overrides on the host.
-USER_CFG_DIR="${HOME}/.config/konrad"
+# Where konrad keeps host-side config. Two symmetric sublayers live under it:
+#   org/   — an organization's shipped defaults (dropped in by a provisioning
+#            package; see docs/examples/org-package/). Merged ABOVE the baked
+#            image defaults but BELOW the user's own layer.
+#   user/  — the individual user's overrides.
+# Merge precedence is baked < org < user (last writer wins). Pre-org-layer
+# konrad kept the user layer flat at $KONRAD_CFG_DIR/*; migrate_flat_config()
+# relocates it into user/ on first run of this version.
+KONRAD_CFG_DIR="${HOME}/.config/konrad"
+ORG_CFG_DIR="$KONRAD_CFG_DIR/org"
+USER_CFG_DIR="$KONRAD_CFG_DIR/user"
 
 # Central log directory on the host (XDG state). Holds opencode's
 # structured log files plus a per-session sidecar that records the host
@@ -413,6 +422,30 @@ prune_log_dir() {
   fi
 }
 
+# One-time migration: pre-org-layer konrad (≤0.3.x) kept the user's config
+# flat at ~/.config/konrad/{opencode.jsonc,agents,skills,AGENTS.md,fonts}.
+# The org config layer splits that dir into org/ and user/ sublayers, so the
+# flat per-user files have to move into user/. Idempotent — runs only when
+# user/ doesn't yet exist AND at least one flat item is present, so a fresh
+# install (no flat files) and an already-migrated install both no-op. Host-
+# side and live (bin/konrad isn't baked), so existing installs pick it up on
+# their next launch without a rebuild.
+migrate_flat_config() {
+  [[ -d "$USER_CFG_DIR" ]] && return 0      # already on the new layout
+  [[ -d "$KONRAD_CFG_DIR" ]] || return 0    # nothing here yet (fresh install)
+  local -a flat_items=(opencode.jsonc agents skills AGENTS.md fonts)
+  local item found=0
+  for item in "${flat_items[@]}"; do
+    [[ -e "$KONRAD_CFG_DIR/$item" ]] && { found=1; break; }
+  done
+  (( found )) || return 0                   # an empty/org-only dir — leave it
+  mkdir -p "$USER_CFG_DIR"
+  for item in "${flat_items[@]}"; do
+    [[ -e "$KONRAD_CFG_DIR/$item" ]] && mv "$KONRAD_CFG_DIR/$item" "$USER_CFG_DIR/$item"
+  done
+  info "moved your config into $USER_CFG_DIR/ (org config layer — see README → Configuration)"
+}
+
 # Run a command inside the konrad container with the standard mount set.
 # All variables are quoted, so paths containing spaces are safe.
 podman_run() {
@@ -424,24 +457,21 @@ podman_run() {
   # sidecar here and opencode writes its structured log alongside.
   mkdir -p "$KONRAD_LOG_DIR"
 
-  # Optional user-config mounts. Surface anything the user keeps in
-  # ~/.config/konrad/ to the container at /home/node/.config/konrad/;
-  # the entrypoint picks them up from there. Each piece is independent.
-  local -a user_mounts=()
-  if [[ -d "$USER_CFG_DIR" ]]; then
-    [[ -f "$USER_CFG_DIR/opencode.jsonc" ]] \
-      && user_mounts+=(-v "$USER_CFG_DIR/opencode.jsonc:/home/node/.config/konrad/opencode.jsonc:ro")
-    [[ -d "$USER_CFG_DIR/agents" ]] \
-      && user_mounts+=(-v "$USER_CFG_DIR/agents:/home/node/.config/konrad/agents:ro")
-    [[ -d "$USER_CFG_DIR/skills" ]] \
-      && user_mounts+=(-v "$USER_CFG_DIR/skills:/home/node/.config/konrad/skills:ro")
-    [[ -f "$USER_CFG_DIR/AGENTS.md" ]] \
-      && user_mounts+=(-v "$USER_CFG_DIR/AGENTS.md:/home/node/.config/konrad/AGENTS.md:ro")
-    [[ -d "$USER_CFG_DIR/fonts" ]] \
-      && user_mounts+=(-v "$USER_CFG_DIR/fonts:/home/node/.config/konrad/fonts:ro")
-  fi
+  # Optional config-layer mounts. The org layer (~/.config/konrad/org/) and
+  # the per-user layer (~/.config/konrad/user/) are each surfaced WHOLE into
+  # the container at /home/node/.config/konrad/{org,user}; the entrypoint
+  # composes them over the baked defaults (precedence: baked < org < user).
+  # Whole-dir mounts (not per-item) keep this symmetric and let the entrypoint
+  # own which files within a layer matter. Read-only — the container never
+  # writes back to the host config. Each is gated on existence so a user with
+  # no org package (the common case) just gets the user mount.
+  local -a cfg_mounts=()
+  [[ -d "$ORG_CFG_DIR" ]] \
+    && cfg_mounts+=(-v "$ORG_CFG_DIR:/home/node/.config/konrad/org:ro")
+  [[ -d "$USER_CFG_DIR" ]] \
+    && cfg_mounts+=(-v "$USER_CFG_DIR:/home/node/.config/konrad/user:ro")
 
-  # ${user_mounts[@]+"${user_mounts[@]}"} is the empty-safe array splice —
+  # ${cfg_mounts[@]+"${cfg_mounts[@]}"} is the empty-safe array splice —
   # under `set -u`, a bare ${arr[@]} on an empty array would error.
   # --init: podman runs a tiny init (catatonit) as PID 1 inside the container
   # so signals (SIGINT, SIGTERM) reach opencode cleanly and any orphaned
@@ -460,7 +490,7 @@ podman_run() {
     -v "${SECRETS_VOLUME}:/home/node/.opencode-secrets:U" \
     -v "${CACHE_VOLUME}:/home/node/.cache/opencode:U" \
     -v "${STATE_VOLUME}:/home/node/.local/state/opencode:U" \
-    ${user_mounts[@]+"${user_mounts[@]}"} \
+    ${cfg_mounts[@]+"${cfg_mounts[@]}"} \
     -w /workspace \
     "$IMAGE_NAME" "$@"
 }
@@ -476,6 +506,7 @@ do_run() {
   if [[ "$mode" == "agent" ]]; then
     check_lm_studio; dbg "lm-studio probe done"
   fi
+  migrate_flat_config; dbg "flat-config migration checked"
   ensure_gitignore; dbg "gitignore ensured"
   prune_log_dir; dbg "log dir pruned"
   if [[ "$mode" == "shell" ]]; then
@@ -840,7 +871,7 @@ WARNING — $self --uninstall will remove:
   - the image:         $target_image$cache_note
 
 This does NOT remove (your call):
-  - your config:    $USER_CFG_DIR/
+  - your config:    $KONRAD_CFG_DIR/   (org/ + user/ layers)
   - shared volumes: $SECRETS_VOLUME, $CACHE_VOLUME, $STATE_VOLUME
   - log dir:        $KONRAD_LOG_DIR/
 
@@ -943,22 +974,31 @@ Files on the host (outside the workspace):
                         opencode logs + per-session sidecars.
                         Pruned >7d on every launch. \`tail -f\` to read.
 
-Files in ~/.config/konrad/ (all optional):
+Files in ~/.config/konrad/user/ (all optional — your personal layer):
   opencode.jsonc        Deep-merged with konrad's baked defaults at start.
   agents/               Your own opencode primary agents, layered in.
   skills/               Your own opencode skills, layered in.
-  AGENTS.md             Personal/org instructions, loaded on top of base.
+  AGENTS.md             Personal instructions, loaded on top of base.
   fonts/                .ttf / .otf / .ttc dropped here are loaded into
                         fontconfig on top of konrad's baked palette.
+An organization can ship the same five things in ~/.config/konrad/org/;
+they merge under your user layer (precedence: baked < org < user). See
+README → Configuration → "For organizations".
 
 Occasional maintenance (one-liners, not built into the CLI):
-  Edit your override:   \$EDITOR ~/.config/konrad/opencode.jsonc
+  Edit your override:   \$EDITOR ~/.config/konrad/user/opencode.jsonc
   Build-manifest dump:  podman run --rm --entrypoint cat $IMAGE_DEFAULT \\
                           /etc/konrad/build-manifest.json | jq .
 EOF
 }
 
 # --- Flag parser + dispatch ---
+
+# Test seam: when this file is *sourced* with KONRAD_SOURCE_ONLY=1 (the smoke
+# test does this to exercise migrate_flat_config in isolation), stop before the
+# flag parser + dispatch so nothing runs. `return` is valid only in a sourced
+# context; in normal execution the condition is false, so it's never reached.
+[[ "${KONRAD_SOURCE_ONLY:-0}" == "1" ]] && return 0
 
 SHELL_MODE=0
 ACTION="run"

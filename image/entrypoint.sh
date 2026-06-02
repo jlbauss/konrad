@@ -17,8 +17,9 @@ OPENCODE_LOG_DIR="$OPENCODE_DATA/log"             # bound to host XDG state from
 SECRETS=/home/node/.opencode-secrets
 WORKSPACE_AGENT=/workspace/.agent                 # the agent's working-state root
 
-USER_CFG=/home/node/.config/konrad             # everything below comes from the host
-KONRAD_BAKED=/etc/konrad                       # everything below was shipped in the image
+ORG_CFG=/home/node/.config/konrad/org          # org layer  (bind-mounted from host, optional)
+USER_CFG=/home/node/.config/konrad/user        # user layer (bind-mounted from host, optional)
+KONRAD_BAKED=/etc/konrad                        # everything below was shipped in the image
 
 KONRAD_DEBUG="${KONRAD_DEBUG:-0}"
 KONRAD_HOST_WORKSPACE="${KONRAD_HOST_WORKSPACE:-(unknown — KONRAD_HOST_WORKSPACE not set)}"
@@ -36,62 +37,90 @@ dbg "entrypoint start"
 mkdir -p "$OPENCODE_CFG" "$OPENCODE_DATA" "$OPENCODE_LOG_DIR" "$SECRETS"
 dbg "mkdir done"
 
-# ── 1. Compose opencode.jsonc (baked defaults + optional user override) ──
-# Two layers, merged in order so the user wins on conflicts:
+# ── 1. Compose opencode.jsonc (baked defaults + optional org + user layers) ──
+# Up to three layers, left-folded so each later layer wins on conflicts:
 #   1. /etc/konrad/opencode-defaults.jsonc          (baked into image)
-#   2. ~/.config/konrad/opencode.jsonc              (bind-mounted from host)
+#   2. ~/.config/konrad/org/opencode.jsonc          (org layer, optional)
+#   3. ~/.config/konrad/user/opencode.jsonc         (user layer, optional)
+# merge-config.js always runs (even with no overlays) so the output is the
+# same comment-stripped JSON opencode reads on the merge path — no special
+# raw-cp branch to keep in sync.
 TARGET_JSONC="$OPENCODE_CFG/opencode.jsonc"
 
-if [[ -f "$USER_CFG/opencode.jsonc" ]]; then
-  say "composing config: baked + your override"
-  node "$KONRAD_BAKED/merge-config.js" \
-    "$KONRAD_BAKED/opencode-defaults.jsonc" \
-    "$USER_CFG/opencode.jsonc" \
-    > "$TARGET_JSONC"
+merge_inputs=("$KONRAD_BAKED/opencode-defaults.jsonc")
+[[ -f "$ORG_CFG/opencode.jsonc" ]]  && merge_inputs+=("$ORG_CFG/opencode.jsonc")
+[[ -f "$USER_CFG/opencode.jsonc" ]] && merge_inputs+=("$USER_CFG/opencode.jsonc")
+
+if (( ${#merge_inputs[@]} > 1 )); then
+  say "composing config: baked + $(( ${#merge_inputs[@]} - 1 )) overlay(s) (org/user)"
 else
-  say "composing config: baked defaults (no user override)"
-  cp "$KONRAD_BAKED/opencode-defaults.jsonc" "$TARGET_JSONC"
+  say "composing config: baked defaults (no overrides)"
 fi
+node "$KONRAD_BAKED/merge-config.js" "${merge_inputs[@]}" > "$TARGET_JSONC"
 dbg "config composed at $TARGET_JSONC"
 
-# ── 2. Layer in user-shipped agents / skills / AGENTS.md ─────────────────────
-# Each is optional. If the user hasn't provided one, do nothing.
-# `cp -r` here means user files OVERWRITE baked ones on name collision
-# (e.g. user-shipped `agents/konrad.md` replaces ours). That's intentional:
-# this is the "I want to run my own konrad agent" escape hatch.
-
-if [[ -d "$USER_CFG/agents" ]]; then
-  cp -r "$USER_CFG/agents/." "$OPENCODE_CFG/agents/"
+# Org instructions ride the system `instructions` channel — the same channel
+# as the baked environment.md — appended AFTER the merge so the array-replace
+# rule can never silently drop them (a user override of `instructions` would
+# otherwise discard org content). The org file is referenced at its read-only
+# mount path. Precedence in opencode's instruction load order ends up:
+# environment.md → org → (user/project AGENTS.md, which opencode discovers on
+# its own). This is what makes org content "system-channel" rather than the
+# user-owned global AGENTS.md. jq is on PATH in the image (smoke-tested).
+if [[ -f "$ORG_CFG/AGENTS.md" ]]; then
+  tmp_jsonc="$(mktemp)"
+  jq --arg p "$ORG_CFG/AGENTS.md" '.instructions += [$p]' "$TARGET_JSONC" > "$tmp_jsonc" \
+    && mv "$tmp_jsonc" "$TARGET_JSONC"
+  dbg "org AGENTS.md appended to .instructions"
 fi
 
-if [[ -d "$USER_CFG/skills" ]]; then
-  cp -r "$USER_CFG/skills/." "$OPENCODE_CFG/skills/"
-fi
+# ── 2. Layer in org- and user-shipped agents / skills / AGENTS.md ────────────
+# Each piece is optional. `cp -r` means a later layer OVERWRITES the baked (or
+# org) files on name collision (e.g. a user-shipped `agents/konrad.md` replaces
+# ours). That's intentional: the "I want to run my own konrad agent" escape
+# hatch. Layer order matches the config merge — baked (already in $OPENCODE_CFG)
+# < org < user — so we cp org's tree first, then user's on top.
+for layer in "$ORG_CFG" "$USER_CFG"; do
+  [[ -d "$layer/agents" ]] && cp -r "$layer/agents/." "$OPENCODE_CFG/agents/"
+  [[ -d "$layer/skills" ]] && cp -r "$layer/skills/." "$OPENCODE_CFG/skills/"
+done
 
+# The user's global AGENTS.md lands where opencode auto-discovers it
+# (~/.config/opencode/AGENTS.md). The ORG AGENTS.md deliberately does NOT go
+# here — it rides the `instructions` channel (§1 above) so the discovered
+# global AGENTS.md stays the user's alone. See docs/design/org-config-layer.md.
 if [[ -f "$USER_CFG/AGENTS.md" ]]; then
   cp "$USER_CFG/AGENTS.md" "$OPENCODE_CFG/AGENTS.md"
 fi
-dbg "user content layered in"
+dbg "org + user content layered in"
 
-# ── 2b. Font overlay ─────────────────────────────────────────────────────────
-# Anything the user drops into ~/.config/konrad/fonts/ on the host shows up
-# at $USER_CFG/fonts in the container (bind-mounted by bin/konrad). Symlink
-# it into ~/.local/share/fonts/, which fontconfig watches by default, and
-# refresh the cache. Symlink rather than copy so adding a font on the host
-# is picked up on the next launch without an extra step.
-USER_FONTS_DIR=/home/node/.local/share/fonts/konrad-user
-USER_FONT_COUNT=0
-if [[ -d "$USER_CFG/fonts" ]]; then
-  USER_FONT_COUNT=$(find "$USER_CFG/fonts" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null | wc -l)
-fi
-if (( USER_FONT_COUNT > 0 )); then
-  mkdir -p /home/node/.local/share/fonts
-  ln -sfn "$USER_CFG/fonts" "$USER_FONTS_DIR"
-  fc-cache -f /home/node/.local/share/fonts >/dev/null 2>&1 || true
-  dbg "user fonts overlay linked at $USER_FONTS_DIR"
-else
-  # No overlay — remove a stale symlink from a previous run.
-  [[ -L "$USER_FONTS_DIR" ]] && rm "$USER_FONTS_DIR"
+# ── 2b. Font overlays (org + user) ───────────────────────────────────────────
+# Anything dropped into the org/ or user/ fonts dir on the host shows up under
+# the matching mount here (bind-mounted by bin/konrad). Symlink each into
+# ~/.local/share/fonts/, which fontconfig watches by default, and refresh the
+# cache once at the end. Symlinks rather than copies so adding a font on the
+# host is picked up on the next launch without an extra step. Each layer gets
+# its own link name (konrad-org / konrad-user); fontconfig sees both.
+FONTS_BASE=/home/node/.local/share/fonts
+mkdir -p "$FONTS_BASE"
+FONTS_CHANGED=0
+for pair in "org:$ORG_CFG/fonts" "user:$USER_CFG/fonts"; do
+  label="${pair%%:*}"
+  src="${pair#*:}"
+  link="$FONTS_BASE/konrad-$label"
+  count=0
+  [[ -d "$src" ]] && count=$(find "$src" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null | wc -l)
+  if (( count > 0 )); then
+    ln -sfn "$src" "$link"
+    FONTS_CHANGED=1
+    dbg "fonts overlay linked: $link → $src"
+  else
+    # No overlay for this layer — remove a stale symlink from a previous run.
+    [[ -L "$link" ]] && rm "$link"
+  fi
+done
+if (( FONTS_CHANGED )); then
+  fc-cache -f "$FONTS_BASE" >/dev/null 2>&1 || true
 fi
 
 # ── 3. auth.json on a named volume ───────────────────────────────────────────

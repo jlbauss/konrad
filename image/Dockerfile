@@ -207,15 +207,27 @@ ENV VIRTUAL_ENV=/opt/venv \
     DOCLING_ARTIFACTS_PATH=/home/node/.cache/docling/models
 
 # ── XDG-compliant home structure for the node user ──────────────────────────
-# `install -d -o node -g node` creates each dir with correct ownership in one
-# step, so we never recursively chown the heavy model cache below it. The
-# model cache itself was already node-owned at COPY --chown time above.
+# Own node's home *directory scaffolding* so the runtime user can create new
+# dirs anywhere under it (e.g. the font overlay's ~/.local/share/fonts). We
+# name the intermediate parents explicitly (.local, .local/share, .cache) —
+# `install -d` only applies -o/-g to the directories it's *given*, not to
+# parents it auto-creates, so an unnamed intermediate would default to
+# root-owned and block writes beneath it. This stays cheap because the dirs
+# are empty here: we deliberately do NOT `chown -R /home/node`, which would
+# walk the ~1.1 GB Docling model cache COPY'd above and copy every file up
+# into a new image layer (overlayfs copies a file on any metadata change),
+# roughly doubling that cache's on-disk size. Owning the dir inodes touches
+# no file contents; the model cache was already node-owned at COPY --chown.
 RUN install -d -o node -g node \
     /workspace \
     /home/node/.npm-global \
+    /home/node/.local \
+    /home/node/.local/share \
     /home/node/.local/share/opencode \
+    /home/node/.local/share/fonts \
     /home/node/.local/state \
     /home/node/.local/bin \
+    /home/node/.cache \
     /home/node/.cache/opencode \
     /home/node/.config \
     /home/node/.opencode-secrets
