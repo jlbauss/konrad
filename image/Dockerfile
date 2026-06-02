@@ -224,7 +224,15 @@ RUN install -d -o node -g node \
 # Ordered rarest-to-change first so that editing these files invalidates as
 # few downstream layers as possible. environment.md is NOT here — it lives
 # in opencode/ below so edits to it never touch the npm layer.
-COPY --chmod=0644 merge-config.js /etc/konrad/merge-config.js
+# --chmod=0755, NOT 0644: this COPY is what creates /etc/konrad, and BuildKit
+# applies a COPY's --chmod to the parent dirs it auto-creates. A 0644 here
+# makes /etc/konrad itself non-traversable (no +x) for the non-root `node`
+# runtime user, hiding every file under it — the entrypoint can't read
+# opencode-defaults.jsonc and `test -f /etc/konrad/build-manifest.json` fails
+# in smoke. buildah (local podman builds) does NOT propagate --chmod to created
+# parents, so this only surfaces in CI's BuildKit build. 0755 is harmless for a
+# node-run script (still world-readable; the +x bit is unused). Keep it 0755.
+COPY --chmod=0755 merge-config.js /etc/konrad/merge-config.js
 # --chmod=0755 is load-bearing: this file is the ENTRYPOINT, so crun must be
 # able to exec it. Plain COPY inherits the build-context mode, which is not
 # preserved reliably when the context ships to a remote builder (e.g. the
