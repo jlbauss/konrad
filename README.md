@@ -28,7 +28,7 @@ What ships in the box:
 
 - **Curated skills**, loaded via opencode's `skill` tool: `do-it-manually` (structured-but-irregular data extraction), `spreadsheets` (xlsx/csv CRUD), `pdf` (extract / edit / annotate / fill / generate), and `quality-assurance` (the cross-skill verification cycle every producer invokes before reporting). More on the way — see [ROADMAP.md](ROADMAP.md).
 - **A planning contract** baked into the agent prompt: a single `.agent/task.md` per task with side effects, plus aggressive use of opencode's `todowrite` for live progress. Rationale in [task-md-and-todowrite.md](docs/design/task-md-and-todowrite.md).
-- **A curated font palette** — seven SIL OFL families (Inter, Source Serif 4, Fraunces, JetBrains Mono, EB Garamond, IBM Plex Sans, Atkinson Hyperlegible) plus Debian's Noto core for broad non-Latin coverage, so generated PDFs / slides / typeset docs look intentional out of the box. Drop your own into `~/.config/konrad/fonts/` to extend.
+- **A curated font palette** — seven SIL OFL families (Inter, Source Serif 4, Fraunces, JetBrains Mono, EB Garamond, IBM Plex Sans, Atkinson Hyperlegible) plus Debian's Noto core for broad non-Latin coverage, so generated PDFs / slides / typeset docs look intentional out of the box. Drop your own into `~/.config/konrad/user/fonts/` to extend.
 
 ## Status
 
@@ -97,38 +97,44 @@ Short flags bundle (`konrad -sv` is `konrad -s -v`). `konrad-dev` is the contrib
 
 | Goal                                 | Command                                                                                       |
 | ------------------------------------ | --------------------------------------------------------------------------------------------- |
-| Edit your user override              | `$EDITOR ~/.config/konrad/opencode.jsonc`                                                     |
-| Start from the baked default         | `podman run --rm --entrypoint cat ghcr.io/jlbauss/konrad:latest /etc/konrad/opencode-defaults.jsonc > ~/.config/konrad/opencode.jsonc` |
-| Diff your override vs. baked default | `diff -u <(podman run --rm --entrypoint cat ghcr.io/jlbauss/konrad:latest /etc/konrad/opencode-defaults.jsonc) ~/.config/konrad/opencode.jsonc` |
+| Edit your user override              | `$EDITOR ~/.config/konrad/user/opencode.jsonc`                                                     |
+| Start from the baked default         | `podman run --rm --entrypoint cat ghcr.io/jlbauss/konrad:latest /etc/konrad/opencode-defaults.jsonc > ~/.config/konrad/user/opencode.jsonc` |
+| Diff your override vs. baked default | `diff -u <(podman run --rm --entrypoint cat ghcr.io/jlbauss/konrad:latest /etc/konrad/opencode-defaults.jsonc) ~/.config/konrad/user/opencode.jsonc` |
 | Clear just the log dir               | `rm -rf ~/.local/state/konrad/log/`                                                           |
 | Nuclear reset                        | `konrad --reset` (wipes log dir + all shared volumes; prompts `[y/N]`)                        |
 
 ## Configuration
 
-Konrad composes opencode's runtime config from up to three layers at container start. **You only override what you want to change**; everything else stays inherited.
+Konrad composes opencode's runtime config from up to four layers at container start. **You only override what you want to change**; everything else stays inherited.
 
 ```
 Layer 1 — Baked defaults     /etc/konrad/opencode-defaults.jsonc   (in the image)
-Layer 2 — Your overrides     ~/.config/konrad/                     (on the host)
-Layer 3 — Per-project        <workspace>/.opencode/opencode.json   (opencode-native)
+Layer 2 — Org defaults       ~/.config/konrad/org/                 (on the host, optional)
+Layer 3 — Your overrides     ~/.config/konrad/user/                (on the host)
+Layer 4 — Per-project        <workspace>/.opencode/opencode.json   (opencode-native)
 ```
 
-Layer 2 is the interesting one — a directory with up to four optional pieces:
+Layers 2 and 3 are symmetric — each is a directory with up to five optional pieces:
 
 ```
 ~/.config/konrad/
-├── opencode.jsonc      Deep-merged with the baked default at start.
-├── agents/             Your own primary agents, layered in.
-├── skills/             Your own opencode skills, layered in.
-├── AGENTS.md           Personal/org model instructions, loaded on top of Konrad's base.
-└── fonts/              .ttf / .otf / .ttc dropped here load on top of the baked palette.
+├── org/                Optional. Shipped by your organization (see "For organizations").
+│   └── …same five pieces as user/…
+└── user/               Your personal layer.
+    ├── opencode.jsonc  Deep-merged with the baked default (and any org layer) at start.
+    ├── agents/         Your own primary agents, layered in.
+    ├── skills/         Your own opencode skills, layered in.
+    ├── AGENTS.md       Personal model instructions, loaded on top of Konrad's base.
+    └── fonts/          .ttf / .otf / .ttc dropped here load on top of the baked palette.
 ```
 
-The merge of `opencode.jsonc` is deep: **objects merge recursively, your keys win on conflict, new keys from either side come through, arrays replace.** That last one matters — see [the AGENTS.md convention](#adding-your-own-model-instructions).
+The merge of `opencode.jsonc` is deep and ordered **baked < org < user** (last writer wins): **objects merge recursively, the later layer's keys win on conflict, new keys from any layer come through, arrays replace.** That last one matters — see [the AGENTS.md convention](#adding-your-own-model-instructions).
+
+> **Upgrading from a pre-0.4 install?** Konrad used to keep your config flat at `~/.config/konrad/{opencode.jsonc,agents,…}`. The first run of 0.4+ moves those into `~/.config/konrad/user/` automatically and prints a one-line notice — nothing for you to do.
 
 ### You declare your models
 
-Konrad pre-wires the local providers at their default ports, but **the model list is yours to fill in**. Declare each model you intend to use in `~/.config/konrad/opencode.jsonc` — see the [Recipes](#recipes) below. (Auto-discovery used to live here via the [`opencode-models-discovery`](https://github.com/rivy-t/opencode-models-discovery) plugin, but it added ~3-4 s of startup and tripped on LM Studio's embedding modality; an inline replacement is on the [roadmap](ROADMAP.md).)
+Konrad pre-wires the local providers at their default ports, but **the model list is yours to fill in**. Declare each model you intend to use in `~/.config/konrad/user/opencode.jsonc` — see the [Recipes](#recipes) below. (Auto-discovery used to live here via the [`opencode-models-discovery`](https://github.com/rivy-t/opencode-models-discovery) plugin, but it added ~3-4 s of startup and tripped on LM Studio's embedding modality; an inline replacement is on the [roadmap](ROADMAP.md).)
 
 opencode Zen — the upstream's paid hosted gateway — is **disabled by default** (`disabled_providers: ["opencode"]`), since Konrad is local-first. Override `disabled_providers` to re-enable.
 
@@ -137,15 +143,15 @@ opencode Zen — the upstream's paid hosted gateway — is **disabled by default
 ```sh
 # 1. Start from the baked default.
 podman run --rm --entrypoint cat ghcr.io/jlbauss/konrad:latest \
-  /etc/konrad/opencode-defaults.jsonc > ~/.config/konrad/opencode.jsonc
+  /etc/konrad/opencode-defaults.jsonc > ~/.config/konrad/user/opencode.jsonc
 
 # 2. Edit it.
-$EDITOR ~/.config/konrad/opencode.jsonc
+$EDITOR ~/.config/konrad/user/opencode.jsonc
 
 # 3. Diff against the baked default to see what you changed.
 diff -u <(podman run --rm --entrypoint cat ghcr.io/jlbauss/konrad:latest \
             /etc/konrad/opencode-defaults.jsonc) \
-        ~/.config/konrad/opencode.jsonc
+        ~/.config/konrad/user/opencode.jsonc
 ```
 
 ### Recipes
@@ -153,7 +159,7 @@ diff -u <(podman run --rm --entrypoint cat ghcr.io/jlbauss/konrad:latest \
 **Use Ollama instead of LM Studio** (the provider is already declared; register your model and switch the default):
 
 ```jsonc
-// ~/.config/konrad/opencode.jsonc
+// ~/.config/konrad/user/opencode.jsonc
 {
   "provider": { "ollama": { "models": { "qwen3:30b": { "name": "Qwen 3 30B (Ollama)" } } } },
   "model": "ollama/qwen3:30b"
@@ -198,10 +204,32 @@ Then export `ANTHROPIC_API_KEY` on the host before running `konrad`; the CLI pas
 
 Konrad ships its base instructions via the `instructions` config key. **For your own additions, use `AGENTS.md`**, which opencode discovers automatically and loads *on top of* the base:
 
-- `~/.config/konrad/AGENTS.md` — personal or org-wide rules, loaded globally.
+- `~/.config/konrad/user/AGENTS.md` — your personal rules, loaded globally.
 - `<workspace>/AGENTS.md` — per-project rules, loaded only in that workspace.
 
 Both are additive. Don't set `instructions` in your override unless you specifically want to **replace** Konrad's base — arrays don't merge.
+
+### For organizations
+
+If you run a fleet of Konrad installs, the **org layer** (`~/.config/konrad/org/`) lets you ship defaults every user inherits — extra model declarations, an internal provider endpoint, house skills or agents, and a corporate `AGENTS.md` — without forking the image or hand-editing each user's config. It holds the same five pieces as the user layer and merges **between** the baked defaults and each user's own overrides (`baked < org < user`), so a user can still stack their preferences on top.
+
+```
+~/.config/konrad/org/
+├── opencode.jsonc      Org-wide config (providers, models, env). Merged under user/.
+├── agents/             House agents.
+├── skills/             House skills.
+├── AGENTS.md           Org instructions (loaded via the system instructions channel).
+└── fonts/              Corporate fonts.
+```
+
+Two things worth knowing:
+
+- **Discovery is a well-known home-directory folder, not a system path or env var.** Ship your config as a package that drops a folder into each user's `~/.config/konrad/org/`; Konrad finds it with no root, no `podman machine` mount edits, and no per-user setup. (This is what makes it work on macOS, where the Podman VM only auto-shares `$HOME`.)
+- **`org/AGENTS.md` loads via the system `instructions` channel**, not as the discovered global `AGENTS.md` — that one stays the user's. Final instruction precedence is Konrad's `environment.md` → org → user `AGENTS.md` → project `AGENTS.md`, all additive.
+
+**This is a defaults mechanism, not policy enforcement.** The org folder is just files in the user's own home directory, so a determined user can edit them. "Add-only" describes the merge *precedence* (the user stacks on top), not a permission lock. Locking config down would need read-only system locations or signing — a separate concern Konrad doesn't address today.
+
+A ready-to-adapt starter package — a populated `org/` plus an `install.sh` that drops it into place — lives in [`docs/examples/org-package/`](docs/examples/org-package/). Design rationale (why a `$HOME` folder, why the system instructions channel, why defaults-not-enforcement) is in [docs/design/org-config-layer.md](docs/design/org-config-layer.md).
 
 ## State
 
@@ -225,7 +253,7 @@ opencode's sessions and conversation DB are **ephemeral** — gone on container 
 | `LM Studio not reachable at http://localhost:1234`               | LM Studio off or on a wrong port            | LM Studio → Developer → Start Server, port 1234. (Or you're on Ollama / llama.cpp — set your model in [Configuration](#configuration) and ignore the warning.) |
 | `EACCES: permission denied, mkdir '/home/node/.local/state'`     | Stale image (pre-permission-fix)            | `konrad --update`                                                                         |
 | Agent can't find the file you mentioned                          | You ran `konrad` in the wrong directory     | The cwd is what gets mounted at `/workspace`. Always `cd` first.                          |
-| `merge-config: failed to parse ~/.config/konrad/opencode.jsonc`  | Syntax error in your user override          | `cat` it and check the JSONC syntax. Comments are fine.                                   |
+| `merge-config: failed to parse …/konrad/user/opencode.jsonc`     | Syntax error in your user override          | `cat` it and check the JSONC syntax. Comments are fine. (Same applies to `org/opencode.jsonc`.) |
 | Want to wipe and start over                                      | —                                           | `konrad --reset` (prompts `[y/N]`), then `konrad --update`                                |
 
 If a problem isn't listed here, run `konrad -s` to poke around inside the container with the same mounts opencode would see.
