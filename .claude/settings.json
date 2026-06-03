@@ -6,6 +6,8 @@
       "Bash(podman:*)",
       "Bash(shellcheck:*)",
       "Bash(yamllint:*)",
+      "Bash(hadolint:*)",
+      "Bash(actionlint:*)",
       "Bash(bash -n:*)",
       "Bash(sh -n:*)",
       "Bash(node:*)",
