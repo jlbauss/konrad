@@ -118,6 +118,16 @@ ENV PATH="/opt/dev-venv/bin:$PATH"
 RUN ln -sf /usr/bin/fdfind /usr/local/bin/fd \
     && ln -sf /usr/bin/batcat /usr/local/bin/bat
 
+# konrad-dev → the checkout's CLI, preprovisioned for self-testing. bin/konrad
+# picks its default image from its own basename (invoked as `konrad-dev` ⇒
+# defaults to konrad:local), so the symlink NAME is the whole mechanism —
+# `konrad-dev --rebuild` / `konrad-dev --shell` then work the moment the
+# container is up, no manual setup. /usr/local/bin is already on PATH, so no
+# ~/.local/bin dance (that recipe is for a native checkout — see CONTRIBUTING).
+# Target resolves at runtime via the /workspace bind mount; a dangling symlink
+# at build time is fine.
+RUN ln -sf /workspace/bin/konrad /usr/local/bin/konrad-dev
+
 # Wrapper around /usr/bin/gio that routes `gio trash` through trash-cli.
 # See gio-shim itself for the why (GIO refuses bind mounts, breaking
 # VS Code's Move-to-Trash UI under /workspace). /usr/local/bin wins
