@@ -446,32 +446,65 @@ migrate_flat_config() {
   info "moved your config into $USER_CFG_DIR/ (org config layer — see README → Configuration)"
 }
 
+# --- Remote-daemon path translation (dev-container self-testing) ---
+# Normally konrad's podman talks to a LOCAL daemon, so bind-mount SOURCE
+# paths are read off the same filesystem as this script. The .devcontainer
+# self-testing path (see CLAUDE.md) instead points podman at the HOST's
+# rootless socket via CONTAINER_HOST, so the agent working ON konrad can
+# exercise the runtime image. With a remote daemon, every `-v src:…` source
+# is resolved against the HOST fs, not this container's — so the workspace
+# the agent sees under /workspace has to be rewritten to its real host path.
+# The dev container supplies the mapping in two env vars:
+#   KONRAD_REMOTE_HOST_ROOT   host-fs path the guest workspace root maps to
+#                             (its presence is what flips on remote mode)
+#   KONRAD_REMOTE_GUEST_ROOT  the in-container prefix that maps to it (/workspace)
+# Unset on every normal host install → no rewrite, paths used verbatim.
+remote_host_path() {
+  local p="$1"
+  local host="${KONRAD_REMOTE_HOST_ROOT:-}" guest="${KONRAD_REMOTE_GUEST_ROOT:-/workspace}"
+  if [[ -n "$host" && "$p" == "$guest"* ]]; then
+    printf '%s%s' "$host" "${p#"$guest"}"
+  else
+    printf '%s' "$p"
+  fi
+}
+
 # Run a command inside the konrad container with the standard mount set.
 # All variables are quoted, so paths containing spaces are safe.
 podman_run() {
-  local cwd
+  local cwd ws_src
   cwd="$(pwd -P)"
+  ws_src="$(remote_host_path "$cwd")"   # rewritten only in remote mode
 
-  # Central log dir on the host (XDG state). Created lazily so the bind
-  # works on the very first launch. The entrypoint writes a per-session
-  # sidecar here and opencode writes its structured log alongside.
-  mkdir -p "$KONRAD_LOG_DIR"
+  # Host-home bind mounts: the central log dir and the org/user config
+  # layers all live under $HOME. They resolve correctly only against a
+  # LOCAL daemon (same filesystem as this script). In remote-socket mode
+  # the daemon runs on the host, where $HOME differs, so these are skipped
+  # — the named volumes below are daemon-side and work either way, and the
+  # dev-container konrad thereby shares the host konrad's secrets/state
+  # (so a live model configured on the host works here too). Net effect of
+  # skipping: no host-side log capture and no config-layer overlay while
+  # self-testing — both acceptable, both documented in CLAUDE.md.
+  local -a home_mounts=()
+  if [[ -z "${KONRAD_REMOTE_HOST_ROOT:-}" ]]; then
+    # Central log dir on the host (XDG state). Created lazily so the bind
+    # works on the very first launch. The entrypoint writes a per-session
+    # sidecar here and opencode writes its structured log alongside.
+    mkdir -p "$KONRAD_LOG_DIR"
+    home_mounts+=(-v "${KONRAD_LOG_DIR}:/home/node/.local/share/opencode/log:z")
+    # Config-layer mounts. The org layer (~/.config/konrad/org/) and the
+    # per-user layer (~/.config/konrad/user/) are each surfaced WHOLE into
+    # the container at /home/node/.config/konrad/{org,user}; the entrypoint
+    # composes them over the baked defaults (precedence: baked < org < user).
+    # Read-only — the container never writes back. Gated on existence so a
+    # user with no org package (the common case) just gets the user mount.
+    [[ -d "$ORG_CFG_DIR" ]]  && home_mounts+=(-v "$ORG_CFG_DIR:/home/node/.config/konrad/org:ro")
+    [[ -d "$USER_CFG_DIR" ]] && home_mounts+=(-v "$USER_CFG_DIR:/home/node/.config/konrad/user:ro")
+  elif [[ "$cwd" != "${KONRAD_REMOTE_GUEST_ROOT:-/workspace}"* ]]; then
+    warn "remote-socket mode: cwd ($cwd) is outside ${KONRAD_REMOTE_GUEST_ROOT:-/workspace}; the workspace mount resolves against the host fs and will likely be empty. Run konrad from under ${KONRAD_REMOTE_GUEST_ROOT:-/workspace}."
+  fi
 
-  # Optional config-layer mounts. The org layer (~/.config/konrad/org/) and
-  # the per-user layer (~/.config/konrad/user/) are each surfaced WHOLE into
-  # the container at /home/node/.config/konrad/{org,user}; the entrypoint
-  # composes them over the baked defaults (precedence: baked < org < user).
-  # Whole-dir mounts (not per-item) keep this symmetric and let the entrypoint
-  # own which files within a layer matter. Read-only — the container never
-  # writes back to the host config. Each is gated on existence so a user with
-  # no org package (the common case) just gets the user mount.
-  local -a cfg_mounts=()
-  [[ -d "$ORG_CFG_DIR" ]] \
-    && cfg_mounts+=(-v "$ORG_CFG_DIR:/home/node/.config/konrad/org:ro")
-  [[ -d "$USER_CFG_DIR" ]] \
-    && cfg_mounts+=(-v "$USER_CFG_DIR:/home/node/.config/konrad/user:ro")
-
-  # ${cfg_mounts[@]+"${cfg_mounts[@]}"} is the empty-safe array splice —
+  # ${home_mounts[@]+"${home_mounts[@]}"} is the empty-safe array splice —
   # under `set -u`, a bare ${arr[@]} on an empty array would error.
   # --init: podman runs a tiny init (catatonit) as PID 1 inside the container
   # so signals (SIGINT, SIGTERM) reach opencode cleanly and any orphaned
@@ -483,14 +516,13 @@ podman_run() {
     --rm -it --init \
     --userns=keep-id:uid=1000,gid=1000 \
     -e "KONRAD_DEBUG=${KONRAD_DEBUG}" \
-    -e "KONRAD_HOST_WORKSPACE=${cwd}" \
+    -e "KONRAD_HOST_WORKSPACE=${ws_src}" \
     -e "KONRAD_HOST_LOG_DIR=${KONRAD_LOG_DIR}" \
-    -v "${cwd}:/workspace:z" \
-    -v "${KONRAD_LOG_DIR}:/home/node/.local/share/opencode/log:z" \
+    -v "${ws_src}:/workspace:z" \
     -v "${SECRETS_VOLUME}:/home/node/.opencode-secrets:U" \
     -v "${CACHE_VOLUME}:/home/node/.cache/opencode:U" \
     -v "${STATE_VOLUME}:/home/node/.local/state/opencode:U" \
-    ${cfg_mounts[@]+"${cfg_mounts[@]}"} \
+    ${home_mounts[@]+"${home_mounts[@]}"} \
     -w /workspace \
     "$IMAGE_NAME" "$@"
 }

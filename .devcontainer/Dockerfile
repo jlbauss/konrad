@@ -36,6 +36,13 @@ ENV DEBIAN_FRONTEND=noninteractive \
 #                         files to Trash from the file explorer on Linux.
 #   unzip               → scripts/fetch-fonts.sh extracts upstream font
 #                         release zips (Inter, JetBrains Mono).
+#   podman              → client only. Talks to the HOST's rootless podman
+#                         socket (mounted by devcontainer.json, addressed via
+#                         CONTAINER_HOST) so the agent can exercise the konrad
+#                         runtime image from in here — `konrad-dev --rebuild`,
+#                         `./scripts/smoke-test.sh konrad:local`, shelling into
+#                         the image. Daemonless: nothing runs locally, it's a
+#                         pure remote client. See CLAUDE.md "Self-testing".
 #
 # Plus `uv` (installed via the COPY below, not apt) for spinning up
 # matching Python deps when verifying skill helpers and recipes against
@@ -55,6 +62,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ripgrep fd-find bat \
     trash-cli libglib2.0-bin \
     unzip \
+    podman \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* /var/log/apt/* /var/log/dpkg.log
 

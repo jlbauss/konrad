@@ -38,11 +38,37 @@
   // Claude instance sees it instantly. Sessions/credentials stay on
   // the named volume above. Host dir must exist before the container
   // starts; create with `mkdir -p ~/.claude/skills` on the host.
+  //
+  // Self-testing socket mount: bind the HOST's rootless podman socket in,
+  // so `podman` here (and therefore `konrad-dev --rebuild` / smoke-test /
+  // shelling into the runtime image) drives the host daemon. This is what
+  // lets the agent working ON konrad actually exercise the konrad runtime
+  // image without round-tripping through the user. containerEnv below
+  // points the podman client at it via CONTAINER_HOST.
+  //
+  // HOST PREREQUISITE (one-time, Linux): the socket must exist, or this
+  // mount fails and the container won't start. Enable it with:
+  //   systemctl --user enable --now podman.socket
+  //
+  // macOS NOTE: podman runs in a VM there and the socket path differs
+  // ($XDG_RUNTIME_DIR is usually unset on the macOS host). The path below
+  // is Linux-correct; the macOS path is an open follow-up (see ROADMAP).
   "mounts": [
     "source=konrad-claude-dev-claude,target=/home/node/.claude,type=volume",
     "source=konrad-claude-dev-vscode-server,target=/home/node/.vscode-server,type=volume",
-    "source=${localEnv:HOME}/.claude/skills,target=/home/node/.claude/skills,type=bind,consistency=delegated"
+    "source=${localEnv:HOME}/.claude/skills,target=/home/node/.claude/skills,type=bind,consistency=delegated",
+    "source=${localEnv:XDG_RUNTIME_DIR}/podman/podman.sock,target=/run/podman-host.sock,type=bind"
   ],
+  // CONTAINER_HOST → podman client talks to the host socket mounted above.
+  // KONRAD_REMOTE_* → tell bin/konrad it's driving a REMOTE daemon, so it
+  // rewrites the /workspace bind-mount source to its real host path
+  // (${localWorkspaceFolder}) and skips the host-home mounts that only
+  // resolve against a local daemon. See bin/konrad's remote_host_path().
+  "containerEnv": {
+    "CONTAINER_HOST": "unix:///run/podman-host.sock",
+    "KONRAD_REMOTE_HOST_ROOT": "${localWorkspaceFolder}",
+    "KONRAD_REMOTE_GUEST_ROOT": "/workspace"
+  },
   "customizations": {
     "vscode": {
       "extensions": [
