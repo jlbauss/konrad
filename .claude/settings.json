@@ -20,6 +20,7 @@
       "Bash(pytest:*)",
       "Bash(./scripts/build-image.sh:*)",
       "Bash(./scripts/smoke-test.sh:*)",
+      "Bash(konrad-dev:*)",
       "Bash(ls:*)",
       "Bash(cat:*)",
       "Bash(head:*)",
