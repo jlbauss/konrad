@@ -39,3 +39,8 @@ venv/
 
 # Claude local settings
 /.claude/settings.local.json
+
+# Agent git-worktree scratch (transient checkouts created by Claude Code's
+# worktree isolation — full working trees, never committable). Re-added after
+# the .claude/-wide ignore was narrowed to track .claude/settings.json.
+/.claude/worktrees/
