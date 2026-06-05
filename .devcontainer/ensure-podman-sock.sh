@@ -31,14 +31,17 @@ real=""
 case "$(uname -s)" in
   Darwin)
     # macOS: podman runs inside a VM (libkrun/qemu) and the dev container runs
-    # inside that same VM. The host-side socket from `podman machine inspect`
-    # lives at a Mac path (e.g. /var/folders/.../T/podman/...api.sock) that does
-    # NOT exist inside the VM, so bind-mounting a symlink to it would resolve to
-    # a missing in-VM target and could break container creation. We therefore
-    # leave `real` empty: the mount falls back to /dev/null and the container
-    # starts cleanly with self-testing disabled. Wiring a VM-reachable socket
-    # for real macOS self-testing is a separate, open task (see ROADMAP.md) —
-    # it needs the VM-INTERNAL socket, not this host-side forwarding one.
+    # inside that same VM, so self-testing has no reachable socket to mount and
+    # we leave `real` empty -> /dev/null (container starts, self-testing off).
+    # Two routes were tried and ruled out on real hardware (2026-06-05):
+    #   - host-side socket (`podman machine inspect`): a Mac path absent inside
+    #     the VM, so the mount can't resolve;
+    #   - VM-internal socket (/run/user/<uid>/podman/podman.sock): the mount
+    #     RESOLVES, but it's owned by the VM user at a uid unmapped in the dev
+    #     container's rootless keep-id namespace -> EACCES, and an idmapped
+    #     bind mount is rejected (mount_setattr: Operation not permitted).
+    # The only fixes left are a VM-side TCP service or socket proxy — custom
+    # maintenance machinery, deferred. Full write-up in ROADMAP.md.
     : ;;
   *)
     # Linux rootless socket. XDG_RUNTIME_DIR is the canonical location; fall
