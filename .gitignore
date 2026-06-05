@@ -34,6 +34,11 @@ venv/
 # originals on the host filesystem so deletes survive container rebuilds).
 .Trash-*
 
+# Dev-container host-socket symlink (dropped by initializeCommand —
+# .devcontainer/ensure-podman-sock.sh — to give the podman-host mount a
+# stable, always-resolvable source). Host-local, regenerated each launch.
+/.devcontainer/.cache/
+
 # Logs
 *.log
 

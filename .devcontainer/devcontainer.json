@@ -46,18 +46,31 @@
   // image without round-tripping through the user. containerEnv below
   // points the podman client at it via CONTAINER_HOST.
   //
-  // HOST PREREQUISITE (one-time, Linux): the socket must exist, or this
-  // mount fails and the container won't start. Enable it with:
-  //   systemctl --user enable --now podman.socket
+  // The mount source is NOT the host socket directly — it's a stable symlink
+  // that initializeCommand (below) drops at .devcontainer/.cache/, resolving
+  // to the real per-OS socket when one exists and to /dev/null when it
+  // doesn't. A long-form type=bind source MUST exist or container creation
+  // hard-fails, and the real socket path is OS-specific and may be absent
+  // (macOS has no $XDG_RUNTIME_DIR; a Linux host may not have enabled the
+  // socket; a non-podman host has none at all). Going through the symlink
+  // means the container ALWAYS starts, degrading to "no self-testing"
+  // (podman calls against /dev/null fail cleanly) rather than refusing to
+  // come up. See .devcontainer/ensure-podman-sock.sh.
   //
-  // macOS NOTE: podman runs in a VM there and the socket path differs
-  // ($XDG_RUNTIME_DIR is usually unset on the macOS host). The path below
-  // is Linux-correct; the macOS path is an open follow-up (see ROADMAP).
+  // HOST PREREQUISITE (one-time, Linux) for self-testing to actually work:
+  //   systemctl --user enable --now podman.socket
+  // Without it the container still starts; only the podman calls fail.
+  //
+  // macOS: the container runs INSIDE the podman-machine VM, and the Mac
+  // host-side socket isn't reachable from in there, so the script falls back
+  // to /dev/null — the container starts, self-testing stays off. Wiring a
+  // VM-internal socket for real Mac self-testing is an open task (ROADMAP).
+  "initializeCommand": "sh .devcontainer/ensure-podman-sock.sh",
   "mounts": [
     "source=konrad-claude-dev-claude,target=/home/node/.claude,type=volume",
     "source=konrad-claude-dev-vscode-server,target=/home/node/.vscode-server,type=volume",
     "source=${localEnv:HOME}/.claude/skills,target=/home/node/.claude/skills,type=bind,consistency=delegated",
-    "source=${localEnv:XDG_RUNTIME_DIR}/podman/podman.sock,target=/run/podman-host.sock,type=bind"
+    "source=${localWorkspaceFolder}/.devcontainer/.cache/podman-host.sock,target=/run/podman-host.sock,type=bind"
   ],
   // CONTAINER_HOST → podman client talks to the host socket mounted above.
   // KONRAD_REMOTE_* → tell bin/konrad it's driving a REMOTE daemon, so it
