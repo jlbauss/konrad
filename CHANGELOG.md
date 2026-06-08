@@ -12,10 +12,16 @@ publishes as `:0.X.Y`, `:0.X`, `:latest`, and an immutable
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-06-08
+
 ### Changed
-- Documentation restructured for single-source clarity: this changelog added
-  (replacing ROADMAP's `## Implemented`), versioning and the dev/release
-  process consolidated to canonical homes, design docs moving to ADR format.
+- Licensing now follows the [REUSE](https://reuse.software) specification — every
+  file's copyright + license is declared in `REUSE.toml` / `LICENSES/` (SPDX-clear,
+  `reuse lint`-verified, CI-gated); `NOTICE` retired, its acknowledgements moved
+  into the README.
+- Documentation consolidated to single canonical homes — `ARCHITECTURE.md` (design
+  and the *why*), this `CHANGELOG.md` (replacing ROADMAP's `## Implemented`), and
+  the versioning / dev-release / commit conventions in their canonical docs.
 
 ## [0.5.0] - 2026-06-08
 
