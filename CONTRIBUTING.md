@@ -53,7 +53,7 @@ You need:
 - Podman (Linux/macOS host; Docker is on the roadmap but not supported yet)
 - `~/.local/bin` on your `$PATH`
 
-The repo ships a Dev Container at `.devcontainer/` — "Reopen in Container" in VS Code gives you a portable edit-and-lint environment (shellcheck, hadolint, actionlint, jq, git, ripgrep, the Claude Code extension preinstalled). **`konrad-dev` is preprovisioned here** — the image symlinks it into `/usr/local/bin` (already on `PATH`), so the manual step 2 above is *only* for a native checkout; in the container you can run `konrad-dev --rebuild` straight away. It also mounts the host's rootless Podman socket, so `konrad-dev --rebuild`, `konrad-dev --shell`, and most of `./scripts/smoke-test.sh konrad:local` run **from inside the container** against the host's Podman daemon — no privileged Podman-in-container needed. **Linux prerequisite:** enable the socket once on the host with `systemctl --user enable --now podman.socket`, or the container won't start. In this mode the daemon resolves bind-mount paths on the host, so konrad's host-home mounts (logs, config layers) are skipped and the smoke test's org-layer section is unavailable; **macOS uses a different (VM) socket path and isn't wired up yet** (see [ROADMAP.md](ROADMAP.md)).
+The repo ships a Dev Container at `.devcontainer/` — "Reopen in Container" in VS Code gives you a portable edit-and-lint environment (shellcheck, hadolint, actionlint, jq, git, ripgrep, the Claude Code extension preinstalled). **`konrad-dev` is preprovisioned here** — the image symlinks it into `/usr/local/bin` (already on `PATH`), so the manual step 2 above is *only* for a native checkout; in the container you can run `konrad-dev --rebuild` straight away. It also mounts the host's rootless Podman socket, so `konrad-dev --rebuild`, `konrad-dev --shell`, and most of `./scripts/smoke-test.sh konrad:local` run **from inside the container** against the host's Podman daemon — no privileged Podman-in-container needed. **Runtime self-testing works on a Linux host, not yet on macOS.** On Linux, enable the socket once with `systemctl --user enable --now podman.socket` (or the container won't start); the daemon then resolves bind-mount paths on the host, so konrad's host-home mounts (logs, config layers) and the smoke test's org-layer section are skipped. On macOS the container still builds, lints, and edits fine — only runtime self-testing is unavailable (the VM socket path isn't wired up; see [ROADMAP.md](ROADMAP.md)), so round-trip runtime tests through a Linux host or the maintainer.
 
 ## Local development loop
 
@@ -81,11 +81,12 @@ There's no traditional unit-test suite. The validation gates are:
 
 Trunk-based: `main` is always deployable — what's at `ghcr.io/jlbauss/konrad:latest` mirrors `main`'s current state. The primary repo is **GitLab** (`gitlab.git.nrw/jbauss2/konrad`, public). The GitHub mirror is a **private CI execution surface only** — it exists because gitlab.git.nrw's shared runners can't run the privileged Podman build (see [docs/design/design-decisions.md](docs/design/design-decisions.md)). You never need a GitHub account to contribute.
 
-**Maintainer** (direct repo access) — trunk-based via the git CLI, no MR ceremony:
+**Maintainer** (direct repo access) — trunk-based via the git CLI, no MR ceremony. The canonical loop is **branch → develop → bump → merge**:
 
-1. Branch off main: `git checkout -b feat/short-name`
-2. Commit (bump `VERSION` — see below)
-3. `git checkout main && git merge --ff-only feat/short-name && git push origin main`
+1. **Branch** off main: `git checkout -b feat/short-name`
+2. **Develop** and commit.
+3. **Bump** `VERSION` as the *last commit before merging*, not up front — with ff-only the branch tip becomes `main`, so a late bump keeps the version matching the integrated change and shrinks the window where two in-flight branches collide on the `VERSION` line (what to bump: [Versioning](#versioning)).
+4. **Merge**: `git checkout main && git merge --ff-only feat/short-name && git push origin main`
 
 For a higher-risk change, optionally push the branch to the private GitHub mirror and open a PR there to get a `:pr-<num>` test image first (see *Testing a change as an image* below); merge on GitLab once it checks out.
 
