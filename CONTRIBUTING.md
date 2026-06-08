@@ -79,7 +79,7 @@ There's no traditional unit-test suite. The validation gates are:
 
 ## Branching and pull requests
 
-Trunk-based: `main` is always deployable — what's at `ghcr.io/jlbauss/konrad:latest` mirrors `main`'s current state. The primary repo is **GitLab** (`gitlab.git.nrw/jbauss2/konrad`, public). The GitHub mirror is a **private CI execution surface only** — it exists because gitlab.git.nrw's shared runners can't run the privileged Podman build (see [docs/design/design-decisions.md](docs/design/design-decisions.md)). You never need a GitHub account to contribute.
+Trunk-based: `main` is always deployable — what's at `ghcr.io/jlbauss/konrad:latest` mirrors `main`'s current state. The primary repo is **GitLab** (`gitlab.git.nrw/jbauss2/konrad`, public). The GitHub mirror is a **private CI execution surface only** — it exists because gitlab.git.nrw's shared runners can't run the privileged Podman build (see [ARCHITECTURE.md](ARCHITECTURE.md)). You never need a GitHub account to contribute.
 
 **Maintainer** (direct repo access) — trunk-based via the git CLI, no MR ceremony. The canonical loop is **branch → develop → bump → merge**:
 
@@ -115,7 +115,24 @@ The `VERSION` file at the repo root drives all image tagging. **Bump it in the s
 
 Pre-1.0 rules (where we are today): `VERSION` holds `0.X.Y`. Bump **`Y` (patch)** for a bug fix with no surface change; bump **`X` (minor)** for new functionality or any user-visible change, resetting `Y` to 0. Doc-only, CI-only, and ROADMAP-only changes don't bump.
 
-The full design — including post-1.0 semver semantics, the tag scheme on the registry, when 1.0 happens, and when git tags / GitHub Releases get cut — lives in [docs/design/versioning-and-releases.md](docs/design/versioning-and-releases.md).
+Post-1.0, `VERSION` holds full semver `X.Y.Z`: **MAJOR** for a breaking change to the user-facing surface (config schema needing migration, a removed/renamed flag or bundled skill, a base-image major bump), **MINOR** for additive (new skill/flag/config slot/env var), **PATCH** for fixes and floating-pin refreshes. A commit's breaking marker (`!` / `BREAKING CHANGE:` — see [Commit style](#commit-style)) forces at least the corresponding bump. **1.0** is a deliberate event — when "no breaking change without a major bump" is a credible promise, roughly gated on the Tier-1 roadmap — not a date.
+
+### Image tags
+
+CI publishes each build to `ghcr.io/jlbauss/konrad` under several tags:
+
+| Tag | Mutable? | Meaning |
+|---|---|---|
+| `:0.X.Y-YYYY-MM-DD` | immutable | the rollback handle — code `0.X.Y` + packages as of that day |
+| `:0.X.Y` · `:0.X` · `:latest` | rolling | newest passing build for that patch / minor line / overall |
+| `:pr-<num>` | per-PR | reviewer test image; never touches `:latest` or a release tag |
+| `:<short-sha>` | immutable | per-commit, for bisecting |
+
+The separator before the date is a **hyphen**, not a dot, so the tag doesn't read as a four-segment version. Post-1.0 the same shape gains a `:X` major-line tag.
+
+### Git tags & releases
+
+Releases live on **GitLab** — the GitHub mirror is CI-only, no releases there. Pre-1.0, a `v0.X` git tag + a short GitLab Release note is nice-to-have, not required; [CHANGELOG.md](CHANGELOG.md) is the authoritative record. Post-1.0, every MAJOR/MINOR gets a `vX.Y.0` tag and a GitLab Release with "what's new / breaking / migration"; PATCH releases skip the git tag (the image tag suffices).
 
 ## Repo layout — what goes where
 
@@ -143,7 +160,7 @@ konrad/
 │   └── fetch-fonts.sh                 # One-shot — pulls fonts from upstream when bumping versions
 ├── .github/workflows/build-image.yml  # CI: build → smoke → publish (multi-arch amd64 + arm64)
 ├── .gitlab-ci.yml                     # Lock-resolver bot (source of truth; mirrors to GitHub)
-├── docs/design/                       # Long-form design rationale (the "why" notes)
+├── ARCHITECTURE.md                     # System design and the *why* (consolidated)
 ├── CHANGELOG.md                       # Released-change log (Keep a Changelog; agent-maintained)
 ├── ROADMAP.md                         # Backlog tiers (shipped work → CHANGELOG.md)
 ├── CLAUDE.md                          # Repo instructions for agents working ON konrad

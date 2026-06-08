@@ -2,13 +2,13 @@
 
 All notable, user-facing changes to konrad. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); konrad follows
-[semantic versioning](docs/design/versioning-and-releases.md) (pre-1.0: `0.X.Y`).
+[semantic versioning](CONTRIBUTING.md#versioning) (pre-1.0: `0.X.Y`).
 
 Entries stay terse — the *why* lives in the git commit log and the
-[design docs](docs/design/), linked rather than restated. Each release
+[ARCHITECTURE.md](ARCHITECTURE.md), linked rather than restated. Each release
 publishes as `:0.X.Y`, `:0.X`, `:latest`, and an immutable
 `:0.X.Y-YYYY-MM-DD` daily rebuild (see the
-[versioning doc](docs/design/versioning-and-releases.md)).
+[versioning](CONTRIBUTING.md#versioning)).
 
 ## [Unreleased]
 
@@ -94,7 +94,7 @@ feature set at first public release:
 
 > Pre-`0.2` development is summarized here rather than itemized — it predates
 > the public project. The deeper origin story is in the "Day-zero history" of
-> the [versioning doc](docs/design/versioning-and-releases.md) and the git log.
+> the [versioning](CONTRIBUTING.md#versioning) and the git log.
 
 ## [0.1] - 2026-05-23
 

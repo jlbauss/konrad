@@ -8,7 +8,7 @@ you distribute internal tooling (a `git clone`, an MDM-pushed folder, a
 place: **`~/.config/konrad/org/`** in each user's home.
 
 See [README → Configuration → "For organizations"](../../../README.md#for-organizations)
-for the user-facing overview and [docs/design/org-config-layer.md](../../design/org-config-layer.md)
+for the user-facing overview and [ARCHITECTURE.md → Configuration & instructions](../../../ARCHITECTURE.md#configuration--instructions)
 for the *why*.
 
 ## What's here

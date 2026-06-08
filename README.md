@@ -5,7 +5,7 @@
 **An open-source AI coworker that runs on your machine and your models — so even your most sensitive files stay yours.**
 
 [![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
-[![version](https://img.shields.io/badge/dynamic/yaml?url=https://gitlab.git.nrw/jbauss2/konrad/-/raw/main/VERSION&query=$&label=version&color=informational)](ROADMAP.md#implemented)
+[![version](https://img.shields.io/badge/dynamic/yaml?url=https://gitlab.git.nrw/jbauss2/konrad/-/raw/main/VERSION&query=$&label=version&color=informational)](CHANGELOG.md)
 [![status](https://img.shields.io/badge/status-alpha-orange)](#status)
 [![image](https://img.shields.io/badge/image-ghcr.io%2Fjlbauss%2Fkonrad-blue)](https://github.com/users/jlbauss/packages/container/package/konrad)
 
@@ -22,12 +22,12 @@ It's a thin, sandboxed wrapper around [opencode](https://github.com/sst/opencode
 - **Your models, your choice.** Local engines (LM Studio / Ollama / llama.cpp) or any opencode-supported API provider — never locked to one vendor.
 - **Batteries included.** One container image ships the agent's tools (ripgrep, fd, jq, pandoc, poppler, Python 3 + a system venv, Typst, LibreOffice) and a curated skill set already wired together: no venv, no pip, no host setup.
 - **Fully open source.** AGPL-3.0, no telemetry, nothing proprietary.
-- **Always current.** A bot tracks every upstream and CI rebuilds the image as they move; `konrad --update` keeps you fresh. See [pinning-and-build.md](docs/design/pinning-and-build.md).
+- **Always current.** A bot tracks every upstream and CI rebuilds the image as they move; `konrad --update` keeps you fresh. See [build & reproducibility](ARCHITECTURE.md#build--reproducibility).
 
 What ships in the box:
 
 - **Curated skills**, loaded via opencode's `skill` tool: `do-it-manually` (structured-but-irregular data extraction), `spreadsheets` (xlsx/csv CRUD), `pdf` (extract / edit / annotate / fill / generate), and `quality-assurance` (the cross-skill verification cycle every producer invokes before reporting). More on the way — see [ROADMAP.md](ROADMAP.md).
-- **A planning contract** baked into the agent prompt: a single `.agent/task.md` per task with side effects, plus aggressive use of opencode's `todowrite` for live progress. Rationale in [task-md-and-todowrite.md](docs/design/task-md-and-todowrite.md).
+- **A planning contract** baked into the agent prompt: a single `.agent/task.md` per task with side effects, plus aggressive use of opencode's `todowrite` for live progress. Rationale in [the planning contract](ARCHITECTURE.md#the-planning-contract).
 - **A curated font palette** — seven SIL OFL families (Inter, Source Serif 4, Fraunces, JetBrains Mono, EB Garamond, IBM Plex Sans, Atkinson Hyperlegible) plus Debian's Noto core for broad non-Latin coverage, so generated PDFs / slides / typeset docs look intentional out of the box. Drop your own into `~/.config/konrad/user/fonts/` to extend.
 
 ## Status
@@ -36,7 +36,7 @@ What ships in the box:
 
 - **No egress firewall or permission ACLs yet.** The sandbox is container + filesystem isolation only; network access is unrestricted. Narrowing it to an allow-list is the next safety milestone — see [ROADMAP.md](ROADMAP.md).
 - **Podman only; Linux and macOS only.** `--userns=keep-id` is Podman-specific. Docker support is on the roadmap, untested. No Windows support — WSL is at your own discretion and untested.
-- **Pre-1.0: expect churn, but versioned.** Konrad uses [semantic versioning](docs/design/versioning-and-releases.md) — pre-1.0 that's `0.X.Y` (`X`/minor = new functionality or any user-visible change, `Y`/patch = fixes). The leading `0.` means config shapes, flags, and image internals can still change without a migration path; no stability promise until 1.0.
+- **Pre-1.0: expect churn, but versioned.** Konrad uses [semantic versioning](CONTRIBUTING.md#versioning) — pre-1.0 that's `0.X.Y` (`X`/minor = new functionality or any user-visible change, `Y`/patch = fixes). The leading `0.` means config shapes, flags, and image internals can still change without a migration path; no stability promise until 1.0.
 - **No automated test suite.** Validation is manual (shellcheck + a smoke build). Regressions can slip through; the baked build manifest is the safety net, not a test suite.
 - **Local-model UX is still rough.** Tool-call parsing, context overflow, and model switching have known edges — the "works flawlessly on local models" shakedown is still a roadmap item. You must also hand-declare each loaded model (no auto-discovery yet).
 
@@ -229,7 +229,7 @@ Two things worth knowing:
 
 **This is a defaults mechanism, not policy enforcement.** The org folder is just files in the user's own home directory, so a determined user can edit them. "Add-only" describes the merge *precedence* (the user stacks on top), not a permission lock. Locking config down would need read-only system locations or signing — a separate concern Konrad doesn't address today.
 
-A ready-to-adapt starter package — a populated `org/` plus an `install.sh` that drops it into place — lives in [`docs/examples/org-package/`](docs/examples/org-package/). Design rationale (why a `$HOME` folder, why the system instructions channel, why defaults-not-enforcement) is in [docs/design/org-config-layer.md](docs/design/org-config-layer.md).
+A ready-to-adapt starter package — a populated `org/` plus an `install.sh` that drops it into place — lives in [`docs/examples/org-package/`](docs/examples/org-package/). Design rationale (why a `$HOME` folder, why the system instructions channel, why defaults-not-enforcement) is in [ARCHITECTURE.md → Configuration & instructions](ARCHITECTURE.md#configuration--instructions).
 
 ## State
 
@@ -243,7 +243,7 @@ One rule: **`.agent/` belongs to the agent.** Framework state (opencode sessions
 | `~/.local/state/konrad/log/` | opencode logs + per-launch session sidecar | Auto-pruned >7d; `ls -t` / `tail -f`. |
 | Named volumes `konrad-secrets` / `-cache` / `-state` | Auth, cache, last-model + UI state | Shared across projects; wiped by `konrad --reset`. |
 
-opencode's sessions and conversation DB are **ephemeral** — gone on container exit. Durable task memory is `.agent/task.md`, not the framework's history. Full rationale and the exact mount topology in [state-isolation.md](docs/design/state-isolation.md).
+opencode's sessions and conversation DB are **ephemeral** — gone on container exit. Durable task memory is `.agent/task.md`, not the framework's history. Full rationale and the exact mount topology in [state isolation](ARCHITECTURE.md#state-secrets--isolation).
 
 ## Troubleshooting
 
@@ -281,11 +281,11 @@ For deeper digging, pass `-v` / `--verbose` (or export `KONRAD_DEBUG=1`): per-ph
 
 How Konrad is built and why — for the curious and for contributors:
 
-- **Pinning & build cache** → [docs/design/pinning-and-build.md](docs/design/pinning-and-build.md)
-- **Versioning & release tags** → [docs/design/versioning-and-releases.md](docs/design/versioning-and-releases.md)
-- **State & isolation** → [docs/design/state-isolation.md](docs/design/state-isolation.md)
-- **Planning contract (`task.md` + `todowrite`)** → [docs/design/task-md-and-todowrite.md](docs/design/task-md-and-todowrite.md)
-- **Design decisions** → [docs/design/design-decisions.md](docs/design/design-decisions.md)
+- **Pinning & build cache** → [ARCHITECTURE.md → Build & reproducibility](ARCHITECTURE.md#build--reproducibility)
+- **Versioning & release tags** → [CONTRIBUTING.md → Versioning](CONTRIBUTING.md#versioning)
+- **State & isolation** → [ARCHITECTURE.md → State, secrets & isolation](ARCHITECTURE.md#state-secrets--isolation)
+- **Planning contract (`task.md` + `todowrite`)** → [ARCHITECTURE.md → The planning contract](ARCHITECTURE.md#the-planning-contract)
+- **Design decisions** → [ARCHITECTURE.md](ARCHITECTURE.md)
 - **Repo layout, dev loop, contributing** → [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ## License and attribution
