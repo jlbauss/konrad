@@ -45,6 +45,19 @@ SECRETS_VOLUME="konrad-secrets"
 CACHE_VOLUME="konrad-cache"
 STATE_VOLUME="konrad-state"
 
+# Volume profile (--profile <name>). When set, the state + cache volumes are
+# suffixed (konrad-state → konrad-state-<name>, konrad-cache → konrad-cache-<name>)
+# so a named profile gets throwaway opencode state — its own session DB, model
+# selection, and caches — without touching the user's real ones. The canonical
+# use is `--profile selftest` for end-to-end self-test runs: a live run against
+# the real konrad-state otherwise triggers opencode's one-time DB migration on
+# it and persists a model/session the user didn't pick (hit 2026-06-03 during
+# dev-container self-testing). SECRETS is deliberately NOT suffixed — it stays
+# shared so a profile reuses the user's real provider credentials (auth.json);
+# an isolated secrets volume would start empty and have no API key to resolve a
+# model. Empty (no --profile) → the unsuffixed volumes above, unchanged.
+KONRAD_PROFILE=""
+
 # Where konrad keeps host-side config. Two symmetric sublayers live under it:
 #   org/   — an organization's shipped defaults (dropped in by a provisioning
 #            package; see docs/examples/org-package/). Merged ABOVE the baked
@@ -100,10 +113,16 @@ die()  { printf 'konrad: %s\n' "$*" >&2; exit 1; }
 warn() { printf 'konrad: warning: %s\n' "$*" >&2; }
 info() { printf 'konrad: %s\n' "$*" >&2; }
 
-# Debug mode: KONRAD_DEBUG=1 turns on per-phase timestamps and passes
-# verbose flags through to opencode. Off by default — flip with -v/--verbose
-# or by exporting KONRAD_DEBUG=1 in the environment.
+# Debug mode: KONRAD_DEBUG=1 turns on per-phase timestamps (host + container)
+# and points at opencode's structured file log. Off by default — flip with
+# -v/--verbose or by exporting KONRAD_DEBUG=1 in the environment.
 KONRAD_DEBUG="${KONRAD_DEBUG:-0}"
+# Raw HTTP trace: a separate, noisier opt-in than -v. KONRAD_TRACE_FETCH=1
+# makes the container dump every Bun fetch (full headers) to stderr — for
+# hunting network stalls the file log can't surface. Deliberately NOT bundled
+# into -v (it buries everything else; see image/entrypoint.sh). Passed through
+# to the container via -e; off by default.
+KONRAD_TRACE_FETCH="${KONRAD_TRACE_FETCH:-0}"
 # $SECONDS is bash's built-in script-elapsed counter (portable to bash 3.2
 # on macOS). The container side uses GNU `date +%N` for sub-second precision
 # since Linux has that. Both are good enough to spot what's slow.
@@ -476,6 +495,30 @@ podman_run() {
   cwd="$(pwd -P)"
   ws_src="$(remote_host_path "$cwd")"   # rewritten only in remote mode
 
+  # Profile-suffixed state + cache volumes (secrets stays shared — see
+  # KONRAD_PROFILE above). No profile → the base names, unchanged.
+  local state_vol="$STATE_VOLUME" cache_vol="$CACHE_VOLUME"
+  if [[ -n "$KONRAD_PROFILE" ]]; then
+    state_vol="${STATE_VOLUME}-${KONRAD_PROFILE}"
+    cache_vol="${CACHE_VOLUME}-${KONRAD_PROFILE}"
+  fi
+
+  # TTY / stdin allocation. The interactive TUI and the --shell path want a
+  # real terminal (-it). The non-interactive `konrad run` path never wants a
+  # pseudo-tty (its answer should stream to stdout clean and capturable), and
+  # it must be careful with stdin: `opencode run` treats a non-tty stdin as
+  # PIPED input and reads it, so forwarding a live interactive terminal as a
+  # non-tty fd (-i without -t) makes opencode block forever on a read that
+  # never sees EOF. So in run mode we attach stdin ONLY when it's genuinely
+  # piped/redirected (echo … | konrad run); from a terminal we pass neither
+  # flag, podman leaves the container stdin closed, and opencode uses the
+  # prompt arg. KONRAD_NONINTERACTIVE is set by do_run_oneshot before it
+  # calls here.
+  local -a tty_flags=(-it)
+  if [[ "${KONRAD_NONINTERACTIVE:-0}" == "1" ]]; then
+    if [[ -t 0 ]]; then tty_flags=(); else tty_flags=(-i); fi
+  fi
+
   # Host-home bind mounts: the central log dir and the org/user config
   # layers all live under $HOME. They resolve correctly only against a
   # LOCAL daemon (same filesystem as this script). In remote-socket mode
@@ -513,15 +556,16 @@ podman_run() {
   # workspace path into the session sidecar (opencode itself only
   # sees /workspace and can't record the host path).
   exec podman run \
-    --rm -it --init \
+    --rm ${tty_flags[@]+"${tty_flags[@]}"} --init \
     --userns=keep-id:uid=1000,gid=1000 \
     -e "KONRAD_DEBUG=${KONRAD_DEBUG}" \
+    -e "KONRAD_TRACE_FETCH=${KONRAD_TRACE_FETCH:-0}" \
     -e "KONRAD_HOST_WORKSPACE=${ws_src}" \
     -e "KONRAD_HOST_LOG_DIR=${KONRAD_LOG_DIR}" \
     -v "${ws_src}:/workspace:z" \
     -v "${SECRETS_VOLUME}:/home/node/.opencode-secrets:U" \
-    -v "${CACHE_VOLUME}:/home/node/.cache/opencode:U" \
-    -v "${STATE_VOLUME}:/home/node/.local/state/opencode:U" \
+    -v "${cache_vol}:/home/node/.cache/opencode:U" \
+    -v "${state_vol}:/home/node/.local/state/opencode:U" \
     ${home_mounts[@]+"${home_mounts[@]}"} \
     -w /workspace \
     "$IMAGE_NAME" "$@"
@@ -550,6 +594,28 @@ do_run() {
     dbg "about to exec podman run (opencode)"
     podman_run opencode
   fi
+}
+
+# Non-interactive one-shot: exec `opencode run <args…>` instead of the TUI.
+# Same preflight + workspace side-effects as the agent path (it's still the
+# agent against this workspace, just one prompt with the answer on stdout).
+# Everything in "$@" is forwarded verbatim to `opencode run` — konrad doesn't
+# enumerate opencode's flags, so --model / --agent / --session and anything
+# opencode adds later ride straight through. Pair with --profile to keep a
+# self-test off the user's real state. opencode's exit code propagates via exec.
+do_run_oneshot() {
+  dbg "do_run_oneshot start"
+  info "preflight checks…"
+  require_podman; dbg "podman OK"
+  require_image;  dbg "image OK"
+  check_lm_studio; dbg "lm-studio probe done"
+  migrate_flat_config; dbg "flat-config migration checked"
+  ensure_gitignore; dbg "gitignore ensured"
+  prune_log_dir; dbg "log dir pruned"
+  KONRAD_NONINTERACTIVE=1   # read by podman_run to drop the pseudo-tty
+  info "running opencode (non-interactive)…"
+  dbg "about to exec podman run (opencode run)"
+  podman_run opencode run "$@"
 }
 
 # Compose the immutable dated tag (0.X.YYYY-MM-DD) from an image's version
@@ -831,6 +897,49 @@ EOF
 }
 
 do_reset() {
+  # Two shapes. Without --profile: wipe the shared default state — log dir +
+  # all three base volumes (the original, ALL-workspaces reset). With
+  # --profile <name>: wipe only that profile's throwaway state + cache volumes,
+  # and leave the shared secrets and the central log dir untouched (the secrets
+  # volume is shared on purpose — see KONRAD_PROFILE — so a profile reset must
+  # never delete the user's real credentials).
+  if [[ -n "$KONRAD_PROFILE" ]]; then
+    local p_state="${STATE_VOLUME}-${KONRAD_PROFILE}" p_cache="${CACHE_VOLUME}-${KONRAD_PROFILE}"
+    cat >&2 <<EOF
+
+==============================================================================
+WARNING — --reset --profile $KONRAD_PROFILE will permanently delete:
+
+  - the profile's throwaway volumes:
+      • $p_state  (this profile's opencode session/model state)
+      • $p_cache  (this profile's opencode cache)
+
+Leaves alone: the shared $SECRETS_VOLUME (credentials), the central log dir,
+and the default (profile-less) volumes. There is no undo.
+==============================================================================
+
+EOF
+    printf 'konrad: proceed with profile reset? [y/N]: ' >&2
+    local confirmation=""
+    read -r confirmation || true
+    case "$confirmation" in
+      y|Y|yes|YES) ;;
+      *) info "aborted; nothing was deleted."; exit 0 ;;
+    esac
+    if command -v podman >/dev/null 2>&1 && podman info >/dev/null 2>&1; then
+      for vol in "$p_state" "$p_cache"; do
+        if podman volume exists "$vol" 2>/dev/null; then
+          podman volume rm "$vol" >/dev/null
+          info "removed profile volume $vol"
+        fi
+      done
+    else
+      warn "podman not reachable; profile volumes were NOT removed."
+    fi
+    info "profile '$KONRAD_PROFILE' reset complete."
+    return 0
+  fi
+
   cat >&2 <<EOF
 
 ==============================================================================
@@ -976,15 +1085,30 @@ alongside this stable CLI — see CONTRIBUTING.md."
   cat <<EOF
 $variant_blurb
 
-Default: run opencode against the current directory. Pass a flag to do
-something else.
+Default ($self, no args): launch the interactive opencode TUI against the
+current directory. Pass a flag, or the 'run' subcommand, to do something else.
+
+Subcommand:
+  $self run <args…>    Non-interactive: exec 'opencode run <args…>' instead of
+                        the TUI — one prompt, answer on stdout (pipeable). Args
+                        after 'run' pass straight to opencode, so:
+                          $self run "summarize this repo"
+                          $self run --model <slug> "fix the failing test"
+                        Put konrad's own flags (below) BEFORE 'run'.
 
 Flags:
   -s, --shell           Open a bash shell in the container instead.
-  -v, --verbose         Per-phase timestamps + verbose opencode logs.
+  --profile <name>      Use throwaway state + cache volumes suffixed with <name>
+                        (konrad-state-<name> / konrad-cache-<name>) instead of
+                        the shared ones; credentials stay shared. Isolates a
+                        self-test / experiment from your real session + model.
+  -v, --verbose         Per-phase timestamps + opencode log-file pointer.
+                        (Raw HTTP trace is separate: KONRAD_TRACE_FETCH=1 …)
   --version             Print CLI + image versions (dated tag, digest, revision).
 $refresh_flag
   --reset               Wipe shared volumes + log dir. Prompts [y/N].
+                        With --profile <name>: wipe only that profile's
+                        state + cache volumes (leaves credentials + log dir).
   --uninstall           Remove this binary's CLI + image. Prompts [y/N].
                         Leaves shared state alone — use --reset for that.
   -h, --help            Show this message.
@@ -1034,13 +1158,22 @@ EOF
 
 SHELL_MODE=0
 ACTION="run"
+RUN_ARGS=()
 
 # Each flag is its own token. Short flags bundle (-sv == -s -v). Long flags
 # stand alone. The action flags (--version / --update / --rebuild / --reset
 # / --help) are mutually exclusive; last one wins if multiple are passed.
+# konrad's own flags come BEFORE the optional `run` verb; once `run` is seen,
+# the rest of the line is captured verbatim for `opencode run` and parsing stops.
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    run)          ACTION="run-oneshot"; shift; RUN_ARGS=("$@"); break ;;
     --shell)      SHELL_MODE=1;     shift ;;
+    --profile)
+      [[ $# -ge 2 ]] || die "--profile requires a name (e.g. --profile selftest)"
+      [[ "$2" =~ ^[A-Za-z0-9_-]+$ ]] \
+        || die "invalid profile name '$2' (allowed: letters, digits, '-', '_')"
+      KONRAD_PROFILE="$2"; shift 2 ;;
     --verbose)    KONRAD_DEBUG=1;   shift ;;
     --version)    ACTION="version"; shift ;;
     --update)     ACTION="update";  shift ;;
@@ -1078,6 +1211,7 @@ case "$ACTION" in
       do_run agent
     fi
     ;;
+  run-oneshot)   do_run_oneshot ${RUN_ARGS[@]+"${RUN_ARGS[@]}"} ;;
   version)       do_version       ;;
   update)        do_update        ;;
   check-updates) do_check_updates ;;
