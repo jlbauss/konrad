@@ -49,3 +49,6 @@ venv/
 # worktree isolation — full working trees, never committable). Re-added after
 # the .claude/-wide ignore was narrowed to track .claude/settings.json.
 /.claude/worktrees/
+# konrad agent working state (auto-pruned >7d on every launch)
+.agent/quality-assurance/
+.agent/scratch/
