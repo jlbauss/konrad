@@ -83,6 +83,8 @@
       "Bash(trash-restore:*)",
       "Bash(trash-empty:*)",
       "Skill(skill-creator:*)",
+      "mcp__context7__resolve-library-id",
+      "mcp__context7__query-docs",
       "WebSearch",
       "WebFetch(domain:github.com)",
       "WebFetch(domain:raw.githubusercontent.com)",
