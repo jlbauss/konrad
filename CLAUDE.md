@@ -45,7 +45,7 @@ Multi-concern changes: prefer separate commits per concern (see [CONTRIBUTING.md
 
 ## Commit style
 
-Conventional commits without scope prefix unless useful: `feat:`, `fix:`, `refactor:`, `docs:`, `chore:`. Multi-line body for any change involving a design decision — the git log is the project's design history.
+[Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/), canonicalized in [CONTRIBUTING.md → Commit style](CONTRIBUTING.md#commit-style) — types, optional scope list, the `!` / `BREAKING CHANGE:` marker (→ MINOR pre-1.0, MAJOR post-1.0), and the `chore(release): <version>` release commit. Agent deltas only: the `Co-Authored-By` trailer is **mandatory** on agent commits, and a multi-line body is expected for any design decision — the git log is the project's design history.
 
 ## Working agreements
 

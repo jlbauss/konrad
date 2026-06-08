@@ -156,19 +156,26 @@ If a change touches multiple concerns, prefer separate commits per concern. The 
 
 ## Commit style
 
-Conventional commit subject, no scope prefix unless useful:
+[Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/), applied fully — by discipline, checked at review (no tooling, exactly like the [VERSION](#versioning) bump).
 
 ```
-short imperative subject in lowercase
+type(scope)?: imperative, lowercase subject, no trailing period
 
-body explaining *why*, wrapping at ~72 cols. include surprising
-constraints or non-obvious tradeoffs. don't re-state what the diff
-shows.
+Body — expected for anything that needed a design decision: explain *why*
+(surprising constraints, non-obvious tradeoffs), wrapped at ~72 cols. Don't
+restate the diff; the git log is the project's primary design history.
 
-Co-Authored-By: ...   (only when applicable)
+BREAKING CHANGE: <what breaks + how to migrate>   (footer, when applicable)
+Co-Authored-By: ...                               (when applicable)
 ```
 
-Use multi-line bodies for any change that needed a design decision. The git log is the project's primary design history — keep it useful.
+**Types** — `feat` (new capability), `fix` (bug fix), `docs`, `refactor` (no behaviour change), `perf`, `test`, `build` (build system / deps), `ci`, `style` (formatting only), `chore` (housekeeping — locks, etc.), `revert`.
+
+**Scope** — optional; use one where it adds signal, from: `cli`, `image`, `config`, `skills`, `devcontainer`, `ci`, `locks`, `roadmap`, `release`.
+
+**Breaking changes** — mark with `!` after the type/scope (e.g. `feat!:`) and/or a `BREAKING CHANGE:` footer. This drives the version bump: **MINOR pre-1.0** (no MAJOR slot yet), **MAJOR post-1.0** — see [Versioning](#versioning).
+
+**Release commit** — the `VERSION` bump is `chore(release): <version>`, made as the last commit before merge (see [the maintainer flow](#branching-and-pull-requests)).
 
 ## When to update what
 

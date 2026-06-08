@@ -96,7 +96,7 @@ KONRAD_IMAGE=ghcr.io/jlbauss/konrad:pr-42 konrad            # run for real
 
 ## When to bump VERSION
 
-**In the same PR as the change.** Reviewer verifies the bump matches the change's semver impact.
+**In the same PR as the change.** Reviewer verifies the bump matches the change's semver impact. A commit marked breaking (`!` or a `BREAKING CHANGE:` footer — see [CONTRIBUTING → Commit style](../../CONTRIBUTING.md#commit-style)) forces at least a MINOR bump pre-1.0, MAJOR post-1.0.
 
 Examples:
 
