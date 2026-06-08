@@ -23,8 +23,8 @@ compatibility: >
 metadata:
   author: konrad
   version: "1.0"
-  # Attribution for borrowed content lives in the project-level NOTICE at
-  # the repo root: minimax-pdf (MIT) for the FILL route, docling-project
+  # Attribution for borrowed content is declared in REUSE.toml: minimax-pdf
+  # (MIT) for the FILL route, docling-project
   # (MIT) for the EXTRACT route.
 ---
 

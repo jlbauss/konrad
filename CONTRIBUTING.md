@@ -20,9 +20,18 @@ What does *not* need an issue first:
 
 ## What you're agreeing to
 
-By submitting a PR you agree your contributions are licensed under **AGPL-3.0-only** (see [LICENSE](LICENSE)). Konrad is strong-copyleft on purpose — anyone running it (including over a network) has to publish their source. If that's incompatible with your situation, please don't submit.
+By submitting a PR you agree your contributions are licensed under **AGPL-3.0-or-later** (see [LICENSE](LICENSE)). Konrad is strong-copyleft on purpose — anyone running it (including over a network) has to publish their source. If that's incompatible with your situation, please don't submit.
 
 No CLA, no DCO. The license terms attach automatically.
+
+Licensing follows the [REUSE](https://reuse.software) spec, verified by `reuse lint`. **Add an SPDX header to every new or edited source file** — two comment lines near the top:
+
+```
+# SPDX-FileCopyrightText: 2026 Your Name
+# SPDX-License-Identifier: AGPL-3.0-or-later
+```
+
+Vendored third-party files keep their *upstream* `SPDX-FileCopyrightText` + license instead. Files that can't carry a comment (fonts, other binaries) and the project default are handled by globs in [`REUSE.toml`](REUSE.toml); when you introduce a new license, add its text under `LICENSES/` (`reuse download <SPDX-ID>`). Keep `reuse lint` green — CI enforces it.
 
 ## First-time setup
 
@@ -164,7 +173,8 @@ konrad/
 ├── CHANGELOG.md                       # Released-change log (Keep a Changelog; agent-maintained)
 ├── ROADMAP.md                         # Backlog tiers (shipped work → CHANGELOG.md)
 ├── CLAUDE.md                          # Repo instructions for agents working ON konrad
-├── NOTICE                             # Upstream attribution
+├── REUSE.toml                         # Per-file copyright/license by glob (REUSE spec)
+├── LICENSES/                          # SPDX license texts (REUSE)
 ├── .devcontainer/                     # VS Code Dev Container for working ON konrad (Claude Code preinstalled)
 └── devcontainer/                      # Experimental: Dev Container as a way to USE konrad (see ROADMAP)
 ```

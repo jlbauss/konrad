@@ -6,7 +6,7 @@ metadata:
   author: konrad
   version: "1.0"
   # Vendored from Matt Pocock's skills (productivity/write-a-skill),
-  # MIT-licensed. Attribution lives in the repo-root NOTICE. The konrad
+  # MIT-licensed. Attribution lives in `REUSE.toml`. The konrad
   # note below is the only addition; the rest is upstream.
 ---
 

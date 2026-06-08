@@ -15,6 +15,7 @@
       "Bash(npx:*)",
       "Bash(python3:*)",
       "Bash(uv:*)",
+      "Bash(reuse:*)",
       "Bash(pip:*)",
       "Bash(make:*)",
       "Bash(pytest:*)",

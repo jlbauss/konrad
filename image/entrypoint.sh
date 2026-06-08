@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2026 Jan-Luca Bauß
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # konrad entrypoint. Runs before opencode (or whatever the user invoked)
 # on every container start. Responsibilities:
 #   1. Compose opencode's runtime config by deep-merging konrad's baked

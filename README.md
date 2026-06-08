@@ -290,7 +290,9 @@ How Konrad is built and why — for the curious and for contributors:
 
 ## License and attribution
 
-Konrad is released under the [GNU Affero General Public License v3.0](LICENSE). The combined work as a whole is AGPL v3; bundled third-party components retain their own (AGPL-compatible) licenses. See [NOTICE](NOTICE) for the full upstream list and copyright notices.
+Konrad is released under the [GNU Affero General Public License v3.0 or later](LICENSE). The combined work is AGPL-3.0-or-later; bundled third-party components keep their own (AGPL-compatible) licenses, declared per file following the [REUSE](https://reuse.software) specification — see [`REUSE.toml`](REUSE.toml) and [`LICENSES/`](LICENSES/) (`reuse lint`-verified).
+
+**Acknowledgements.** Konrad is built on [opencode](https://github.com/sst/opencode) (MIT) and tuned for [Qwen3.6](https://huggingface.co/Qwen) (used via your provider, not bundled here). The agent prompt adapts patterns from [OpenAgentsControl](https://github.com/darrenhinde/OpenAgentsControl) and [opencode-froggy](https://github.com/smartfrog/opencode-froggy); the `pdf` skill's EXTRACT route builds on [docling](https://github.com/docling-project/docling).
 
 ---
 

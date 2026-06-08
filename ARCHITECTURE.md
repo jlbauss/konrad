@@ -17,7 +17,7 @@ One audience and one job per file:
 | [ROADMAP.md](ROADMAP.md) | Backlog tiers (Inbox / Tier 1 / Tier 2 / Post-1.0 / Obsolete). |
 | [CHANGELOG.md](CHANGELOG.md) | Released, user-facing changes (Keep a Changelog). |
 | [VERSION](VERSION) | Single source of the version; drives image tags. |
-| [LICENSE](LICENSE) · [NOTICE](NOTICE) | AGPL-3.0, and upstream attribution. |
+| [LICENSE](LICENSE) · [REUSE.toml](REUSE.toml) · [LICENSES/](LICENSES/) | AGPL-3.0; per-file copyright/license (REUSE spec). |
 
 Code layout (`bin/`, `image/`, `scripts/`) is mapped in [CONTRIBUTING.md](CONTRIBUTING.md#repo-layout--what-goes-where).
 
@@ -107,4 +107,4 @@ Two **independent** gates, baked into the agent prompt ([image/opencode/agents/k
 
 ## Licensing
 
-**AGPL-3.0** — compatible with all bundled upstream licenses (MIT, Apache-2.0, OFL-1.1). Strong copyleft is deliberate for a sandbox-style tool: AGPL's network-use clause closes the SaaS loophole plain GPL leaves open, so a fork offered as a hosted remote agent over an API must still publish its source. Attribution in [NOTICE](NOTICE).
+**AGPL-3.0** — compatible with all bundled upstream licenses (MIT, Apache-2.0, OFL-1.1). Strong copyleft is deliberate for a sandbox-style tool: AGPL's network-use clause closes the SaaS loophole plain GPL leaves open, so a fork offered as a hosted remote agent over an API must still publish its source. Per-file copyright + license is declared machine-readably following the [REUSE](https://reuse.software) spec (`REUSE.toml` + `LICENSES/`, `reuse lint`-verified); acknowledgements (the runtime, the model, adapted prompt-patterns) live in the [README](README.md#license-and-attribution).

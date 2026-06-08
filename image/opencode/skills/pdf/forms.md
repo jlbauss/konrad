@@ -4,8 +4,7 @@ Fill AcroForm fields in an existing PDF without altering layout or design.
 Two scripts, two steps. This route — both the workflow and the two
 scripts — is adapted from
 [MiniMax-AI/skills](https://github.com/MiniMax-AI/skills)
-(MIT-licensed); attribution lives in the project-level NOTICE at the
-repo root.
+(MIT-licensed); attribution is declared in `REUSE.toml`.
 
 > **Non-fillable forms: the FILL route stops here, but EDIT can help.**
 > This route only handles PDFs whose fields are real AcroForm widgets

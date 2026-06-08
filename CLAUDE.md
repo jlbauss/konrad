@@ -52,6 +52,7 @@ rule or preference, add it here as a bullet — that's what this section is for.
 - Two version mechanics to know: the README version badge auto-derives from `VERSION` (a shields *dynamic* badge — don't replace it with a hardcoded one); and CLI/image version drift on CLI-only patches is expected — `VERSION` bumps without firing an image rebuild (the `image/**` filter), and `konrad --version` prints both with no warning. Bundle a CLI change that genuinely needs a new image into one `image/**`-touching commit.
 
 ### Editing safely
+- Add an SPDX header to every **new or edited** source file: `# SPDX-FileCopyrightText: 2026 Jan-Luca Bauß` + `# SPDX-License-Identifier: AGPL-3.0-or-later` (vendored files keep their *upstream* header). The repo follows REUSE; `reuse lint` (in the dev container; CI-enforced on GitLab) must stay green. Canon: [CONTRIBUTING → licensing](CONTRIBUTING.md#what-youre-agreeing-to).
 - Keep `bin/konrad` (and `image/entrypoint.sh`, `scripts/*.sh`) executable: a `644` `bin/konrad` breaks `konrad-dev`, so `chmod +x` after any rewrite that drops the bit and verify with `ls -l`.
 - Validate smoke locally before pushing CI changes (`scripts/smoke-test.sh`, `image/Dockerfile`, `image/build-manifest.sh`): `konrad-dev --rebuild && ./scripts/smoke-test.sh konrad:local` beats a CI round-trip.
 - Prefer `trash` over `rm` inside `/workspace` — it survives rebuilds and is recoverable (`trash-restore` / `trash-list`). `rm` hard-deletes; use it deliberately.

@@ -126,4 +126,4 @@ replace a baked family entirely, ship a same-named file in the overlay.
 All seven families are SIL OFL 1.1. Per-family copyright notices ship at
 `/usr/local/share/fonts/konrad/<family>/LICENSE.txt` inside the image
 and are mirrored in this repo at `image/fonts/konrad/<family>/`. The
-consolidated list is in the project's `NOTICE` file.
+consolidated per-font copyright is in `REUSE.toml`.

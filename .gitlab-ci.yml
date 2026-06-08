@@ -196,3 +196,24 @@ resolve-locks:
       git push \
         "https://oauth2:${BOT_PAT}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git" \
         HEAD:main
+
+# =============================================================================
+# REUSE compliance gate.
+#
+# Unlike the image build (privileged Podman → forced onto GitHub Actions),
+# `reuse lint` is a plain file check that runs fine on gitlab.git.nrw's shared
+# runner — and it belongs here, on the source-of-truth repo where MRs and
+# merges land, so it gates before/at merge rather than post-mirror. The
+# AGPL-3.0-or-later catch-all in REUSE.toml auto-covers new first-party files,
+# so a green pipeline is the steady state and this rarely needs attention.
+# =============================================================================
+reuse:
+  image:
+    name: fsfe/reuse:latest
+    entrypoint: [""]
+  tags: [docker]
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_PIPELINE_SOURCE == "push"
+  script:
+    - reuse lint

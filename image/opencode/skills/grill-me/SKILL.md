@@ -8,7 +8,7 @@ metadata:
   # Adapted from Matt Pocock's skills (productivity/grill-me), MIT-licensed
   # — this is the general-purpose (non-coding) variant from the author's
   # write-up, which drops the codebase-exploration line. Attribution lives
-  # in the repo-root NOTICE.
+  # in `REUSE.toml`.
 ---
 
 Interview me relentlessly about every aspect of this until we reach a shared understanding. Walk down each branch of the design tree, resolving dependencies between decisions one-by-one. For each question, provide your recommended answer.

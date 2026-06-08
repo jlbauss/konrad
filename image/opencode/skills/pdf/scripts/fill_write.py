@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
+# SPDX-FileCopyrightText: MiniMax AI
 # SPDX-License-Identifier: MIT
-# Adapted from MiniMax-AI/skills (skills/minimax-pdf). See /NOTICE.
+# Adapted from MiniMax-AI/skills (skills/minimax-pdf).
 """
 fill_write.py — Write values into PDF form fields.
 

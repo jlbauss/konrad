@@ -7,7 +7,7 @@ metadata:
   version: "1.0"
   # Vendored verbatim from anthropics/skills (skills/frontend-design),
   # Apache-2.0. The full license text ships alongside as LICENSE.txt and
-  # attribution lives in the repo-root NOTICE. Body unmodified.
+  # attribution lives in `REUSE.toml`. Body unmodified.
 ---
 
 This skill guides creation of distinctive, production-grade frontend interfaces that avoid generic "AI slop" aesthetics. Implement real working code with exceptional attention to aesthetic details and creative choices.

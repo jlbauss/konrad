@@ -25,7 +25,7 @@ metadata:
   author: konrad
   version: "1.0"
   # Vendored from jlouage's Image-Editing-Claude-Skill (MIT). Attribution
-  # lives in the repo-root NOTICE. Adapted for konrad: invocation switched
+  # lives in `REUSE.toml`. Adapted for konrad: invocation switched
   # from `uv run` (PEP 723 inline deps) to the baked /opt/venv, and a
   # quality-assurance verification step added before reporting.
 ---

@@ -107,9 +107,12 @@ RUN set -eux; \
 #                      cover.
 #   check-jsonschema → opencode.jsonc validation against opencode's
 #                      schema, JSON files against committed schemas, etc.
+#   reuse            → REUSE/SPDX licensing check (`reuse lint`) — the repo's
+#                      licensing convention (see CONTRIBUTING / CLAUDE.md), so
+#                      it can be run locally without an ephemeral install.
 RUN uv venv /opt/dev-venv --python-preference=managed --python=3.13 \
     && uv pip install --python /opt/dev-venv/bin/python --no-cache \
-         pyyaml check-jsonschema
+         pyyaml check-jsonschema 'reuse[charset-normalizer]'
 
 ENV PATH="/opt/dev-venv/bin:$PATH"
 

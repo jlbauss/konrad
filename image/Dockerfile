@@ -161,7 +161,7 @@ RUN ln -sf /usr/bin/fdfind /usr/local/bin/fd \
 # image/opencode/skills/pdf/references/fonts.md for the user override path.
 #
 # Per-family attribution lives in image/fonts/konrad/<family>/LICENSE.txt;
-# see NOTICE for the consolidated list.
+# see REUSE.toml for the consolidated list.
 # --chmod=0755: see the konrad-entrypoint COPY below — fontconfig runs as the
 # non-root node user and must be able to traverse these dirs and read the .ttf
 # files, so we can't rely on the build context preserving their mode.
