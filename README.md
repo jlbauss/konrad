@@ -36,7 +36,7 @@ What ships in the box:
 
 - **No egress firewall or permission ACLs yet.** The sandbox is container + filesystem isolation only; network access is unrestricted. Narrowing it to an allow-list is the next safety milestone — see [ROADMAP.md](ROADMAP.md).
 - **Podman only; Linux and macOS only.** `--userns=keep-id` is Podman-specific. Docker support is on the roadmap, untested. No Windows support — WSL is at your own discretion and untested.
-- **Pre-1.0: expect churn.** Config shapes, flags, and image internals can change between versions without a migration path. No stability promise until 1.0.
+- **Pre-1.0: expect churn, but versioned.** Konrad uses [semantic versioning](docs/design/versioning-and-releases.md) — pre-1.0 that's `0.X.Y` (`X`/minor = new functionality or any user-visible change, `Y`/patch = fixes). The leading `0.` means config shapes, flags, and image internals can still change without a migration path; no stability promise until 1.0.
 - **No automated test suite.** Validation is manual (shellcheck + a smoke build). Regressions can slip through; the baked build manifest is the safety net, not a test suite.
 - **Local-model UX is still rough.** Tool-call parsing, context overflow, and model switching have known edges — the "works flawlessly on local models" shakedown is still a roadmap item. You must also hand-declare each loaded model (no auto-discovery yet).
 

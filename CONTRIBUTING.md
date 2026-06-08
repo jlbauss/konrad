@@ -112,11 +112,7 @@ Branch naming: `feat/<short>`, `fix/<short>`, `docs/<short>`, `chore/<short>`. K
 
 The `VERSION` file at the repo root drives all image tagging. **Bump it in the same PR as your change.** Reviewer checks the bump matches the change's semver impact.
 
-Pre-1.0 rules (where we are today):
-
-- `VERSION` holds `0.X` (no third number)
-- Bump `X` for any functional change to `image/`, `bin/konrad`, baked skills, or `image/konrad-defaults/`
-- Doc-only, CI-only, ROADMAP-only changes don't bump
+Pre-1.0 rules (where we are today): `VERSION` holds `0.X.Y`. Bump **`Y` (patch)** for a bug fix with no surface change; bump **`X` (minor)** for new functionality or any user-visible change, resetting `Y` to 0. Doc-only, CI-only, and ROADMAP-only changes don't bump.
 
 The full design — including post-1.0 semver semantics, the tag scheme on the registry, when 1.0 happens, and when git tags / GitHub Releases get cut — lives in [docs/design/versioning-and-releases.md](docs/design/versioning-and-releases.md).
 
