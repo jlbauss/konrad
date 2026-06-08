@@ -144,7 +144,8 @@ konrad/
 ├── .github/workflows/build-image.yml  # CI: build → smoke → publish (multi-arch amd64 + arm64)
 ├── .gitlab-ci.yml                     # Lock-resolver bot (source of truth; mirrors to GitHub)
 ├── docs/design/                       # Long-form design rationale (the "why" notes)
-├── ROADMAP.md                         # Backlog tiers + dated `## Implemented` changelog
+├── CHANGELOG.md                       # Released-change log (Keep a Changelog; agent-maintained)
+├── ROADMAP.md                         # Backlog tiers (shipped work → CHANGELOG.md)
 ├── CLAUDE.md                          # Repo instructions for agents working ON konrad
 ├── NOTICE                             # Upstream attribution
 ├── .devcontainer/                     # VS Code Dev Container for working ON konrad (Claude Code preinstalled)
@@ -171,7 +172,9 @@ Use multi-line bodies for any change that needed a design decision. The git log 
 
 ## When to update what
 
-**ROADMAP.md** — a real idea worth keeping but not doing now → add it. A decision we made and are sticking with → don't add it (commit message is enough). A known shortcoming we've accepted as a trade-off → add it, so it doesn't get forgotten. When a Tier-N item ships, move it to `## Implemented` in the same commit, prefixed with the ISO date.
+**ROADMAP.md** — a real idea worth keeping but not doing now → add it. A decision we made and are sticking with → don't add it (commit message is enough). A known shortcoming we've accepted as a trade-off → add it, so it doesn't get forgotten. When a Tier-N item ships, delete its bullet and add a terse [CHANGELOG.md](CHANGELOG.md) entry in the same commit.
+
+**CHANGELOG.md** — every user-facing change that ships under a `VERSION` bump → a terse entry under that version ([Keep a Changelog](https://keepachangelog.com/); agent-maintained, rationale stays in the commit). Doc/CI/contributor-only changes that don't bump usually don't need one.
 
 **README.md** — anything that changes how a user installs, runs, or thinks about konrad. A new subcommand or flag. A new external dependency (e.g. a tool the user has to install on the host).
 

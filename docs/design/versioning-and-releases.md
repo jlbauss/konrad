@@ -123,15 +123,15 @@ If a single PR bundles multiple concerns (rare; we prefer separate commits per c
 
 Releases live on **GitLab** — the primary, public repo. The GitHub mirror is a private CI execution surface only (no releases, issues, or human-facing artifacts there), and stays private for now; if it ever flips public that doesn't change where releases live.
 
-- **Pre-1.0**: a short GitLab Release note per `v0.X` tag is nice-to-have, not required — the ROADMAP `## Implemented` section is the authoritative dated changelog. `v0.2` (the first public alpha) is the natural anchor for a one-paragraph "first public alpha" note.
+- **Pre-1.0**: a short GitLab Release note per `v0.X` tag is nice-to-have, not required — [CHANGELOG.md](../../CHANGELOG.md) is the authoritative changelog. `v0.2` (the first public alpha) is the natural anchor for a one-paragraph "first public alpha" note.
 - **Post-1.0**: for each MAJOR/MINOR — a GitLab Release titled `konrad vX.Y.0`, body with "what's new / what's broken / migration notes for breaking changes," attached to the git tag.
 
 ## Day-zero history
 
-The pre-1.0 chapter started on **2026-05-23** with `VERSION=0.1`, when the registry-publish path went live (see ROADMAP entry of that date). Earlier development happened on `main` without a `VERSION` file and isn't representable in this scheme; the dated `Implemented` entries in ROADMAP are the authoritative history for that period.
+The pre-1.0 chapter started on **2026-05-23** with `VERSION=0.1`, when the registry-publish path went live (see ROADMAP entry of that date). Earlier development happened on `main` without a `VERSION` file and isn't representable in this scheme; the git log (and the Day-zero history below) is the authoritative record for that period.
 
 **`0.1` is the pre-public stabilization line** — the version that existed while the repo was still private and CI / publishing / smoke gates were getting their final shakedown. Functional changes during this phase didn't always bump (the bump-in-same-PR rule itself landed mid-stream); the dated image tags `:0.1.YYYY-MM-DD` are the authoritative per-day history.
 
-**`0.2` is the first public alpha** — shipped 2026-05-27 as the "public-alpha flip" (see ROADMAP `## Implemented`). "Public" means the **GitLab** repo + the GHCR package; the GitHub mirror stays private. The bump signals the regime change: from this point forward, every functional change bumps `VERSION` in its commit, and the version line a user is on actually means something to them. It's the day-one anchor for outside consumers.
+**`0.2` is the first public alpha** — shipped 2026-05-27 as the "public-alpha flip" (see [CHANGELOG.md](../../CHANGELOG.md)). "Public" means the **GitLab** repo + the GHCR package; the GitHub mirror stays private. The bump signals the regime change: from this point forward, every functional change bumps `VERSION` in its commit, and the version line a user is on actually means something to them. It's the day-one anchor for outside consumers.
 
 **`0.2.1` is the first patch-slot bump** — landed 2026-05-29 alongside the introduction of three-segment pre-1.0 versions. Before this, `VERSION` held `0.X` and every functional change bumped `X`; the patch slot splits "bug fix with no surface change" out so `X` once again signals something meaningful to users. Existing `0.2` semantically equals `0.2.0` retroactively, but no `0.2.0` image tag was ever published — the line went `:0.2.YYYY-MM-DD` (old two-segment format, dot before date) directly to `:0.2.1-YYYY-MM-DD` (new three-segment format, hyphen before date) at the transition. The `:0.2` rolling tag's meaning carries over cleanly: it still gives users the newest passing build on the `0.2` line, now resolved through the new patch slot.
