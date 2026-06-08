@@ -21,6 +21,8 @@
       "Bash(./scripts/build-image.sh:*)",
       "Bash(./scripts/smoke-test.sh:*)",
       "Bash(konrad-dev:*)",
+      "Bash(bin/konrad:*)",
+      "Bash(./bin/konrad:*)",
       "Bash(ls:*)",
       "Bash(cat:*)",
       "Bash(head:*)",
