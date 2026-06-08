@@ -186,15 +186,17 @@ dbg "entrypoint done — about to exec: $*"
 say "opencode logs (host): $KONRAD_HOST_LOG_DIR"
 say "starting opencode…"
 
-# Debug mode: ask Bun to print every fetch/http call to fd 2. This catches
-# slow network round-trips that opencode's own logger doesn't surface
-# (e.g. the models.dev catalog fetch, plugin install probes).
-# We don't bother with OPENCODE_LOG_LEVEL or DEBUG=opencode:* — neither
-# exists in the current opencode source; the file log already gives us
-# what we need.
-if [[ "$KONRAD_DEBUG" == "1" ]]; then
+# Raw HTTP trace — DELIBERATELY NOT tied to -v/KONRAD_DEBUG. Asking Bun to
+# print every fetch/http call to fd 2 (full request + response headers) buries
+# everything else: a normal cold-cache plugin resolution looks like a hang
+# (hit 2026-06-08). The structured file log opencode writes per launch — with
+# +Xms line deltas — is the better "what's slow" tool, so plain -v just points
+# at it (see the host log line above). The firehose stays available for the
+# rare network-stall hunt the file log can't surface (models.dev catalog,
+# plugin install probes), behind its own explicit opt-in: KONRAD_TRACE_FETCH=1.
+if [[ "${KONRAD_TRACE_FETCH:-0}" == "1" ]]; then
   export BUN_CONFIG_VERBOSE_FETCH=true
-  dbg "BUN_CONFIG_VERBOSE_FETCH=true"
+  dbg "BUN_CONFIG_VERBOSE_FETCH=true (KONRAD_TRACE_FETCH)"
 fi
 
 exec "$@"
