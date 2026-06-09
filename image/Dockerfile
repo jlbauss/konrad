@@ -10,6 +10,10 @@
 #        - npm     (locks/npm.lock: opencode-ai; npm itself comes from
 #                   the base image, already pinned by base.lock)
 #        - typst   (locks/typst.lock: pinned version string)
+#        - models  (locks/models.lock: docling model repos tracked at main,
+#                   pinned by commit; fetched by image/fetch-models.py so the
+#                   model layer is byte-stable. Tableformer + rapidocr ride
+#                   docling's own pins, not this lock.)
 #      Each lock keys exactly one Dockerfile layer (or the FROM chain for
 #      base); Docker's layer cache reuses the layer when the lock didn't
 #      move. Local `konrad rebuild` and CI both read the same locks, so
@@ -26,8 +30,8 @@
 #                          base, picking up the latest package index at
 #                          that point. No separate apt lock needed.
 #
-# When you add or remove a pin, update both this block *and* the README
-# table so the two stay in sync.
+# When you add or remove a pin, update both this block *and* the
+# ARCHITECTURE.md "Build & reproducibility" list so the two stay in sync.
 # =============================================================================
 ARG BASE_IMAGE
 ARG UV_IMAGE
@@ -79,13 +83,31 @@ RUN uv venv $VIRTUAL_ENV --python /usr/bin/python3 \
 
 # =============================================================================
 # Stage 2 — python-models
-# Downloads Docling models into /opt/models.
-# No repo files. Invalidated only when Stage 1 changes.
+# Downloads the Docling model set into /opt/models at *pinned* revisions, so
+# the layer is byte-stable across rebuilds. image/fetch-models.py reuses
+# docling's own per-model download logic (no re-implementing rapidocr's URL
+# matrix) and injects the pinned shas from locks/models.lock for the repos
+# docling otherwise resolves at a floating `main`. The post-download strip of
+# .cache/.locks removes the only per-run-varying metadata; together with the
+# CI rewrite-timestamp pass that makes the tree byte-identical run-to-run, so
+# users skip the ~1.1 GB re-pull when the models didn't actually change.
+# No repo files beyond the lock + fetcher. Invalidated only when Stage 1 or
+# those two inputs change.
 # =============================================================================
 FROM python-base AS python-models
 
-RUN mkdir -p /opt/models \
-    && /opt/venv/bin/docling-tools models download -o "/opt/models"
+COPY locks/models.lock /tmp/models.lock
+COPY fetch-models.py /tmp/fetch-models.py
+# --mount=type=secret,id=hf_token (optional): when the build provides a
+# HuggingFace token, huggingface_hub reads it from HF_TOKEN to lift the
+# anonymous API rate limit — an unauthenticated download failed a build once.
+# The guard leaves local builds (no secret) working, just rate-limited.
+RUN --mount=type=secret,id=hf_token \
+    mkdir -p /opt/models \
+    && HF_TOKEN="$([ -f /run/secrets/hf_token ] && cat /run/secrets/hf_token || true)" \
+       /opt/venv/bin/python /tmp/fetch-models.py /tmp/models.lock \
+    && find /opt/models -type d \( -name .cache -o -name .locks \) -prune -exec rm -rf {} + \
+    && rm /tmp/models.lock /tmp/fetch-models.py
 # =============================================================================
 # Stage 3 — final runtime image
 # =============================================================================
@@ -194,43 +216,50 @@ RUN set -eux; \
 
 # ── Pull in the Python world from the build stages ──────────────────────────
 # venv stays at /opt/venv (same path as in python-base) so all shebang lines
-# and absolute references inside the venv remain valid. The model cache uses
-# --chown directly so the model files land with correct ownership in a single
-# layer — a subsequent `chown -R` would duplicate them in image history.
-# uv comes along too — needed at runtime for `uv pip list` in the build
-# manifest script and useful for `uv pip install` extensions.
+# and absolute references inside the venv remain valid. uv comes along too —
+# needed at runtime for `uv pip list` in the build manifest script and useful
+# for `uv pip install` extensions.
 COPY --from=python-base               /opt/venv  /opt/venv
 COPY --from=python-base               /usr/local/bin/uv  /usr/local/bin/uv
-COPY --from=python-models --chown=node:node /opt/models  /home/node/.cache/docling/models
+
+# Docling models: baked root-owned at /opt/models (outside $HOME) and read-only
+# at runtime — docling resolves them via DOCLING_ARTIFACTS_PATH. One COPY per
+# model so each is its *own* layer: a single-model update re-pulls only that
+# model, not the whole ~1.1 GB set. Keeping them out of /home/node is also what
+# lets the home-scaffolding block below own the node home with a cheap
+# recursive chown (no 1.1 GB copy-up). The folder names are docling's
+# convention (repo_id '/' -> '--', plus the literal "RapidOcr").
+COPY --from=python-models /opt/models/docling-project--docling-layout-heron            /opt/models/docling-project--docling-layout-heron
+COPY --from=python-models /opt/models/docling-project--docling-models                  /opt/models/docling-project--docling-models
+COPY --from=python-models /opt/models/docling-project--CodeFormulaV2                   /opt/models/docling-project--CodeFormulaV2
+COPY --from=python-models /opt/models/docling-project--DocumentFigureClassifier-v2.5   /opt/models/docling-project--DocumentFigureClassifier-v2.5
+COPY --from=python-models /opt/models/RapidOcr                                         /opt/models/RapidOcr
 
 ENV VIRTUAL_ENV=/opt/venv \
-    DOCLING_ARTIFACTS_PATH=/home/node/.cache/docling/models
+    DOCLING_ARTIFACTS_PATH=/opt/models
 
-# ── XDG-compliant home structure for the node user ──────────────────────────
-# Own node's home *directory scaffolding* so the runtime user can create new
-# dirs anywhere under it (e.g. the font overlay's ~/.local/share/fonts). We
-# name the intermediate parents explicitly (.local, .local/share, .cache) —
-# `install -d` only applies -o/-g to the directories it's *given*, not to
-# parents it auto-creates, so an unnamed intermediate would default to
-# root-owned and block writes beneath it. This stays cheap because the dirs
-# are empty here: we deliberately do NOT `chown -R /home/node`, which would
-# walk the ~1.1 GB Docling model cache COPY'd above and copy every file up
-# into a new image layer (overlayfs copies a file on any metadata change),
-# roughly doubling that cache's on-disk size. Owning the dir inodes touches
-# no file contents; the model cache was already node-owned at COPY --chown.
-RUN install -d -o node -g node \
+# ── XDG home structure for the node user — node owns its whole home ──────────
+# With the Docling model cache now baked at /opt/models (outside $HOME), the
+# heavy content that used to make `chown -R /home/node` prohibitively expensive
+# (overlayfs copies every file up on a metadata change) is gone — so node owns
+# its home outright. That lets the runtime user create dirs anywhere under
+# $HOME (e.g. the font overlay's ~/.local/share/fonts) without the old dance of
+# naming every intermediate parent so `install -d` wouldn't leave a root-owned
+# gap beneath an auto-created one. mkdir -p seeds the dirs that must exist as
+# mount points / runtime targets; the recursive chown is cheap here because the
+# npm + opencode content lands in later layers. (npm installs opencode as root
+# into .npm-global below — node can't write there, nor needs to.)
+RUN mkdir -p \
     /workspace \
     /home/node/.npm-global \
-    /home/node/.local \
-    /home/node/.local/share \
     /home/node/.local/share/opencode \
     /home/node/.local/share/fonts \
     /home/node/.local/state \
     /home/node/.local/bin \
-    /home/node/.cache \
     /home/node/.cache/opencode \
     /home/node/.config \
-    /home/node/.opencode-secrets
+    /home/node/.opencode-secrets \
+    && chown -R node:node /home/node /workspace
 
 # ── Konrad system files (root-owned — node user can't tamper) ───────────────
 # Ordered rarest-to-change first so that editing these files invalidates as

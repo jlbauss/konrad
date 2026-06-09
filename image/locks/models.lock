@@ -1,0 +1,11 @@
+# Docling model repos tracked at upstream `main`, pinned by commit so the baked
+# model layer is byte-stable across rebuilds (users skip re-pulling unchanged
+# models). The GitLab resolve-locks bot re-resolves each repo's main HEAD daily
+# and bumps when it moves; image/fetch-models.py fetches these at the pinned
+# revision. Tableformer (docling tag-pins it to v2.3.0) and rapidocr (a fixed
+# per-backend/language file set tied to the locked docling-slim version) are
+# deliberately NOT here — they ride docling's own pins, not main.
+# Format: <hf_repo_id> <commit_sha>
+docling-project/docling-layout-heron 8f39ad3c0b4c58e9c2d2c84a38465abf757272d8
+docling-project/CodeFormulaV2 ecedbe111d15c2dc60bfd4a823cbe80127b58af4
+docling-project/DocumentFigureClassifier-v2.5 f859dfbff5c9916cd996942d4b0db7fa25808220
