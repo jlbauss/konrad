@@ -181,6 +181,13 @@ jobs:
             GIT_SHA=${{ steps.metadata.outputs.sha }}
             BUILD_DATE=${{ steps.metadata.outputs.commit_date }}
             SOURCE_DATE_EPOCH=0
+          # Optional HuggingFace token for the model-download stage, passed as
+          # a BuildKit secret (never a build-arg — that bakes into history).
+          # Lifts the anonymous HF rate limit that once failed a build; absent
+          # the repo secret it's empty and the Dockerfile guard falls back to
+          # an unauthenticated fetch.
+          secrets: |
+            hf_token=${{ secrets.HF_TOKEN }}
           # Every input is pinned by digest via image/locks/. `pull` would
           # be a no-op (the FROM / COPY --from refs are already content-
           # addressed), so it's off. Base + uv updates flow in through the

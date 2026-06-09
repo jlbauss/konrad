@@ -32,6 +32,12 @@
 #      scope `write_repository`. Role must be allowed to push to main:
 #      Maintainer if main is a protected branch, Developer otherwise.
 #      Stash as a masked + protected CI/CD variable named BOT_PAT.
+#   1b. (Optional but recommended) Settings → CI/CD → Variables → add a
+#      masked variable HF_TOKEN holding a HuggingFace read token. The models
+#      resolver uses it to lift the anonymous HF API rate limit; without it
+#      the resolver still works but can hit 429s on busy days. The image
+#      build (GitHub Actions) can take the same token to lift the limit on
+#      the model *download* — the unauthenticated limit failed a build once.
 #   2. Settings → CI/CD → Pipeline schedules → New schedule:
 #        cron:        0 1 * * *   (daily 01:00 UTC)
 #        target:      main
@@ -107,6 +113,19 @@ resolve-locks:
         printf '%s' "$digest"
       }
 
+      # ---- helper: resolve a HF model repo's main HEAD commit sha ----------
+      # HF_TOKEN (masked CI var, optional) lifts the anonymous rate limit —
+      # the unauthenticated limit is what failed a build once. Output: the
+      # commit sha on stdout.
+      hf_main_sha() {
+        repo="$1"
+        if [ -n "${HF_TOKEN:-}" ]; then
+          curl -fsSL -H "Authorization: Bearer $HF_TOKEN" "https://huggingface.co/api/models/${repo}"
+        else
+          curl -fsSL "https://huggingface.co/api/models/${repo}"
+        fi | jq -r '.sha'
+      }
+
       # ---- re-resolve each lock -------------------------------------------
       cd image/locks
       MOVED=""
@@ -174,6 +193,30 @@ resolve-locks:
       else
         mv typst.lock.new typst.lock
         MOVED="$MOVED typst"
+      fi
+
+      # models: models.lock holds "<hf_repo_id> <sha>" lines (plus # comments)
+      # for the docling model repos we track at upstream main. Re-resolve each
+      # repo's main HEAD and rewrite the lock, preserving comments and order.
+      # Tableformer + rapidocr are intentionally absent — docling pins those,
+      # not us, so the bot must not touch them. A repo that resolves to nothing
+      # is a hard error (deleted/renamed upstream → a maintainer must act).
+      : > models.lock.new
+      while IFS= read -r line || [ -n "$line" ]; do
+        case "$line" in
+          ''|\#*) printf '%s\n' "$line" >> models.lock.new; continue ;;
+        esac
+        repo="${line%% *}"
+        new_sha="$(hf_main_sha "$repo")"
+        [ -n "$new_sha" ] && [ "$new_sha" != "null" ] \
+          || { echo "could not resolve main sha for model repo $repo" >&2; exit 1; }
+        printf '%s %s\n' "$repo" "$new_sha" >> models.lock.new
+      done < models.lock
+      if diff -q models.lock models.lock.new >/dev/null 2>&1; then
+        rm models.lock.new
+      else
+        mv models.lock.new models.lock
+        MOVED="$MOVED models"
       fi
 
       MOVED="$(echo "$MOVED" | xargs)"
