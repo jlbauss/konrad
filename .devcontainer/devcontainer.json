@@ -1,10 +1,11 @@
 {
-  // Claude dev container — for working ON konrad.
+  // Claude dev container — for working ON konrad. VS Code auto-detects
+  // this because of the leading dot.
   //
-  // Distinct from devcontainer/ (no dot, at repo root), which is the
-  // dormant "Konrad-as-devcontainer" consumption path (ROADMAP.md,
-  // Future features). VS Code auto-detects this one because of the
-  // leading dot; the other stays parked until promoted.
+  // Distinct from the planned consumer path: a `konrad init-devcontainer`
+  // subcommand will scaffold a Dev Container into a *user's* own project
+  // (ROADMAP.md). That config lives in the user's tree, never here — this
+  // .devcontainer/ only ever configures Konrad's own repo.
   "name": "konrad-claude-dev",
   "build": {
     "dockerfile": "Dockerfile"
@@ -19,9 +20,8 @@
   // Podman: map container UID/GID 1000 (the `node` user) to the host
   // user, so files in bind-mounted /workspace stay owned by the host
   // user and are editable. Without this, rootless Podman maps node@1000
-  // to a sub-UID and edits fail. Same pattern as devcontainer/
-  // devcontainer.json. Podman-specific — Docker support is on the
-  // roadmap.
+  // to a sub-UID and edits fail. Podman-specific — Docker support is on
+  // the roadmap.
   "runArgs": [
     "--userns=keep-id:uid=1000,gid=1000"
   ],

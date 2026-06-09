@@ -25,7 +25,7 @@ Code layout (`bin/`, `image/`, `scripts/`) is mapped in [CONTRIBUTING.md](CONTRI
 
 Konrad runs [opencode](https://github.com/sst/opencode) inside a sandboxed, rootless Podman container.
 
-- **The image is the canonical artifact.** `image/Dockerfile` builds it; `bin/konrad` — a thin host-side bash CLI — is the primary consumer. The experimental `devcontainer/` is a second consumer (see [ROADMAP.md](ROADMAP.md)).
+- **The image is the canonical artifact.** `image/Dockerfile` builds it; `bin/konrad` — a thin host-side bash CLI — is the primary consumer. A second consumption path — a `konrad init-devcontainer` that scaffolds a Dev Container into the user's own project — is on the [ROADMAP.md](ROADMAP.md).
 - **Podman, not Docker.** Open-source, free for commercial use, ergonomic on macOS. `--userns=keep-id` shares the container `node` user's UID with the host user, so bind-mounted files have sane ownership. Docker support is on the roadmap.
 - **Tuned for Qwen3.6-class local models.** The agent prompt ([image/opencode/agents/konrad.md](image/opencode/agents/konrad.md)) is sized for a ~30B-class local model; the tested recommendation is `qwen/qwen3.6-27b`. Frontier models work fine; sub-10B ones may need prompt softening.
 

@@ -167,6 +167,7 @@ konrad/
 │   ├── smoke-test.sh                  # Smoke gate — CI runs this same script
 │   ├── install-remote.sh              # curl|sh installer — fetches the CLI standalone, bakes VERSION in
 │   └── fetch-fonts.sh                 # One-shot — pulls fonts from upstream when bumping versions
+├── examples/org-package/              # Ready-to-adapt org-config starter (referenced from README)
 ├── .github/workflows/build-image.yml  # CI: build → smoke → publish (multi-arch amd64 + arm64)
 ├── .gitlab-ci.yml                     # Lock-resolver bot (source of truth; mirrors to GitHub)
 ├── ARCHITECTURE.md                     # System design and the *why* (consolidated)
@@ -175,8 +176,7 @@ konrad/
 ├── CLAUDE.md                          # Repo instructions for agents working ON konrad
 ├── REUSE.toml                         # Per-file copyright/license by glob (REUSE spec)
 ├── LICENSES/                          # SPDX license texts (REUSE)
-├── .devcontainer/                     # VS Code Dev Container for working ON konrad (Claude Code preinstalled)
-└── devcontainer/                      # Experimental: Dev Container as a way to USE konrad (see ROADMAP)
+└── .devcontainer/                     # VS Code Dev Container for working ON konrad (Claude Code preinstalled)
 ```
 
 If a change touches multiple concerns, prefer separate commits per concern. The git log is the project's primary design history — keep it useful.

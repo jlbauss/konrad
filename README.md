@@ -229,7 +229,7 @@ Two things worth knowing:
 
 **This is a defaults mechanism, not policy enforcement.** The org folder is just files in the user's own home directory, so a determined user can edit them. "Add-only" describes the merge *precedence* (the user stacks on top), not a permission lock. Locking config down would need read-only system locations or signing — a separate concern Konrad doesn't address today.
 
-A ready-to-adapt starter package — a populated `org/` plus an `install.sh` that drops it into place — lives in [`docs/examples/org-package/`](docs/examples/org-package/). Design rationale (why a `$HOME` folder, why the system instructions channel, why defaults-not-enforcement) is in [ARCHITECTURE.md → Configuration & instructions](ARCHITECTURE.md#configuration--instructions).
+A ready-to-adapt starter package — a populated `org/` plus an `install.sh` that drops it into place — lives in [`examples/org-package/`](examples/org-package/). Design rationale (why a `$HOME` folder, why the system instructions channel, why defaults-not-enforcement) is in [ARCHITECTURE.md → Configuration & instructions](ARCHITECTURE.md#configuration--instructions).
 
 ## State
 
