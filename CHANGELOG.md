@@ -12,6 +12,17 @@ publishes as `:0.X.Y`, `:0.X`, `:latest`, and an immutable
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-06-09
+
+### Changed
+- Docling model layers are now commit-pinned (`image/locks/models.lock`),
+  metadata-stripped, and split one-per-model — so an unrelated lock bump no
+  longer changes their bytes, and an image update re-pulls a model only when
+  that model actually changed, not the whole ~1.1 GB set. The models also move
+  out of `$HOME` to a root-owned `/opt/models`, so the runtime user now owns its
+  entire home (no more permission-denied on first write to a new `$HOME` dir).
+  Rationale: [ARCHITECTURE.md](ARCHITECTURE.md#build--reproducibility).
+
 ## [0.5.1] - 2026-06-08
 
 ### Changed
