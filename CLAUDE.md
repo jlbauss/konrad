@@ -6,6 +6,8 @@ else — link, don't restate: [README.md](README.md) (users) · [CONTRIBUTING.md
 (dev + release process) · [ARCHITECTURE.md](ARCHITECTURE.md) (design + *why*) ·
 [ROADMAP.md](ROADMAP.md) (backlog) · [CHANGELOG.md](CHANGELOG.md) (released changes).
 
+Very important: ALWAYS read the above mentioned doc files once before you start planning or building, so they are in your context and you are able to follow the instructions they give.
+
 ## What this repo is
 
 `bin/konrad` is a host CLI that runs [opencode](https://github.com/sst/opencode) in
