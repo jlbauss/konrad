@@ -549,6 +549,31 @@ podman_run() {
     warn "remote-socket mode: cwd ($cwd) is outside ${KONRAD_REMOTE_GUEST_ROOT:-/workspace}; the workspace mount resolves against the host fs and will likely be empty. Run konrad from under ${KONRAD_REMOTE_GUEST_ROOT:-/workspace}."
   fi
 
+  # User-namespace mapping. The normal case (local rootless daemon, and the
+  # Linux remote-socket path) is keep-id: container node(1000) shares the
+  # invoking user's uid, so workspace files have sane ownership. A ROOTFUL
+  # remote daemon — the macOS dev-container self-testing path, flagged by
+  # KONRAD_DAEMON_ROOTFUL from .devcontainer/podman-vscode.sh — needs the
+  # explicit equivalent instead: rootful keep-id degrades to an identity map
+  # while virtiofs presents the workspace with raw Mac ids, so node must be
+  # mapped to the Mac user's uid/gid (KONRAD_REMOTE_UID/GID, injected by the
+  # same shim). SELinux labeling is disabled there (Enforcing in the machine
+  # VM) and the workspace `:z` relabel skipped (chcon fails on virtiofs).
+  local ws_relabel=":z"
+  local -a userns_flags=("--userns=keep-id:uid=1000,gid=1000")
+  if [[ "${KONRAD_DAEMON_ROOTFUL:-0}" == "1" ]]; then
+    local ruid="${KONRAD_REMOTE_UID:?KONRAD_DAEMON_ROOTFUL=1 requires KONRAD_REMOTE_UID}"
+    local rgid="${KONRAD_REMOTE_GID:?KONRAD_DAEMON_ROOTFUL=1 requires KONRAD_REMOTE_GID}"
+    ws_relabel=""
+    userns_flags=(
+      --security-opt label=disable
+      --uidmap 0:100000:999 --uidmap 999:0:1
+      --uidmap "1000:${ruid}:1" --uidmap 1001:101001:64535
+      --gidmap 0:100000:999 --gidmap 999:0:1
+      --gidmap "1000:${rgid}:1" --gidmap 1001:101001:64535
+    )
+  fi
+
   # ${home_mounts[@]+"${home_mounts[@]}"} is the empty-safe array splice —
   # under `set -u`, a bare ${arr[@]} on an empty array would error.
   # --init: podman runs a tiny init (catatonit) as PID 1 inside the container
@@ -559,12 +584,12 @@ podman_run() {
   # sees /workspace and can't record the host path).
   exec podman run \
     --rm ${tty_flags[@]+"${tty_flags[@]}"} --init \
-    --userns=keep-id:uid=1000,gid=1000 \
+    "${userns_flags[@]}" \
     -e "KONRAD_DEBUG=${KONRAD_DEBUG}" \
     -e "KONRAD_TRACE_FETCH=${KONRAD_TRACE_FETCH:-0}" \
     -e "KONRAD_HOST_WORKSPACE=${ws_src}" \
     -e "KONRAD_HOST_LOG_DIR=${KONRAD_LOG_DIR}" \
-    -v "${ws_src}:/workspace:z" \
+    -v "${ws_src}:/workspace${ws_relabel}" \
     -v "${SECRETS_VOLUME}:/home/node/.opencode-secrets:U" \
     -v "${cache_vol}:/home/node/.cache/opencode:U" \
     -v "${state_vol}:/home/node/.local/state/opencode:U" \

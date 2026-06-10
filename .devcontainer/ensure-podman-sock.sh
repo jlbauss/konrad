@@ -1,4 +1,7 @@
 #!/usr/bin/env sh
+# SPDX-FileCopyrightText: 2026 Jan-Luca Bauß
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
 # Host-side initializeCommand for the konrad dev container.
 #
 # Normalizes the host's rootless podman socket into a STABLE, always-present
@@ -18,8 +21,8 @@
 # still comes up and podman calls simply fail (graceful "no self-testing")
 # instead of blocking the container from starting at all.
 #
-# Runs on Linux and macOS hosts (POSIX sh). The macOS branch is best-effort and
-# unverified on real hardware — see the macOS self-testing item in ROADMAP.md.
+# Runs on Linux and macOS hosts (POSIX sh). Both branches are verified on real
+# hardware (macOS: 2026-06-10, rootful-connection route).
 
 set -eu
 
@@ -31,18 +34,25 @@ real=""
 case "$(uname -s)" in
   Darwin)
     # macOS: podman runs inside a VM (libkrun/qemu) and the dev container runs
-    # inside that same VM, so self-testing has no reachable socket to mount and
-    # we leave `real` empty -> /dev/null (container starts, self-testing off).
-    # Two routes were tried and ruled out on real hardware (2026-06-05):
-    #   - host-side socket (`podman machine inspect`): a Mac path absent inside
-    #     the VM, so the mount can't resolve;
-    #   - VM-internal socket (/run/user/<uid>/podman/podman.sock): the mount
-    #     RESOLVES, but it's owned by the VM user at a uid unmapped in the dev
-    #     container's rootless keep-id namespace -> EACCES, and an idmapped
-    #     bind mount is rejected (mount_setattr: Operation not permitted).
-    # The only fixes left are a VM-side TCP service or socket proxy — custom
-    # maintenance machinery, deferred. Full write-up in ROADMAP.md.
-    : ;;
+    # inside that same VM. The VM's ROOTLESS socket is a dead end from a nested
+    # container (unmapped-uid wall, diagnosed 2026-06-05 — see git history),
+    # but the machine also ships a ROOTFUL daemon whose socket IS reachable
+    # when the dev container itself is created via the rootful connection with
+    # explicit uid/gid maps — that's what .devcontainer/podman-vscode.sh does
+    # (one-time dockerPath wire-up: see that file / CONTRIBUTING.md).
+    #
+    # The path below is VM-INTERNAL: it does not exist on the Mac, so no -S
+    # check here. The workspace is virtiofs-shared into the VM at an identical
+    # path, so the symlink resolves daemon-side at mount time. Verified on
+    # real hardware 2026-06-10. Gated on a running machine so a podman-less
+    # Mac still degrades to /dev/null; without the podman-vscode.sh wire-up
+    # the container comes up rootless and podman calls against the root-owned
+    # socket fail cleanly (self-testing off), as before.
+    if podman machine inspect --format '{{.State}}' 2>/dev/null | grep -q running; then
+      ln -sfn /run/podman/podman.sock "$link"
+      exit 0
+    fi
+    ;;
   *)
     # Linux rootless socket. XDG_RUNTIME_DIR is the canonical location; fall
     # back to the conventional /run/user/<uid> when it's unset.

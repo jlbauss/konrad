@@ -57,14 +57,20 @@
   // (podman calls against /dev/null fail cleanly) rather than refusing to
   // come up. See .devcontainer/ensure-podman-sock.sh.
   //
-  // HOST PREREQUISITE (one-time, Linux) for self-testing to actually work:
-  //   systemctl --user enable --now podman.socket
-  // Without it the container still starts; only the podman calls fail.
+  // HOST PREREQUISITE (one-time) for self-testing to actually work:
+  //   Linux:  systemctl --user enable --now podman.socket
+  //   macOS:  point VS Code at the rootful-connection shim — user setting
+  //           "dev.containers.dockerPath": <abs path>/.devcontainer/podman-vscode.sh
+  // Without either, the container still starts; only the podman calls fail.
   //
-  // macOS: the container runs INSIDE the podman-machine VM, and the Mac
-  // host-side socket isn't reachable from in there, so the script falls back
-  // to /dev/null — the container starts, self-testing stays off. Wiring a
-  // VM-internal socket for real Mac self-testing is an open task (ROADMAP).
+  // macOS: the container runs INSIDE the podman-machine VM. The rootless VM
+  // socket is unreachable from a nested container (unmapped-uid wall), so the
+  // shim creates THIS dev container via the machine's rootful connection and
+  // rewrites the keep-id runArg below into explicit --uidmap/--gidmap flags
+  // (rootful keep-id is an identity map; virtiofs presents raw Mac ids); the
+  // symlink then targets the VM-internal rootful socket. The machine's
+  // default connection stays rootless — day-to-day podman on the Mac is
+  // untouched. Details: .devcontainer/podman-vscode.sh, CONTRIBUTING.md.
   "initializeCommand": "sh .devcontainer/ensure-podman-sock.sh",
   "mounts": [
     "source=konrad-claude-dev-claude,target=/home/node/.claude,type=volume",

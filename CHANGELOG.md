@@ -12,6 +12,15 @@ publishes as `:0.X.Y`, `:0.X`, `:latest`, and an immutable
 
 ## [Unreleased]
 
+### Added
+- Dev-container self-testing now works on macOS hosts too: a `dockerPath` shim
+  ([.devcontainer/podman-vscode.sh](.devcontainer/podman-vscode.sh)) creates the
+  dev container via the podman machine's bundled *rootful* connection (the
+  machine's default connection stays rootless) and swaps the rootless-only
+  keep-id mapping for explicit uid/gid maps; `bin/konrad` does the same for the
+  nested runtime container when it detects that daemon. Contributor-facing;
+  one-time setup in [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## [0.6.0] - 2026-06-09
 
 ### Changed
