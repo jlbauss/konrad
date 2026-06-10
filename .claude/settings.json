@@ -97,7 +97,8 @@
       "Read"
     ],
     "ask": [
-      "Bash(podman push:*)"
+      "Bash(podman push:*)",
+      "Bash(podman run:*)"
     ],
     "deny": [
       "Bash(git push:*)",
