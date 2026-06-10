@@ -44,7 +44,7 @@ baked image defaults   <   org                    <   user
 /etc/konrad/…               ~/.config/konrad/org/      ~/.config/konrad/user/
 ```
 
-- Each layer holds the same five things — `opencode.jsonc`, `agents/`, `skills/`, `AGENTS.md`, `fonts/`. [image/entrypoint.sh](image/entrypoint.sh) composes them via [image/merge-config.js](image/merge-config.js) (an N-input deep-merge) before opencode loads anything. **Objects merge recursively; arrays replace** — which is why agent rules are added via `AGENTS.md`, not by overriding the `instructions` array.
+- Each layer holds the same five opencode pieces — `opencode.jsonc`, `agents/`, `skills/`, `AGENTS.md`, `fonts/`. [image/entrypoint.sh](image/entrypoint.sh) composes them via [image/merge-config.js](image/merge-config.js) (an N-input deep-merge) before opencode loads anything. **Objects merge recursively; arrays replace** — which is why agent rules are added via `AGENTS.md`, not by overriding the `instructions` array. (A layer may also carry an `allowed_hosts` file — Konrad-specific, consumed by the egress firewall, *not* part of this opencode merge.)
 - **Discovery is a well-known `$HOME` folder** (`~/.config/konrad/{org,user}`), not an env var or system path — because the macOS Podman machine only auto-shares `$HOME` into its VM, so a `/etc`-style path would be invisible there.
 - **`AGENTS.md` is the user's slot; `instructions` is Konrad's.** opencode loads both, additively. The **org** `AGENTS.md` rides the `instructions` channel — the entrypoint appends it with `jq` *after* the merge, so the array-replace rule can't silently drop it — while the user's global `AGENTS.md` stays theirs alone. Precedence, all additive: `environment.md → org AGENTS.md → user AGENTS.md → project AGENTS.md`.
 - The org layer is **defaults, not enforcement**: files in the user's own home, so "add-only" describes merge precedence, not a permission lock.
@@ -75,6 +75,15 @@ baked image defaults   <   org                    <   user
 | `<cwd>` ↔ `/workspace` | the user's project | workspace bind |
 
 `--profile <name>` suffixes the state + cache volumes for throwaway self-test isolation; `konrad --reset` wipes the volumes + log dir.
+
+### Egress firewall
+
+**The agent has no direct route to the internet; a sidecar proxy is the only way out, and it forwards only an allow-list.** This closes the network as an exfiltration channel — a prompt-injected agent can't ship the workspace or the provider credentials to an arbitrary host.
+
+- **Two networks, per run.** `bin/konrad` creates an `--internal` Podman network (no route out) and a normal egress network. The agent joins *only* the internal one; the proxy joins both. So the boundary is enforced by Podman's networking, not by the agent's cooperation — the agent (uid 1000) can't reconfigure it. A Podman *pod* can't do this: pod members share one netns, so they'd share the same egress. Separate containers on separate networks is what isolates them.
+- **A forward proxy, on purpose.** The agent gets `HTTP(S)_PROXY` pointed at the sidecar. opencode runs on Bun, which honours those env vars for `fetch`; this was verified end-to-end (its HTTPS model-catalog `CONNECT` and local-model HTTP calls both route through). A forward proxy keeps the agent capability-less — no `NET_ADMIN`, no nftables, no transparent-interception machinery. The proxy is [tinyproxy](https://tinyproxy.github.io/) (`apt`-installed into the one image, not a second artifact to pin/pull) with `FilterDefaultDeny` + an anchored host filter.
+- **The allow-list is derived, not hand-maintained.** The proxy runs the *same* `merge-config.js` over the *same* baked < org < user layers the agent sees, and extracts every `provider.*.options.baseURL` host — so it tracks the user's real providers automatically. Unioned with a deliberately tiny baked floor — `host.containers.internal` (local models) and `registry.npmjs.org` (the on-demand provider SDK adapters opencode isn't already bundling) — plus the org/user `allowed_hosts` files (+ `--allow-host` for a run). The floor was trimmed empirically: a configured model resolves and runs without `models.dev`, and OpenAI-compatible providers need no npm fetch, so `models.dev`/PyPI/the open web are opt-in, not default. Running the proxy *from Konrad's own image* is what makes the derivation free — a stock proxy image would have neither the merge tool nor the config layers. Host-based filtering (not IP) is deliberate: remote providers sit behind rotating cloud IPs.
+- **Default-on, with a clean bypass.** On for every `run`/`--shell`/`run`-oneshot launch; `--no-firewall` (or `KONRAD_FIREWALL=0`) restores the pre-firewall unrestricted path (a bare `exec podman run`). The proxy + networks are per-run (`$$`-named) and torn down by an EXIT trap. Mechanism lives in [image/konrad-proxy-entrypoint.sh](image/konrad-proxy-entrypoint.sh) and `fw_setup`/`fw_teardown` in [bin/konrad](bin/konrad).
 
 ## The planning contract
 

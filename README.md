@@ -18,7 +18,7 @@ It's a thin, sandboxed wrapper around [opencode](https://github.com/sst/opencode
 ## Why Konrad
 
 - **Your data stays yours.** Run local models or a trustworthy API — handle the forms, private notes, and regulated data you'd never paste into a cloud chatbot.
-- **Sandboxed by default.** The agent works inside a container that can't touch anything outside the workspace. _(Locking the network down to shrink prompt-injection blast radius is on the roadmap, not a property it has yet — see [Status](#status).)_
+- **Sandboxed by default.** The agent works inside a container that can't touch anything outside the workspace, and an egress firewall (on by default) restricts its network to an allow-list — your model providers plus a small trusted set — so a prompt-injected agent can't quietly ship your data off the box.
 - **Your models, your choice.** Local engines (LM Studio / Ollama / llama.cpp) or any opencode-supported API provider — never locked to one vendor.
 - **Batteries included.** One container image ships the agent's tools (ripgrep, fd, jq, pandoc, poppler, Python 3 + a system venv, Typst, LibreOffice) and a curated skill set already wired together: no venv, no pip, no host setup.
 - **Fully open source.** AGPL-3.0, no telemetry, nothing proprietary.
@@ -34,7 +34,7 @@ What ships in the box:
 
 **Alpha.** The runtime works and the build/publish pipeline is solid, but the surface area is still moving. **Don't run Konrad in production or on anything you can't afford to lose if you're not sure what you're doing.** Specifically, today:
 
-- **No egress firewall or permission ACLs yet.** The sandbox is container + filesystem isolation only; network access is unrestricted. Narrowing it to an allow-list is the next safety milestone — see [ROADMAP.md](ROADMAP.md).
+- **Egress firewall on by default; no permission ACLs yet.** Network egress is restricted to an allow-list (your providers + a small trusted set) by a sidecar filtering proxy — `--no-firewall` opts out, `--allow-host` widens it. Per-tool permission ACLs and read-only-workspace mode are still on the roadmap — see [ROADMAP.md](ROADMAP.md).
 - **Podman only; Linux and macOS only.** `--userns=keep-id` is Podman-specific. Docker support is on the roadmap, untested. No Windows support — WSL is at your own discretion and untested.
 - **Pre-1.0: expect churn, but versioned.** Konrad uses [semantic versioning](CONTRIBUTING.md#versioning) — pre-1.0 that's `0.X.Y` (`X`/minor = new functionality or any user-visible change, `Y`/patch = fixes). The leading `0.` means config shapes, flags, and image internals can still change without a migration path; no stability promise until 1.0.
 - **No automated test suite.** Validation is manual (shellcheck + a smoke build). Regressions can slip through; the baked build manifest is the safety net, not a test suite.
@@ -47,7 +47,7 @@ Konrad is for someone who wants an AI agent to work on **their own files, on the
 **It's probably not for you if you want:**
 
 - **Coding / software development** — use Claude Code, Cursor, and the like; Konrad isn't tuned as a coding agent.
-- **Research or web-heavy work** — deep-research and browsing agents do this better. Konrad has no browsing stack, and is moving *toward* tighter network isolation, not away from it.
+- **Research or web-heavy work** — deep-research and browsing agents do this better. Konrad has no browsing stack, and its default-on egress firewall deliberately narrows network access — it's built to stay on a leash, not to roam.
 - **Production, hosted, or multi-user deployment** — it's a single-user local sandbox, not a deployable service.
 - **A zero-config cloud agent** — if you just want a hosted frontier model with no setup, a first-party app is less friction. Konrad's payoff is local + your-files + sandbox.
 
@@ -84,6 +84,8 @@ That's the whole UX: the current directory is mounted at `/workspace` inside the
 | ------------------------ | ----------------------------------------------------------------------- |
 | _(none)_                 | Default. Runs opencode against the current directory.                   |
 | `-s`, `--shell`          | Open a bash shell in the container instead of opencode.                 |
+| `--no-firewall`          | Disable the egress firewall for this run (default ON). Restores unrestricted network access. |
+| `--allow-host <host>`    | Add a host to the egress allow-list for this run (repeatable). Permanent entries go in `~/.config/konrad/user/allowed_hosts`. |
 | `-v`, `--verbose`        | Per-phase timestamps + verbose opencode logs. Useful for chasing slow startup. |
 | `--version`              | Print CLI version + image tag/digest/revision.                          |
 | `--update`               | Pull the latest image from `ghcr.io/jlbauss/konrad:latest` and refresh the CLI script itself. |
@@ -125,8 +127,11 @@ Layers 2 and 3 are symmetric — each is a directory with up to five optional pi
     ├── agents/         Your own primary agents, layered in.
     ├── skills/         Your own opencode skills, layered in.
     ├── AGENTS.md       Personal model instructions, loaded on top of Konrad's base.
-    └── fonts/          .ttf / .otf / .ttc dropped here load on top of the baked palette.
+    ├── fonts/          .ttf / .otf / .ttc dropped here load on top of the baked palette.
+    └── allowed_hosts   Extra egress-firewall hosts, one per line (see Egress firewall).
 ```
+
+(The first five are opencode config, deep-merged at start. `allowed_hosts` is the one Konrad-specific extra — it feeds the egress firewall, not opencode.)
 
 The merge of `opencode.jsonc` is deep and ordered **baked < org < user** (last writer wins): **objects merge recursively, the later layer's keys win on conflict, new keys from any layer come through, arrays replace.** That last one matters — see [the AGENTS.md convention](#adding-your-own-model-instructions).
 
@@ -137,6 +142,20 @@ The merge of `opencode.jsonc` is deep and ordered **baked < org < user** (last w
 Konrad pre-wires the local providers at their default ports, but **the model list is yours to fill in**. Declare each model you intend to use in `~/.config/konrad/user/opencode.jsonc` — see the [Recipes](#recipes) below. (Auto-discovery used to live here via the [`opencode-models-discovery`](https://github.com/rivy-t/opencode-models-discovery) plugin, but it added ~3-4 s of startup and tripped on LM Studio's embedding modality; an inline replacement is on the [roadmap](ROADMAP.md).)
 
 opencode Zen — the upstream's paid hosted gateway — is **disabled by default** (`disabled_providers: ["opencode"]`), since Konrad is local-first. Override `disabled_providers` to re-enable.
+
+### Egress firewall
+
+The agent runs on an isolated container network with **no direct route to the internet**. A sidecar — the same Konrad image launched as a filtering proxy — is the only thing with egress, and it forwards traffic only to an allow-list, refusing everything else (default-deny). This shrinks the blast radius if the agent is prompt-injected: it can't quietly POST your workspace or credentials to an arbitrary host.
+
+The allow-list is assembled at launch from:
+
+- **your configured model providers**, derived automatically from the merged `opencode.jsonc` (so adding a provider just works — local `host.containers.internal` and any remote API host alike);
+- **`registry.npmjs.org`**, where opencode fetches a provider's SDK adapter on demand (the OpenAI-compatible adapter that backs the local engines is already bundled; Anthropic/Google-style SDKs are pulled on first use);
+- **your own additions** — list hosts (one per line, `#` comments) in `~/.config/konrad/user/allowed_hosts` (or the org layer's), or pass `--allow-host <host>` for a single run.
+
+Deliberately **not** in the default set: `models.dev` (the external model catalog — Konrad has you declare your own models, so it isn't needed to run one), PyPI (`pip install` — the image already ships a full venv; `--allow-host pypi.org files.pythonhosted.org` when you genuinely need to extend it), and the open web. Add what your task needs.
+
+It's **on by default**. Turn it off for a run with `konrad --no-firewall`. When the agent reports a host is blocked, that's the firewall doing its job — add the host if you trust it. (Why a proxy and not a raw IP block: remote providers sit behind rotating cloud IPs, so the allow-list is by *hostname*. Full design in [ARCHITECTURE.md](ARCHITECTURE.md#state-secrets--isolation).)
 
 ### Quick start: edit your override
 
