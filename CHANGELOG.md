@@ -12,6 +12,21 @@ publishes as `:0.X.Y`, `:0.X`, `:latest`, and an immutable
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-06-10
+
+### Added
+- Egress firewall, **on by default**. The agent container now runs on an
+  isolated Podman network with no direct internet route and reaches the outside
+  only through a sidecar filtering proxy (tinyproxy, run from the same image)
+  that allows just an allow-list: the model providers derived from your merged
+  config, plus `registry.npmjs.org` (the on-demand provider SDK adapters).
+  Shrinks the blast radius of a prompt-injected agent exfiltrating data.
+  `models.dev`, PyPI, and the open web are blocked by default. Extend it per-run
+  with
+  `--allow-host <host>` or permanently via an `allowed_hosts` file in your
+  org/user layer; `--no-firewall` (or `KONRAD_FIREWALL=0`) opts out. Design:
+  [ARCHITECTURE.md](ARCHITECTURE.md#state-secrets--isolation).
+
 ## [0.7.0] - 2026-06-10
 
 ### Added
