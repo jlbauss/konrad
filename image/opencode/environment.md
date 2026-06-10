@@ -51,6 +51,21 @@ set: `image/locks/python.lock`. Skill scripts under
 default to UTF-8 — if you see mojibake, the source's encoding is the
 cause, not the runtime.
 
+## Network
+
+Egress is **default-deny** behind a filtering proxy (`HTTP_PROXY`/`HTTPS_PROXY`
+are set for you — honour them). Reachable by default: the configured model
+providers, plus `registry.npmjs.org`. Everything else is refused — including
+`models.dev`, PyPI (`pip install`), and arbitrary web/git hosts.
+
+So if a `curl`/`pip install`/`git`/fetch fails with a connection-refused or
+`403` proxy error, the host is almost certainly **blocked, not down** — do NOT
+retry in a loop (it wastes turns and tokens). Tell the user the host is blocked
+and that they can allow it for a run with `konrad --allow-host <host>` (e.g.
+`--allow-host pypi.org --allow-host files.pythonhosted.org` for `pip`), or
+permanently via an `allowed_hosts` file in their konrad config layer (one host
+per line). The whole firewall turns off for a run with `konrad --no-firewall`.
+
 ## What you DON'T have
 
 - Root or `sudo`.

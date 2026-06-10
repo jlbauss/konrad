@@ -125,6 +125,19 @@ KONRAD_DEBUG="${KONRAD_DEBUG:-0}"
 # into -v (it buries everything else; see image/entrypoint.sh). Passed through
 # to the container via -e; off by default.
 KONRAD_TRACE_FETCH="${KONRAD_TRACE_FETCH:-0}"
+
+# Egress firewall (ON by default). The agent container runs on an isolated
+# Podman network with NO route to the internet; a sidecar — the same konrad
+# image launched as `konrad-proxy` — is the only member with egress and forwards
+# only the allow-listed hosts (derived providers + a baked infra floor + the
+# user's allowed_hosts). Shrinks the blast radius of a prompt-injected agent
+# exfiltrating secrets/workspace data. See image/konrad-proxy-entrypoint.sh and
+# fw_setup() below. Disable per-run with --no-firewall (or KONRAD_FIREWALL=0).
+# Add one-off allowed hosts with --allow-host h1,h2 (or KONRAD_ALLOW_HOST=…).
+KONRAD_FIREWALL="${KONRAD_FIREWALL:-1}"
+KONRAD_PROXY_PORT="${KONRAD_PROXY_PORT:-8888}"
+KONRAD_ALLOW_HOST="${KONRAD_ALLOW_HOST:-}"
+
 # $SECONDS is bash's built-in script-elapsed counter (portable to bash 3.2
 # on macOS). The container side uses GNU `date +%N` for sub-second precision
 # since Linux has that. Both are good enough to spot what's slow.
@@ -490,6 +503,105 @@ remote_host_path() {
   fi
 }
 
+# --- Egress firewall (sidecar filtering proxy) -------------------------------
+# Topology (validated): two Podman networks per run —
+#   <net-internal>  --internal (no route out): the agent's ONLY network.
+#   <net-egress>    normal bridge: carries the proxy's outbound traffic.
+# The proxy container joins BOTH; the agent joins only <net-internal> and is
+# pointed at the proxy via HTTP(S)_PROXY. So the agent has no direct path to the
+# internet — every request is filtered against the allow-list or refused. The
+# boundary lives in Podman-managed networking the agent (uid 1000) can't alter.
+#
+# Why a forward proxy (HTTP_PROXY) and not something fancier: opencode runs on
+# Bun, which honours HTTP_PROXY/HTTPS_PROXY for fetch — verified end-to-end that
+# its model-catalog (HTTPS CONNECT) and local-model (HTTP) calls both route
+# through tinyproxy. Keeps the agent capability-less and needs no nftables.
+
+firewall_on() { [[ "$KONRAD_FIREWALL" == "1" ]]; }
+
+# Names are per-run ($$) so concurrent konrad invocations don't collide; the
+# konrad-fw- prefix makes orphans (after a kill -9) greppable for cleanup.
+FW_ACTIVE=0
+FW_NET_INTERNAL=""
+FW_NET_EGRESS=""
+FW_PROXY_NAME=""
+
+# Remove this run's proxy + networks. Idempotent (EXIT trap may double-fire);
+# every step is best-effort so teardown never masks the agent's exit code.
+fw_teardown() {
+  [[ "$FW_ACTIVE" == "1" ]] || return 0
+  FW_ACTIVE=0
+  dbg "firewall: tearing down proxy + networks"
+  if [[ -n "$FW_PROXY_NAME" ]]; then
+    podman rm -f "$FW_PROXY_NAME" >/dev/null 2>&1 || true
+  fi
+  if [[ -n "$FW_NET_INTERNAL" ]]; then
+    podman network rm "$FW_NET_INTERNAL" >/dev/null 2>&1 || true
+  fi
+  if [[ -n "$FW_NET_EGRESS" ]]; then
+    podman network rm "$FW_NET_EGRESS" >/dev/null 2>&1 || true
+  fi
+}
+
+# Block until tinyproxy is accepting connections (it logs the line on start);
+# bail fast with the proxy's own logs if it died (bad config, image mismatch).
+fw_wait_ready() {
+  local i
+  for i in $(seq 1 100); do
+    if podman logs "$FW_PROXY_NAME" 2>&1 | grep -q "Accepting connections"; then
+      dbg "firewall: proxy ready"
+      return 0
+    fi
+    if ! podman container exists "$FW_PROXY_NAME" 2>/dev/null; then
+      podman logs "$FW_PROXY_NAME" 2>&1 | tail -20 >&2 || true
+      die "egress firewall: proxy exited during startup (see logs above; --no-firewall to bypass)"
+    fi
+    sleep 0.1
+  done
+  podman logs "$FW_PROXY_NAME" 2>&1 | tail -20 >&2 || true
+  die "egress firewall: proxy did not become ready (--no-firewall to bypass)"
+}
+
+# Create the networks and start the proxy sidecar. Reads two arrays the caller
+# (podman_run) exports as globals — KR_USERNS_FLAGS and KR_CFG_MOUNTS — because
+# the proxy needs the same userns mapping and the same org/user config mounts as
+# the agent (it derives the provider allow-list from the merged config). Sets
+# the FW_* globals and the EXIT trap so a partial setup is always cleaned up.
+fw_setup() {
+  FW_NET_INTERNAL="konrad-fw-net-$$"
+  FW_NET_EGRESS="konrad-fw-out-$$"
+  FW_PROXY_NAME="konrad-fw-proxy-$$"
+  trap fw_teardown EXIT
+  trap 'exit 143' TERM   # TERM → exit → EXIT trap → teardown (don't leak nets);
+                          # SIGINT is left untrapped so the interactive TUI's
+                          # Ctrl-C reaches podman, which exits cleanly and lets
+                          # this function's caller fall through to teardown.
+
+  # Defensive: clear any same-named leftovers (PID reuse after a hard kill).
+  podman rm -f "$FW_PROXY_NAME" >/dev/null 2>&1 || true
+  podman network rm "$FW_NET_INTERNAL" "$FW_NET_EGRESS" >/dev/null 2>&1 || true
+
+  dbg "firewall: creating networks $FW_NET_INTERNAL (internal) + $FW_NET_EGRESS"
+  podman network create --internal "$FW_NET_INTERNAL" >/dev/null \
+    || die "egress firewall: could not create internal network (--no-firewall to bypass)"
+  podman network create "$FW_NET_EGRESS" >/dev/null \
+    || die "egress firewall: could not create egress network (--no-firewall to bypass)"
+  FW_ACTIVE=1
+
+  info "egress firewall: starting filtering proxy…"
+  podman run -d --rm --name "$FW_PROXY_NAME" --init \
+    --network "${FW_NET_INTERNAL},${FW_NET_EGRESS}" \
+    "${KR_USERNS_FLAGS[@]}" \
+    ${KR_CFG_MOUNTS[@]+"${KR_CFG_MOUNTS[@]}"} \
+    -e "KONRAD_DEBUG=${KONRAD_DEBUG}" \
+    -e "KONRAD_PROXY_PORT=${KONRAD_PROXY_PORT}" \
+    -e "KONRAD_ALLOWED_HOSTS=${KONRAD_ALLOW_HOST}" \
+    "$IMAGE_NAME" konrad-proxy >/dev/null \
+    || die "egress firewall: could not start proxy container (--no-firewall to bypass)"
+
+  fw_wait_ready
+}
+
 # Run a command inside the konrad container with the standard mount set.
 # All variables are quoted, so paths containing spaces are safe.
 podman_run() {
@@ -535,6 +647,11 @@ podman_run() {
   #     AGENTS.md, skills, and providers — instead of running bare baked config.
   # The named volumes further down are daemon-side and work either way (so the
   # dev-container konrad still shares the host konrad's secrets/state).
+  # cfg_mounts holds ONLY the org/user config layers — the firewall proxy needs
+  # the identical set (it composes the same baked<org<user config to derive the
+  # provider allow-list), so it's kept separate and merged into home_mounts for
+  # the agent. home_mounts adds the agent-only central log dir on top.
+  local -a cfg_mounts=()
   local -a home_mounts=()
   if [[ -z "${KONRAD_REMOTE_HOST_ROOT:-}" ]]; then
     # LOCAL daemon: log dir + config layers off this filesystem.
@@ -549,8 +666,8 @@ podman_run() {
     # composes them over the baked defaults (precedence: baked < org < user).
     # Read-only — the container never writes back. Gated on existence so a
     # user with no org package (the common case) just gets the user mount.
-    [[ -d "$ORG_CFG_DIR" ]]  && home_mounts+=(-v "$ORG_CFG_DIR:/home/node/.config/konrad/org:ro")
-    [[ -d "$USER_CFG_DIR" ]] && home_mounts+=(-v "$USER_CFG_DIR:/home/node/.config/konrad/user:ro")
+    [[ -d "$ORG_CFG_DIR" ]]  && cfg_mounts+=(-v "$ORG_CFG_DIR:/home/node/.config/konrad/org:ro")
+    [[ -d "$USER_CFG_DIR" ]] && cfg_mounts+=(-v "$USER_CFG_DIR:/home/node/.config/konrad/user:ro")
   else
     # REMOTE daemon: mount the SAME config layers, but from the daemon-visible
     # host path (KONRAD_REMOTE_HOST_CONFIG); the -d guards stat the copy the dev
@@ -558,13 +675,14 @@ podman_run() {
     # or an older dev container) → no config mount, baked-only, as before.
     local host_cfg="${KONRAD_REMOTE_HOST_CONFIG:-}"
     if [[ -n "$host_cfg" ]]; then
-      [[ -d "$ORG_CFG_DIR" ]]  && home_mounts+=(-v "$host_cfg/org:/home/node/.config/konrad/org:ro")
-      [[ -d "$USER_CFG_DIR" ]] && home_mounts+=(-v "$host_cfg/user:/home/node/.config/konrad/user:ro")
+      [[ -d "$ORG_CFG_DIR" ]]  && cfg_mounts+=(-v "$host_cfg/org:/home/node/.config/konrad/org:ro")
+      [[ -d "$USER_CFG_DIR" ]] && cfg_mounts+=(-v "$host_cfg/user:/home/node/.config/konrad/user:ro")
     fi
     if [[ "$cwd" != "${KONRAD_REMOTE_GUEST_ROOT:-/workspace}"* ]]; then
       warn "remote-socket mode: cwd ($cwd) is outside ${KONRAD_REMOTE_GUEST_ROOT:-/workspace}; the workspace mount resolves against the host fs and will likely be empty. Run konrad from under ${KONRAD_REMOTE_GUEST_ROOT:-/workspace}."
     fi
   fi
+  home_mounts+=(${cfg_mounts[@]+"${cfg_mounts[@]}"})
 
   # User-namespace mapping. The normal case (local rootless daemon, and the
   # Linux remote-socket path) is keep-id: container node(1000) shares the
@@ -591,6 +709,27 @@ podman_run() {
     )
   fi
 
+  # Egress firewall: stand up the sidecar + isolated network, then put the agent
+  # on that network ONLY and point it at the proxy. The proxy reuses the agent's
+  # userns map + config mounts (exported as globals for fw_setup, since bash 3.2
+  # has no array passing). With the firewall off, the agent keeps Podman's default
+  # networking and unrestricted egress — the pre-firewall behaviour.
+  local -a net_flags=() proxy_env=()
+  if firewall_on; then
+    KR_USERNS_FLAGS=("${userns_flags[@]}")
+    KR_CFG_MOUNTS=(${cfg_mounts[@]+"${cfg_mounts[@]}"})
+    fw_setup
+    local proxy_url="http://${FW_PROXY_NAME}:${KONRAD_PROXY_PORT}"
+    net_flags=(--network "$FW_NET_INTERNAL")
+    # Bun's fetch (opencode) honours these; lower- and upper-case both, since
+    # different tools read different spellings. localhost stays direct.
+    proxy_env=(
+      -e "HTTP_PROXY=${proxy_url}"  -e "HTTPS_PROXY=${proxy_url}"
+      -e "http_proxy=${proxy_url}"  -e "https_proxy=${proxy_url}"
+      -e "NO_PROXY=localhost,127.0.0.1"  -e "no_proxy=localhost,127.0.0.1"
+    )
+  fi
+
   # ${home_mounts[@]+"${home_mounts[@]}"} is the empty-safe array splice —
   # under `set -u`, a bare ${arr[@]} on an empty array would error.
   # --init: podman runs a tiny init (catatonit) as PID 1 inside the container
@@ -599,20 +738,35 @@ podman_run() {
   # KONRAD_HOST_WORKSPACE is read by the entrypoint to write the
   # workspace path into the session sidecar (opencode itself only
   # sees /workspace and can't record the host path).
-  exec podman run \
-    --rm ${tty_flags[@]+"${tty_flags[@]}"} --init \
-    "${userns_flags[@]}" \
-    -e "KONRAD_DEBUG=${KONRAD_DEBUG}" \
-    -e "KONRAD_TRACE_FETCH=${KONRAD_TRACE_FETCH:-0}" \
-    -e "KONRAD_HOST_WORKSPACE=${ws_src}" \
-    -e "KONRAD_HOST_LOG_DIR=${KONRAD_LOG_DIR}" \
-    -v "${ws_src}:/workspace${ws_relabel}" \
-    -v "${SECRETS_VOLUME}:/home/node/.opencode-secrets:U" \
-    -v "${cache_vol}:/home/node/.cache/opencode:U" \
-    -v "${state_vol}:/home/node/.local/state/opencode:U" \
-    ${home_mounts[@]+"${home_mounts[@]}"} \
-    -w /workspace \
+  local -a run_cmd=(
+    podman run
+    --rm ${tty_flags[@]+"${tty_flags[@]}"} --init
+    "${userns_flags[@]}"
+    ${net_flags[@]+"${net_flags[@]}"}
+    ${proxy_env[@]+"${proxy_env[@]}"}
+    -e "KONRAD_DEBUG=${KONRAD_DEBUG}"
+    -e "KONRAD_TRACE_FETCH=${KONRAD_TRACE_FETCH:-0}"
+    -e "KONRAD_HOST_WORKSPACE=${ws_src}"
+    -e "KONRAD_HOST_LOG_DIR=${KONRAD_LOG_DIR}"
+    -v "${ws_src}:/workspace${ws_relabel}"
+    -v "${SECRETS_VOLUME}:/home/node/.opencode-secrets:U"
+    -v "${cache_vol}:/home/node/.cache/opencode:U"
+    -v "${state_vol}:/home/node/.local/state/opencode:U"
+    ${home_mounts[@]+"${home_mounts[@]}"}
+    -w /workspace
     "$IMAGE_NAME" "$@"
+  )
+
+  # No firewall → exec, replacing this shell so signals/exit code pass straight
+  # through (the pre-firewall behaviour). With the firewall we must stay alive to
+  # tear down the proxy + networks, so run in the foreground and exit with the
+  # agent's code; the EXIT trap (set in fw_setup) does the cleanup either way.
+  if firewall_on; then
+    local rc=0
+    "${run_cmd[@]}" || rc=$?
+    exit "$rc"
+  fi
+  exec "${run_cmd[@]}"
 }
 
 # --- Actions ---
@@ -1146,6 +1300,13 @@ Flags:
                         (konrad-state-<name> / konrad-cache-<name>) instead of
                         the shared ones; credentials stay shared. Isolates a
                         self-test / experiment from your real session + model.
+  --no-firewall         Disable the egress firewall for this run (default ON).
+                        Normally the agent reaches only the allow-list (your
+                        providers + a small trusted set) via a sidecar proxy;
+                        this restores unrestricted network access.
+  --allow-host <host>   Add a host to the egress allow-list for this run
+                        (repeatable, or comma-separated). For a permanent entry,
+                        list it in ~/.config/konrad/user/allowed_hosts.
   -v, --verbose         Per-phase timestamps + opencode log-file pointer.
                         (Raw HTTP trace is separate: KONRAD_TRACE_FETCH=1 …)
   --version             Print CLI + image versions (dated tag, digest, revision).
@@ -1218,6 +1379,10 @@ while [[ $# -gt 0 ]]; do
       [[ "$2" =~ ^[A-Za-z0-9_-]+$ ]] \
         || die "invalid profile name '$2' (allowed: letters, digits, '-', '_')"
       KONRAD_PROFILE="$2"; shift 2 ;;
+    --no-firewall) KONRAD_FIREWALL=0; shift ;;
+    --allow-host)
+      [[ $# -ge 2 ]] || die "--allow-host requires a host (e.g. --allow-host github.com)"
+      KONRAD_ALLOW_HOST="${KONRAD_ALLOW_HOST:+$KONRAD_ALLOW_HOST,}$2"; shift 2 ;;
     --verbose)    KONRAD_DEBUG=1;   shift ;;
     --version)    ACTION="version"; shift ;;
     --update)     ACTION="update";  shift ;;
