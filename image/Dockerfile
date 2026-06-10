@@ -141,6 +141,12 @@ ENV DEBIAN_FRONTEND=noninteractive \
 #   jq                          → JSON tooling (entrypoint config merge + agent)
 #   ripgrep, fd-find, bat, tree → opencode's grep/glob/read backends + agent UX
 #   gh                          → GitHub CLI; high-utility when working on a repo
+#   tinyproxy                   → egress firewall: runs as the sidecar proxy that
+#                                 enforces the default-deny allow-list (the agent
+#                                 container reaches the network only through it).
+#                                 Same image doubles as the proxy — one pinned
+#                                 artifact, no second image to pull. See
+#                                 konrad-proxy-entrypoint.sh and bin/konrad.
 #
 # Bundled skills depend on these:
 #   python3                     → Python interpreter for skill scripts
@@ -155,7 +161,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 #   iproute2, dnsutils
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git curl jq ca-certificates xz-utils \
-    ripgrep fd-find bat tree gh \
+    ripgrep fd-find bat tree gh tinyproxy \
     python3 pandoc poppler-utils libgl1 libglib2.0-0 \
     libgomp1 libreoffice-nogui \
     less procps fzf zsh man-db unzip gnupg2 nano htop \
@@ -281,6 +287,12 @@ COPY --chmod=0755 merge-config.js /etc/konrad/merge-config.js
 # entrypoint and the container dies with "is not executable: OCI permission
 # denied". Setting the mode explicitly removes that dependency entirely.
 COPY --chmod=0755 entrypoint.sh /usr/local/bin/konrad-entrypoint
+# The egress-firewall sidecar runs THIS image with konrad-proxy as its command:
+# it composes the same baked<org<user config, derives the allow-list from the
+# merged provider endpoints + a baked infra floor + the user's allowed_hosts,
+# writes a tinyproxy default-deny config, and execs tinyproxy. Root-owned (0755)
+# so the node runtime user can't tamper with the allow-list logic. See bin/konrad.
+COPY --chmod=0755 konrad-proxy-entrypoint.sh /usr/local/bin/konrad-proxy
 COPY --chmod=0755 konrad-defaults/ /etc/konrad/
 
 ENV NODE_OPTIONS=--max-old-space-size=4096 \
