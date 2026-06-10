@@ -76,17 +76,28 @@
     "source=konrad-claude-dev-claude,target=/home/node/.claude,type=volume",
     "source=konrad-claude-dev-vscode-server,target=/home/node/.vscode-server,type=volume",
     "source=${localEnv:HOME}/.claude/skills,target=/home/node/.claude/skills,type=bind,consistency=delegated",
-    "source=${localWorkspaceFolder}/.devcontainer/.cache/podman-host.sock,target=/run/podman-host.sock,type=bind"
+    "source=${localWorkspaceFolder}/.devcontainer/.cache/podman-host.sock,target=/run/podman-host.sock,type=bind",
+    // Your real konrad config layer, bound in at its normal path. Two jobs:
+    // konrad-dev in here behaves like your real konrad (same model/agents/
+    // skills), and bin/konrad can stat which layers exist before mounting them
+    // into the self-test runtime container from KONRAD_REMOTE_HOST_CONFIG below.
+    // ensure-podman-sock.sh mkdir's the source so this never fails to resolve.
+    "source=${localEnv:HOME}/.config/konrad,target=/home/node/.config/konrad,type=bind,consistency=delegated"
   ],
   // CONTAINER_HOST → podman client talks to the host socket mounted above.
   // KONRAD_REMOTE_* → tell bin/konrad it's driving a REMOTE daemon, so it
-  // rewrites the /workspace bind-mount source to its real host path
-  // (${localWorkspaceFolder}) and skips the host-home mounts that only
-  // resolve against a local daemon. See bin/konrad's remote_host_path().
+  // rewrites bind-mount SOURCES to their real host paths (the daemon resolves
+  // them on its own filesystem). KONRAD_REMOTE_HOST_ROOT maps the /workspace
+  // mount (see remote_host_path()); KONRAD_REMOTE_HOST_CONFIG is the host path
+  // of the config layer bound in above, so the self-test runtime container gets
+  // your real org/user layers mounted and composes baked<org<user exactly like
+  // a normal run (see bin/konrad podman_run). The log dir stays host-only and
+  // is the one thing self-testing skips.
   "containerEnv": {
     "CONTAINER_HOST": "unix:///run/podman-host.sock",
     "KONRAD_REMOTE_HOST_ROOT": "${localWorkspaceFolder}",
-    "KONRAD_REMOTE_GUEST_ROOT": "/workspace"
+    "KONRAD_REMOTE_GUEST_ROOT": "/workspace",
+    "KONRAD_REMOTE_HOST_CONFIG": "${localEnv:HOME}/.config/konrad"
   },
   "customizations": {
     "vscode": {

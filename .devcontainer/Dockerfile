@@ -137,14 +137,19 @@ RUN ln -sf /workspace/bin/konrad /usr/local/bin/konrad-dev
 # over /usr/bin in PATH so VS Code's gio invocations hit this first.
 COPY --chmod=0755 gio-shim /usr/local/bin/gio
 
-# Pre-create the dirs that devcontainer.json mounts named volumes onto,
-# owned by node. Podman copies the image's directory state into an
-# empty named volume on first mount, so this seeds the volume with the
-# correct ownership — without it the volume would be root-owned and
-# the node user could not write to it.
+# Pre-create the parent dirs that devcontainer.json mounts onto, owned by node.
+# For the named-volume mounts (.claude, .vscode-server) podman seeds the empty
+# volume from the image's directory state, so this gives the volume node
+# ownership instead of root. For the ~/.config/konrad BIND mount, pre-creating
+# ~/.config (and the konrad mountpoint) stops podman from creating ~/.config
+# itself as root when it makes the mountpoint — a root-owned ~/.config breaks
+# the podman client (it can't write ~/.config/containers) and `podman machine`.
+# Without these the node user could not write the mount parents.
 RUN install -d -o node -g node \
     /home/node/.claude \
-    /home/node/.vscode-server
+    /home/node/.vscode-server \
+    /home/node/.config \
+    /home/node/.config/konrad
 
 # node user (UID 1000) already exists in node:26-trixie-slim.
 # devcontainer.json's runArgs --userns=keep-id maps it to the host

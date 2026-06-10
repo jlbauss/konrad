@@ -521,17 +521,23 @@ podman_run() {
     if [[ -t 0 ]]; then tty_flags=(); else tty_flags=(-i); fi
   fi
 
-  # Host-home bind mounts: the central log dir and the org/user config
-  # layers all live under $HOME. They resolve correctly only against a
-  # LOCAL daemon (same filesystem as this script). In remote-socket mode
-  # the daemon runs on the host, where $HOME differs, so these are skipped
-  # — the named volumes below are daemon-side and work either way, and the
-  # dev-container konrad thereby shares the host konrad's secrets/state
-  # (so a live model configured on the host works here too). Net effect of
-  # skipping: no host-side log capture and no config-layer overlay while
-  # self-testing — both acceptable, both documented in CLAUDE.md.
+  # Host-home bind mounts. The central log dir and the org/user config layers
+  # live under $HOME. Against a LOCAL daemon they bind straight off this
+  # filesystem. Against a REMOTE daemon (dev-container self-testing) the daemon
+  # resolves every -v SOURCE on its OWN filesystem, so:
+  #   - the log dir is skipped — no daemon-visible path for it; giving up
+  #     host-side log capture is the one concession self-testing makes;
+  #   - the config layers ARE mounted, from the host path the dev container
+  #     exposes as KONRAD_REMOTE_HOST_CONFIG (the user's real ~/.config/konrad,
+  #     which .devcontainer also binds into THIS container at $KONRAD_CFG_DIR so
+  #     the -d guards below can see which layers exist). Net effect: self-testing
+  #     composes baked < org < user exactly like an ordinary run — same model,
+  #     AGENTS.md, skills, and providers — instead of running bare baked config.
+  # The named volumes further down are daemon-side and work either way (so the
+  # dev-container konrad still shares the host konrad's secrets/state).
   local -a home_mounts=()
   if [[ -z "${KONRAD_REMOTE_HOST_ROOT:-}" ]]; then
+    # LOCAL daemon: log dir + config layers off this filesystem.
     # Central log dir on the host (XDG state). Created lazily so the bind
     # works on the very first launch. The entrypoint writes a per-session
     # sidecar here and opencode writes its structured log alongside.
@@ -545,8 +551,19 @@ podman_run() {
     # user with no org package (the common case) just gets the user mount.
     [[ -d "$ORG_CFG_DIR" ]]  && home_mounts+=(-v "$ORG_CFG_DIR:/home/node/.config/konrad/org:ro")
     [[ -d "$USER_CFG_DIR" ]] && home_mounts+=(-v "$USER_CFG_DIR:/home/node/.config/konrad/user:ro")
-  elif [[ "$cwd" != "${KONRAD_REMOTE_GUEST_ROOT:-/workspace}"* ]]; then
-    warn "remote-socket mode: cwd ($cwd) is outside ${KONRAD_REMOTE_GUEST_ROOT:-/workspace}; the workspace mount resolves against the host fs and will likely be empty. Run konrad from under ${KONRAD_REMOTE_GUEST_ROOT:-/workspace}."
+  else
+    # REMOTE daemon: mount the SAME config layers, but from the daemon-visible
+    # host path (KONRAD_REMOTE_HOST_CONFIG); the -d guards stat the copy the dev
+    # container sees at $KONRAD_CFG_DIR. Unset (Linux host without the wire-up,
+    # or an older dev container) → no config mount, baked-only, as before.
+    local host_cfg="${KONRAD_REMOTE_HOST_CONFIG:-}"
+    if [[ -n "$host_cfg" ]]; then
+      [[ -d "$ORG_CFG_DIR" ]]  && home_mounts+=(-v "$host_cfg/org:/home/node/.config/konrad/org:ro")
+      [[ -d "$USER_CFG_DIR" ]] && home_mounts+=(-v "$host_cfg/user:/home/node/.config/konrad/user:ro")
+    fi
+    if [[ "$cwd" != "${KONRAD_REMOTE_GUEST_ROOT:-/workspace}"* ]]; then
+      warn "remote-socket mode: cwd ($cwd) is outside ${KONRAD_REMOTE_GUEST_ROOT:-/workspace}; the workspace mount resolves against the host fs and will likely be empty. Run konrad from under ${KONRAD_REMOTE_GUEST_ROOT:-/workspace}."
+    fi
   fi
 
   # User-namespace mapping. The normal case (local rootless daemon, and the

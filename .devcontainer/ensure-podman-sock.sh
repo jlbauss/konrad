@@ -30,6 +30,14 @@ cache_dir="$(cd -- "$(dirname -- "$0")" && pwd)/.cache"
 link="$cache_dir/podman-host.sock"
 mkdir -p "$cache_dir"
 
+# Guarantee the host config dir exists so devcontainer.json's bind mount of it
+# resolves at container-create time (a missing bind source hard-fails create).
+# Create only the PARENT, never .../user — pre-creating user/ would make
+# bin/konrad's migrate_flat_config think the new layout is already in place and
+# skip migrating a contributor's legacy flat config. Self-testing mounts these
+# layers into the runtime container (see bin/konrad podman_run, CONTRIBUTING.md).
+mkdir -p "${HOME}/.config/konrad"
+
 real=""
 case "$(uname -s)" in
   Darwin)

@@ -146,6 +146,15 @@ pass "docling extracted a generated PDF"
 # without a workspace mount. ':ro,z' relabels for SELinux hosts (Fedora local
 # podman) and is accepted/ignored by docker in CI.
 info "org config layer (entrypoint compose)"
+# Remote daemon (dev-container self-testing — KONRAD_REMOTE_HOST_ROOT set): the
+# bind-mount sources below resolve on the DAEMON's filesystem, not this script's,
+# so a local mktemp dir is invisible daemon-side (statfs ENOENT). The real konrad
+# self-test path skips the config-layer mounts for exactly this reason (podman_run
+# in bin/konrad), and CI exercises this compose logic on every build against a
+# local daemon — so skip here rather than fail. Matches CONTRIBUTING.md.
+if [[ -n "${KONRAD_REMOTE_HOST_ROOT:-}" ]]; then
+  printf '  \033[33mSKIP\033[0m  org-layer compose (remote daemon — covered by CI on a local daemon)\n'
+else
 ORG_TMP="$(mktemp -d)"
 USER_TMP="$(mktemp -d)"
 cleanup_org() { rm -rf "$ORG_TMP" "$USER_TMP"; }
@@ -190,6 +199,7 @@ jq -e '.instructions | index("/home/node/.config/konrad/org/AGENTS.md")' "$cfg" 
 test -f /home/node/.config/opencode/skills/house-style/SKILL.md
 CONTAINER
 pass "org layer merges under user precedence; instructions append; skill loads"
+fi
 
 # --- 9. Host-side: flat → user/ config migration (bin/konrad) ---
 # Migration lives in bin/konrad (host CLI), not the image. Source it with the

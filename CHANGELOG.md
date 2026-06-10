@@ -12,6 +12,8 @@ publishes as `:0.X.Y`, `:0.X`, `:latest`, and an immutable
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-06-10
+
 ### Added
 - Dev-container self-testing now works on macOS hosts too: a `dockerPath` shim
   ([.devcontainer/podman-vscode.sh](.devcontainer/podman-vscode.sh)) creates the
@@ -20,6 +22,25 @@ publishes as `:0.X.Y`, `:0.X`, `:latest`, and an immutable
   keep-id mapping for explicit uid/gid maps; `bin/konrad` does the same for the
   nested runtime container when it detects that daemon. Contributor-facing;
   one-time setup in [CONTRIBUTING.md](CONTRIBUTING.md).
+- Self-testing now mounts your real `~/.config/konrad` layer into the runtime
+  container (the dev container binds it in; `bin/konrad` re-mounts it from the
+  daemon-visible host path), so a self-test composes `baked < org < user` and
+  uses your own model / agents / skills exactly like a normal run — instead of
+  running bare baked config. Removes the previous "config layers skipped while
+  self-testing" divergence.
+- `scripts/selftest.sh` — the realistic end-to-end contributor/agent loop: runs
+  the image smoke test, then drives a real `konrad run` through `bin/konrad` and
+  asserts the agent answers. The model defaults to the one in your konrad config
+  (overridable with `--model` / `KONRAD_SELFTEST_MODEL`, any provider); the model
+  stage degrades to a SKIP when no model/credential is usable, so a red result
+  always means the runtime broke.
+
+### Fixed
+- `scripts/smoke-test.sh` now skips its org-layer-compose check on a remote
+  daemon (dev-container self-testing) instead of failing on an unreachable
+  bind-mount source — matching what `bin/konrad` already does and what
+  [CONTRIBUTING.md](CONTRIBUTING.md) already documented. CI (local daemon) is
+  unaffected.
 
 ## [0.6.0] - 2026-06-09
 
