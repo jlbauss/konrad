@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Jan-Luca Bauß
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
 # Claude dev container — for working ON konrad.
 #
 # Distinct from devcontainer/ (no dot, at repo root), which is the
@@ -86,15 +89,14 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
 # matters (e.g. new rule we want, or an upstream fix).
 ARG ACTIONLINT_VERSION=1.7.12
 ARG HADOLINT_VERSION=2.14.0
-RUN set -eux; \
-    curl -fsSL "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" \
-      | tar -xz -C /usr/local/bin actionlint; \
-    chmod +x /usr/local/bin/actionlint; \
-    actionlint -version; \
-    curl -fsSL -o /usr/local/bin/hadolint \
-      "https://github.com/hadolint/hadolint/releases/download/v${HADOLINT_VERSION}/hadolint-Linux-x86_64"; \
-    chmod +x /usr/local/bin/hadolint; \
-    hadolint --version
+
+COPY --from=docker.io/hadolint/hadolint:v${HADOLINT_VERSION} /bin/hadolint /usr/local/bin/hadolint
+RUN hadolint --version
+
+
+COPY --from=docker.io/rhysd/actionlint:${ACTIONLINT_VERSION} /usr/local/bin/actionlint /usr/local/bin/actionlint
+RUN actionlint -version
+
 
 # Dev venv at /opt/dev-venv — pre-installed Python validators on PATH so
 # one-shot "import yaml" / "check-jsonschema foo.json" calls Just Work
