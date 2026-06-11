@@ -12,6 +12,16 @@ publishes as `:0.X.Y`, `:0.X`, `:latest`, and an immutable
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-06-11
+
+### Changed
+- The Python venv now ships as three `COPY` layers — torch (~700 MB), the large
+  numeric wheels (opencv/scipy/numpy/onnxruntime/sympy, ~450 MB), and the rest
+  (~360 MB) — instead of one ~1.5 GB layer. A `python.lock` bump that only moves
+  a small dep (the near-daily case) now re-pulls just the light layer; torch and
+  the numeric set dedupe. Sibling to the 0.6.0 model-layer dedupe. Rationale:
+  [ARCHITECTURE.md](ARCHITECTURE.md#build--reproducibility).
+
 ## [0.8.0] - 2026-06-10
 
 ### Added
