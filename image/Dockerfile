@@ -59,6 +59,10 @@ FROM ${BASE_IMAGE} AS python-base
 
 ENV DEBIAN_FRONTEND=noninteractive
 
+# DL3008 (pin apt versions) is intentionally ignored throughout: apt is the one
+# floating pin — it refreshes with the digest-pinned base and needs no separate
+# lock (see the pinning-surface header). Per-package version pins are not our model.
+# hadolint ignore=DL3008
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates python3 libgl1 libglib2.0-0 libgomp1 \
     && apt-get clean \
@@ -209,6 +213,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
 # Comfort tools for interactive `konrad shell` sessions only:
 #   less, procps, fzf, zsh, man-db, unzip, gnupg2, nano, htop,
 #   iproute2, dnsutils
+# apt is the floating pin (see python-base above); DL3008 intentionally ignored.
+# hadolint ignore=DL3008
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git curl jq ca-certificates xz-utils \
     ripgrep fd-find bat tree gh tinyproxy \
@@ -256,6 +262,12 @@ RUN fc-cache -f
 ARG TARGETARCH
 COPY locks/typst.lock /tmp/typst.lock
 
+# Download then extract as two steps — deliberately NOT a `curl … | tar` pipe.
+# Under `set -e` a failed `curl -f` aborts the build on its own, so we don't need
+# pipefail to catch a masked mid-stream failure (hadolint DL4006). Avoiding the
+# pipe also dodges buildah's OCI-format quirk where the `SHELL -o pipefail`
+# workaround is silently ignored — this way local podman and CI BuildKit behave
+# identically.
 RUN set -eux; \
     case "$TARGETARCH" in \
       amd64) ARCH="x86_64-unknown-linux-musl" ;; \
@@ -264,11 +276,11 @@ RUN set -eux; \
     esac; \
     TYPST_VERSION="$(cat /tmp/typst.lock)"; \
     [ -n "$TYPST_VERSION" ] || { echo "locks/typst.lock is empty" >&2; exit 1; }; \
-    curl -fsSL "https://github.com/typst/typst/releases/download/v${TYPST_VERSION}/typst-${ARCH}.tar.xz" \
-      | tar -xJ --strip-components=1 -C /usr/local/bin "typst-${ARCH}/typst"; \
+    curl -fsSL "https://github.com/typst/typst/releases/download/v${TYPST_VERSION}/typst-${ARCH}.tar.xz" -o /tmp/typst.tar.xz; \
+    tar -xJf /tmp/typst.tar.xz --strip-components=1 -C /usr/local/bin "typst-${ARCH}/typst"; \
     chmod +x /usr/local/bin/typst; \
     typst --version; \
-    rm /tmp/typst.lock
+    rm /tmp/typst.lock /tmp/typst.tar.xz
 
 # ── Pull in the Python world from the build stages ──────────────────────────
 # venv stays at /opt/venv (same path as in python-base) so all shebang lines
