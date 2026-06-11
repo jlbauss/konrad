@@ -72,6 +72,11 @@
   // default connection stays rootless — day-to-day podman on the Mac is
   // untouched. Details: .devcontainer/podman-vscode.sh, CONTRIBUTING.md.
   "initializeCommand": "sh .devcontainer/ensure-podman-sock.sh",
+  // After the container is created, flip Claude Code into bypassPermissions —
+  // but only here, by writing the gitignored per-machine settings.local.json
+  // (never the committed shared settings). The disposable container is the
+  // boundary; deny/ask rules still apply. See .devcontainer/setup-claude-permissions.sh.
+  "postCreateCommand": "sh .devcontainer/setup-claude-permissions.sh",
   "mounts": [
     "source=konrad-claude-dev-claude,target=/home/node/.claude,type=volume",
     "source=konrad-claude-dev-vscode-server,target=/home/node/.vscode-server,type=volume",
