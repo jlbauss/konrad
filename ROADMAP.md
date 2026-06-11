@@ -22,7 +22,6 @@ _Work done after the repo goes public as alpha. Gates the beta declaration._
 - [ ] **add auto update function** maybe even in the background to always have the latest image at hand
 - [ ] **Security audit.** End-to-end review before declaring beta: container isolation, provider credential handling, MCP tool surface, file-system access boundaries.
 - add hf_token to ci. Conceptualize best way. maybe like this? https://huggingface.co/docs/hub/trusted-publishers
-- [ ] **Dedupe the two local rebuild paths.** `bin/konrad`'s `do_rebuild()` and [scripts/build-image.sh](scripts/build-image.sh) are near-duplicate three-stage `podman build` flows (lock reading, git-sha/build-date metadata, the same build-args) — and they already drifted once (the 0.6.0 image-dedupe work touched one before the other). Make `build-image.sh` the single source of truth; `bin/konrad --rebuild` keeps its guards (standalone-check, `require_podman`, Dockerfile-existence) but delegates the build trio to it — safe because `--rebuild` only runs from a full checkout, so the script is always present. CI's `build-push-action` (multi-arch + cache + rewrite-timestamp + push) is structurally different and stays separate. Needs its own host rebuild + smoke to validate the changed build path. (Surfaced 2026-06-09 during the image-dedupe work; this is the concrete follow-up to the Cleanliness bullet's "near-duplicate logic across `bin/konrad`" note.)
 - use semantic release? Or any other way to automate the release process
 
 ## Tier 2 — beta → 1.0

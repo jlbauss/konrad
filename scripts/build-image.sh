@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
-# Build the konrad container image. Same as `konrad-dev --rebuild`, just
-# usable without having the CLI installed yet.
+# SPDX-FileCopyrightText: 2026 Jan-Luca Bauß
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Build the konrad container image to konrad:local — the single source of
+# truth for the local build, which `konrad-dev --rebuild` also delegates to.
+# Usable without having the CLI installed yet. (The :latest / :0.x / :<sha>
+# tags are CI-only; this convenience build never writes them.)
 #
 # The Dockerfile uses a 3-stage build:
 #   python-base   — Python venv + docling-slim (no repo files)
@@ -53,7 +58,7 @@ podman build --target python-models \
   --build-arg "UV_IMAGE=$UV_IMAGE" \
   -t konrad-python-models:cache "$CTX"
 
-printf 'konrad-build: building final runtime image (konrad=%s sha=%s)…\n' \
+printf 'konrad-build: building final runtime image konrad:local (konrad=%s sha=%s)…\n' \
   "$KONRAD_VERSION" "$GIT_SHA"
 exec podman build \
   --build-arg "BASE_IMAGE=$BASE_IMAGE" \
@@ -61,4 +66,4 @@ exec podman build \
   --build-arg "KONRAD_VERSION=$KONRAD_VERSION" \
   --build-arg "GIT_SHA=$GIT_SHA" \
   --build-arg "BUILD_DATE=$BUILD_DATE" \
-  -t konrad:latest "$CTX"
+  -t konrad:local "$CTX"
