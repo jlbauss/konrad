@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Jan-Luca Bauß
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 # =============================================================================
 # Pinning surface — two categories, both lock-managed except apt.
 # See README "Pinning strategy" for the full rationale.
@@ -108,6 +111,53 @@ RUN --mount=type=secret,id=hf_token \
        /opt/venv/bin/python /tmp/fetch-models.py /tmp/models.lock \
     && find /opt/models -type d \( -name .cache -o -name .locks \) -prune -exec rm -rf {} + \
     && rm /tmp/models.lock /tmp/fetch-models.py
+
+# =============================================================================
+# Stage 2b — venv-split
+# Partitions the installed venv into three physical sets so the final image
+# lays them down as separate layers (see the COPY trio in the final stage and
+# ROADMAP "venv pull-dedupe"). Purely a delivery optimization: nothing runs
+# here, and the sets recombine into one site-packages at the same paths, so
+# Python neither knows nor cares which layer a package shipped in.
+#
+#   heavy → torch (+torchgen/functorch, dist-info): ~700 MB, the biggest blob,
+#           and slow-moving (~6 releases/yr). Isolated so the frequent small-dep
+#           bumps that don't touch torch dedupe its 700 MB on pull.
+#   mid   → the large numeric wheels that each move only a few times a year
+#           (opencv, scipy, numpy, onnxruntime, sympy): ~440 MB. One bucket —
+#           fine-grained per-package layers would buy little for the churn.
+#   light → everything LEFT in /opt/venv after the moves: the daily-churning
+#           small pure-python deps + transformers (the most frequent mover) +
+#           torchvision (tiny, rides torch's cadence). Re-pulls on most bumps.
+#
+# Empirical sizing + release-cadence rationale: ROADMAP.md. Keep heavy/mid lean
+# — putting a churny package in a lower layer forfeits its dedup. uv does not
+# compile bytecode by default, so there are no __pycache__/.pyc to destabilise
+# the layers; the CI rewrite-timestamp pass normalises mtimes. A separate stage
+# (not python-base) so python-models above keeps the whole venv it builds on.
+# =============================================================================
+FROM python-base AS venv-split
+
+# cd into the glob-resolved site-packages; WORKDIR can't take a wildcard, and
+# this throwaway stage runs nothing afterwards.
+# hadolint ignore=DL3003
+RUN set -eux; \
+    SP="$(echo /opt/venv/lib/python3.*/site-packages)"; \
+    [ -d "$SP" ] || { echo "site-packages not found at $SP" >&2; exit 1; }; \
+    mkdir -p /opt/venv-heavy /opt/venv-mid; \
+    cd "$SP"; \
+    for d in torch torchgen functorch torch-*.dist-info; do \
+      if [ -e "$d" ]; then mv "$d" /opt/venv-heavy/; fi; \
+    done; \
+    for d in cv2 opencv_python.libs opencv_python-*.dist-info \
+             scipy scipy.libs scipy-*.dist-info \
+             numpy numpy.libs numpy-*.dist-info \
+             onnxruntime onnxruntime-*.dist-info \
+             sympy sympy-*.dist-info; do \
+      if [ -e "$d" ]; then mv "$d" /opt/venv-mid/; fi; \
+    done; \
+    test -d /opt/venv-heavy/torch
+
 # =============================================================================
 # Stage 3 — final runtime image
 # =============================================================================
@@ -225,7 +275,20 @@ RUN set -eux; \
 # and absolute references inside the venv remain valid. uv comes along too —
 # needed at runtime for `uv pip list` in the build manifest script and useful
 # for `uv pip install` extensions.
-COPY --from=python-base               /opt/venv  /opt/venv
+#
+# The venv arrives as THREE layers (see the venv-split stage) so a routine
+# python.lock bump — which moves a small pure-python dep almost daily — re-pulls
+# only the light remainder, while torch (~700 MB) and the mid-stable numeric set
+# (~440 MB) dedupe. The three COPYs reconstruct one site-packages at the venv's
+# real paths; stable-first ordering (torch, then mid, then light) keeps the
+# rarest-changing bytes in the lowest layers. PYTHON_TAG must match the venv's
+# python minor (asserted in venv-split via the lib/python3.* glob); bump it in
+# lockstep when the base image's python moves — a mismatch lands torch at the
+# wrong site-packages path and the smoke test catches it.
+ARG PYTHON_TAG=python3.13
+COPY --from=venv-split  /opt/venv-heavy/  /opt/venv/lib/${PYTHON_TAG}/site-packages/
+COPY --from=venv-split  /opt/venv-mid/    /opt/venv/lib/${PYTHON_TAG}/site-packages/
+COPY --from=venv-split  /opt/venv         /opt/venv
 COPY --from=python-base               /usr/local/bin/uv  /usr/local/bin/uv
 
 # Docling models: baked root-owned at /opt/models (outside $HOME) and read-only
