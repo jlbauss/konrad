@@ -73,9 +73,13 @@
   // untouched. Details: .devcontainer/podman-vscode.sh, CONTRIBUTING.md.
   "initializeCommand": "sh .devcontainer/ensure-podman-sock.sh",
   // After the container is created, flip Claude Code into bypassPermissions —
-  // but only here, by writing the gitignored per-machine settings.local.json
-  // (never the committed shared settings). The disposable container is the
-  // boundary; deny/ask rules still apply. See .devcontainer/setup-claude-permissions.sh.
+  // but only here, by writing the USER-scope ~/.claude/settings.json, which
+  // lives on the named volume below (never the committed shared settings, and
+  // not settings.local.json — that sits on the host bind mount). The disposable
+  // container is the boundary; deny/ask rules still apply. This covers terminal
+  // `claude` runs; the VS Code extension panel needs the machine-scope settings
+  // in customizations.vscode.settings below instead.
+  // See .devcontainer/setup-claude-permissions.sh.
   "postCreateCommand": "sh .devcontainer/setup-claude-permissions.sh",
   "mounts": [
     "source=konrad-claude-dev-claude,target=/home/node/.claude,type=volume",
@@ -106,6 +110,20 @@
   },
   "customizations": {
     "vscode": {
+      // The Claude Code EXTENSION ignores settings-file defaultMode: it launches
+      // the CLI with an explicit --permission-mode flag (CLI args beat every
+      // settings file), so the postCreateCommand bypass above never reaches the
+      // extension panel. These remote MACHINE-scope settings flip new extension
+      // conversations to bypass; they exist only on the container's
+      // .vscode-server volume, never on the host.
+      // CAVEAT: Dev Containers applies them only on first container creation
+      // (tracked by ~/.vscode-server/data/Machine/.writeMachineSettingsMarker,
+      // which persists on the volume) — on a PRE-EXISTING volume, merge the two
+      // keys into ~/.vscode-server/data/Machine/settings.json by hand once.
+      "settings": {
+        "claudeCode.initialPermissionMode": "bypassPermissions",
+        "claudeCode.allowDangerouslySkipPermissions": true
+      },
       "extensions": [
         "anthropic.claude-code",
         "timonwong.shellcheck"
