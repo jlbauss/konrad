@@ -105,6 +105,18 @@ Short flags bundle (`konrad -sv` is `konrad -s -v`). `konrad-dev` is the contrib
 | Clear just the log dir               | `rm -rf ~/.local/state/konrad/log/`                                                           |
 | Nuclear reset                        | `konrad --reset` (wipes log dir + all shared volumes; prompts `[y/N]`)                        |
 
+### Dev Container (VS Code)
+
+Prefer driving Konrad from VS Code instead of the terminal? From your project root:
+
+```sh
+konrad init-devcontainer
+```
+
+This scaffolds `.devcontainer/devcontainer.json` pinned to the Konrad image you're running. "Reopen in Container" in VS Code, open a terminal, and run `opencode` — you get the **same sandbox and default-on egress firewall as the CLI**, with your editor alongside. Provider credentials and model selection are shared with your host `konrad` (the same named volumes), so there's nothing extra to wire up.
+
+The host still needs `konrad` installed and on `PATH` — the firewall is stood up host-side (by `konrad fw up`) before the container launches — plus Podman, same as the CLI. Re-run `konrad init-devcontainer` after upgrading Konrad to re-pin the image; `--force` overwrites an existing config, `--image-tag <ref>` pins a specific one. The scaffolded config is yours to commit; it never lives in Konrad's own repo.
+
 ## Configuration
 
 Konrad composes opencode's runtime config from up to four layers at container start. **You only override what you want to change**; everything else stays inherited.

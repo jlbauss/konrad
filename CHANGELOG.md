@@ -12,6 +12,18 @@ publishes as `:0.X.Y`, `:0.X`, `:latest`, and an immutable
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-06-12
+
+### Added
+- `konrad init-devcontainer` — scaffold a Dev Container into your *own* project
+  so you can drive Konrad from VS Code instead of the terminal. "Reopen in
+  Container" opens your project inside the published image with the **same
+  sandbox and default-on egress firewall as the CLI**; credentials and model
+  selection are shared with your host `konrad` (same named volumes). The image
+  tag is pinned to the version you're running, `--force` overwrites, `--image-tag`
+  pins a specific ref. Design:
+  [ARCHITECTURE.md](ARCHITECTURE.md#the-big-picture).
+
 ## [0.9.1] - 2026-06-13
 
 ### Fixed

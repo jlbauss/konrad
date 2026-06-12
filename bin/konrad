@@ -138,6 +138,12 @@ KONRAD_FIREWALL="${KONRAD_FIREWALL:-1}"
 KONRAD_PROXY_PORT="${KONRAD_PROXY_PORT:-8888}"
 KONRAD_ALLOW_HOST="${KONRAD_ALLOW_HOST:-}"
 
+# Default user-namespace mapping: container node(1000) ⇄ the invoking host user,
+# so bind-mounted files keep sane ownership. Single source of the keep-id flag,
+# reused by the agent run (podman_run) and the persistent dev-container firewall
+# verb (do_fw). The rootful remote-daemon variant is built inline in podman_run.
+KONRAD_KEEPID_USERNS="--userns=keep-id:uid=1000,gid=1000"
+
 # $SECONDS is bash's built-in script-elapsed counter (portable to bash 3.2
 # on macOS). The container side uses GNU `date +%N` for sub-second precision
 # since Linux has that. Both are good enough to spot what's slow.
@@ -543,23 +549,102 @@ fw_teardown() {
   fi
 }
 
-# Block until tinyproxy is accepting connections (it logs the line on start);
-# bail fast with the proxy's own logs if it died (bad config, image mismatch).
+# Block until tinyproxy in container $1 is accepting connections (it logs the
+# line on start); bail fast with the proxy's own logs if it died (bad config,
+# image mismatch). Shared by the per-run CLI path and the persistent do_fw verb.
 fw_wait_ready() {
-  local i
+  local proxy="$1" i
   for i in $(seq 1 100); do
-    if podman logs "$FW_PROXY_NAME" 2>&1 | grep -q "Accepting connections"; then
+    if podman logs "$proxy" 2>&1 | grep -q "Accepting connections"; then
       dbg "firewall: proxy ready"
       return 0
     fi
-    if ! podman container exists "$FW_PROXY_NAME" 2>/dev/null; then
-      podman logs "$FW_PROXY_NAME" 2>&1 | tail -20 >&2 || true
+    if ! podman container exists "$proxy" 2>/dev/null; then
+      podman logs "$proxy" 2>&1 | tail -20 >&2 || true
       die "egress firewall: proxy exited during startup (see logs above; --no-firewall to bypass)"
     fi
     sleep 0.1
   done
-  podman logs "$FW_PROXY_NAME" 2>&1 | tail -20 >&2 || true
+  podman logs "$proxy" 2>&1 | tail -20 >&2 || true
   die "egress firewall: proxy did not become ready (--no-firewall to bypass)"
+}
+
+# ── Shared firewall primitives (used by both fw_setup and do_fw) ─────────────
+# Naming scheme for the persistent dev-container firewall (one set per project).
+# Single source of the scheme so do_fw and init-devcontainer can't drift on it.
+# Echoes "<internal-net> <egress-net> <proxy>" for a given id.
+_fw_dc_names() {
+  printf 'konrad-fw-net-dc-%s konrad-fw-out-dc-%s konrad-fw-proxy-dc-%s' "$1" "$1" "$1"
+}
+
+# Create the two firewall networks ($1 internal, $2 egress). Idempotent via an
+# exists-guard (never rm's a possibly in-use network — important for the
+# persistent dev-container path, where a reopen re-runs this against live nets).
+_fw_create_networks() {
+  local net_internal="$1" net_egress="$2"
+  podman network exists "$net_internal" 2>/dev/null \
+    || podman network create --internal "$net_internal" >/dev/null \
+    || die "egress firewall: could not create internal network (--no-firewall to bypass)"
+  podman network exists "$net_egress" 2>/dev/null \
+    || podman network create "$net_egress" >/dev/null \
+    || die "egress firewall: could not create egress network (--no-firewall to bypass)"
+}
+
+# Start the filtering proxy sidecar named $1 on networks $2,$3 with allow-list $4.
+# Reuses the agent's userns map + config mounts from the KR_USERNS_FLAGS and
+# KR_CFG_MOUNTS globals (bash 3.2 has no array passing) so the proxy composes the
+# same baked<org<user config to derive the provider allow-list. Clears any
+# same-named leftover first (crash/PID-reuse, or a dev-container reopen).
+_fw_start_proxy() {
+  local proxy="$1" net_internal="$2" net_egress="$3" allowed="$4"
+  podman rm -f "$proxy" >/dev/null 2>&1 || true
+  podman run -d --rm --name "$proxy" --init \
+    --network "${net_internal},${net_egress}" \
+    "${KR_USERNS_FLAGS[@]}" \
+    ${KR_CFG_MOUNTS[@]+"${KR_CFG_MOUNTS[@]}"} \
+    -e "KONRAD_DEBUG=${KONRAD_DEBUG}" \
+    -e "KONRAD_PROXY_PORT=${KONRAD_PROXY_PORT}" \
+    -e "KONRAD_ALLOWED_HOSTS=${allowed}" \
+    "$IMAGE_NAME" konrad-proxy >/dev/null \
+    || die "egress firewall: could not start proxy container (--no-firewall to bypass)"
+}
+
+# Remove every stray konrad-fw-* proxy + network. Belt-and-suspenders cleanup for
+# orphans a hard-killed run or a stopped dev container left behind (the per-run
+# EXIT trap and idempotent do_fw normally prevent these). Best-effort; quiet.
+_fw_sweep() {
+  command -v podman >/dev/null 2>&1 && podman info >/dev/null 2>&1 || return 0
+  local n
+  while IFS= read -r n; do
+    [[ -n "$n" ]] && { podman rm -f "$n" >/dev/null 2>&1 || true; }
+  done < <(podman ps -a --filter 'name=konrad-fw-proxy' --format '{{.Names}}' 2>/dev/null)
+  while IFS= read -r n; do
+    [[ -n "$n" ]] && { podman network rm "$n" >/dev/null 2>&1 || true; }
+  done < <(podman network ls --filter 'name=konrad-fw-' --format '{{.Name}}' 2>/dev/null)
+}
+
+# Populate the KR_CFG_MOUNTS global with the org/user config-layer `-v` flags the
+# agent AND the proxy both need (each composes baked<org<user — the agent for
+# opencode, the proxy to derive the provider allow-list). Single source of this
+# logic, shared by podman_run and do_fw. Daemon-mode-aware: against a REMOTE
+# daemon (dev-container self-testing) the `-v` SOURCE must be DAEMON-visible, so
+# org/user resolve under KONRAD_REMOTE_HOST_CONFIG; against a LOCAL daemon (the
+# normal host CLI and every consumer dev container) they bind straight off this
+# filesystem. The -d guards stat the copy THIS process sees ($ORG_CFG_DIR/
+# $USER_CFG_DIR), which the dev container also binds in, so "which layers exist"
+# is decided the same way in both modes.
+_build_cfg_mounts() {
+  KR_CFG_MOUNTS=()
+  if [[ -z "${KONRAD_REMOTE_HOST_ROOT:-}" ]]; then
+    [[ -d "$ORG_CFG_DIR" ]]  && KR_CFG_MOUNTS+=(-v "$ORG_CFG_DIR:/home/node/.config/konrad/org:ro")
+    [[ -d "$USER_CFG_DIR" ]] && KR_CFG_MOUNTS+=(-v "$USER_CFG_DIR:/home/node/.config/konrad/user:ro")
+  else
+    local host_cfg="${KONRAD_REMOTE_HOST_CONFIG:-}"
+    if [[ -n "$host_cfg" ]]; then
+      [[ -d "$ORG_CFG_DIR" ]]  && KR_CFG_MOUNTS+=(-v "$host_cfg/org:/home/node/.config/konrad/org:ro")
+      [[ -d "$USER_CFG_DIR" ]] && KR_CFG_MOUNTS+=(-v "$host_cfg/user:/home/node/.config/konrad/user:ro")
+    fi
+  fi
 }
 
 # Create the networks and start the proxy sidecar. Reads two arrays the caller
@@ -577,29 +662,13 @@ fw_setup() {
                           # Ctrl-C reaches podman, which exits cleanly and lets
                           # this function's caller fall through to teardown.
 
-  # Defensive: clear any same-named leftovers (PID reuse after a hard kill).
-  podman rm -f "$FW_PROXY_NAME" >/dev/null 2>&1 || true
-  podman network rm "$FW_NET_INTERNAL" "$FW_NET_EGRESS" >/dev/null 2>&1 || true
-
   dbg "firewall: creating networks $FW_NET_INTERNAL (internal) + $FW_NET_EGRESS"
-  podman network create --internal "$FW_NET_INTERNAL" >/dev/null \
-    || die "egress firewall: could not create internal network (--no-firewall to bypass)"
-  podman network create "$FW_NET_EGRESS" >/dev/null \
-    || die "egress firewall: could not create egress network (--no-firewall to bypass)"
+  _fw_create_networks "$FW_NET_INTERNAL" "$FW_NET_EGRESS"
   FW_ACTIVE=1
 
   info "egress firewall: starting filtering proxy…"
-  podman run -d --rm --name "$FW_PROXY_NAME" --init \
-    --network "${FW_NET_INTERNAL},${FW_NET_EGRESS}" \
-    "${KR_USERNS_FLAGS[@]}" \
-    ${KR_CFG_MOUNTS[@]+"${KR_CFG_MOUNTS[@]}"} \
-    -e "KONRAD_DEBUG=${KONRAD_DEBUG}" \
-    -e "KONRAD_PROXY_PORT=${KONRAD_PROXY_PORT}" \
-    -e "KONRAD_ALLOWED_HOSTS=${KONRAD_ALLOW_HOST}" \
-    "$IMAGE_NAME" konrad-proxy >/dev/null \
-    || die "egress firewall: could not start proxy container (--no-firewall to bypass)"
-
-  fw_wait_ready
+  _fw_start_proxy "$FW_PROXY_NAME" "$FW_NET_INTERNAL" "$FW_NET_EGRESS" "$KONRAD_ALLOW_HOST"
+  fw_wait_ready "$FW_PROXY_NAME"
 }
 
 # Run a command inside the konrad container with the standard mount set.
@@ -647,42 +716,25 @@ podman_run() {
   #     AGENTS.md, skills, and providers — instead of running bare baked config.
   # The named volumes further down are daemon-side and work either way (so the
   # dev-container konrad still shares the host konrad's secrets/state).
-  # cfg_mounts holds ONLY the org/user config layers — the firewall proxy needs
-  # the identical set (it composes the same baked<org<user config to derive the
-  # provider allow-list), so it's kept separate and merged into home_mounts for
-  # the agent. home_mounts adds the agent-only central log dir on top.
-  local -a cfg_mounts=()
+  # The org/user config-layer mounts are built by _build_cfg_mounts into the
+  # KR_CFG_MOUNTS global (daemon-mode-aware) — the SAME set the firewall proxy
+  # needs (it composes the same baked<org<user config to derive the allow-list),
+  # so sharing one builder keeps the two in lockstep. home_mounts is the agent's
+  # superset: those config layers PLUS the central log dir (LOCAL daemon only —
+  # no daemon-visible path for it under a remote daemon; giving up host-side log
+  # capture is the one concession self-testing makes).
   local -a home_mounts=()
   if [[ -z "${KONRAD_REMOTE_HOST_ROOT:-}" ]]; then
-    # LOCAL daemon: log dir + config layers off this filesystem.
-    # Central log dir on the host (XDG state). Created lazily so the bind
-    # works on the very first launch. The entrypoint writes a per-session
-    # sidecar here and opencode writes its structured log alongside.
+    # Central log dir on the host (XDG state). Created lazily so the bind works
+    # on the very first launch; the entrypoint writes a per-session sidecar here
+    # and opencode writes its structured log alongside.
     mkdir -p "$KONRAD_LOG_DIR"
     home_mounts+=(-v "${KONRAD_LOG_DIR}:/home/node/.local/share/opencode/log:z")
-    # Config-layer mounts. The org layer (~/.config/konrad/org/) and the
-    # per-user layer (~/.config/konrad/user/) are each surfaced WHOLE into
-    # the container at /home/node/.config/konrad/{org,user}; the entrypoint
-    # composes them over the baked defaults (precedence: baked < org < user).
-    # Read-only — the container never writes back. Gated on existence so a
-    # user with no org package (the common case) just gets the user mount.
-    [[ -d "$ORG_CFG_DIR" ]]  && cfg_mounts+=(-v "$ORG_CFG_DIR:/home/node/.config/konrad/org:ro")
-    [[ -d "$USER_CFG_DIR" ]] && cfg_mounts+=(-v "$USER_CFG_DIR:/home/node/.config/konrad/user:ro")
-  else
-    # REMOTE daemon: mount the SAME config layers, but from the daemon-visible
-    # host path (KONRAD_REMOTE_HOST_CONFIG); the -d guards stat the copy the dev
-    # container sees at $KONRAD_CFG_DIR. Unset (Linux host without the wire-up,
-    # or an older dev container) → no config mount, baked-only, as before.
-    local host_cfg="${KONRAD_REMOTE_HOST_CONFIG:-}"
-    if [[ -n "$host_cfg" ]]; then
-      [[ -d "$ORG_CFG_DIR" ]]  && cfg_mounts+=(-v "$host_cfg/org:/home/node/.config/konrad/org:ro")
-      [[ -d "$USER_CFG_DIR" ]] && cfg_mounts+=(-v "$host_cfg/user:/home/node/.config/konrad/user:ro")
-    fi
-    if [[ "$cwd" != "${KONRAD_REMOTE_GUEST_ROOT:-/workspace}"* ]]; then
-      warn "remote-socket mode: cwd ($cwd) is outside ${KONRAD_REMOTE_GUEST_ROOT:-/workspace}; the workspace mount resolves against the host fs and will likely be empty. Run konrad from under ${KONRAD_REMOTE_GUEST_ROOT:-/workspace}."
-    fi
+  elif [[ "$cwd" != "${KONRAD_REMOTE_GUEST_ROOT:-/workspace}"* ]]; then
+    warn "remote-socket mode: cwd ($cwd) is outside ${KONRAD_REMOTE_GUEST_ROOT:-/workspace}; the workspace mount resolves against the host fs and will likely be empty. Run konrad from under ${KONRAD_REMOTE_GUEST_ROOT:-/workspace}."
   fi
-  home_mounts+=(${cfg_mounts[@]+"${cfg_mounts[@]}"})
+  _build_cfg_mounts
+  home_mounts+=(${KR_CFG_MOUNTS[@]+"${KR_CFG_MOUNTS[@]}"})
 
   # User-namespace mapping. The normal case (local rootless daemon, and the
   # Linux remote-socket path) is keep-id: container node(1000) shares the
@@ -695,7 +747,7 @@ podman_run() {
   # same shim). SELinux labeling is disabled there (Enforcing in the machine
   # VM) and the workspace `:z` relabel skipped (chcon fails on virtiofs).
   local ws_relabel=":z"
-  local -a userns_flags=("--userns=keep-id:uid=1000,gid=1000")
+  local -a userns_flags=("$KONRAD_KEEPID_USERNS")
   if [[ "${KONRAD_DAEMON_ROOTFUL:-0}" == "1" ]]; then
     local ruid="${KONRAD_REMOTE_UID:?KONRAD_DAEMON_ROOTFUL=1 requires KONRAD_REMOTE_UID}"
     local rgid="${KONRAD_REMOTE_GID:?KONRAD_DAEMON_ROOTFUL=1 requires KONRAD_REMOTE_GID}"
@@ -716,8 +768,7 @@ podman_run() {
   # networking and unrestricted egress — the pre-firewall behaviour.
   local -a net_flags=() proxy_env=()
   if firewall_on; then
-    KR_USERNS_FLAGS=("${userns_flags[@]}")
-    KR_CFG_MOUNTS=(${cfg_mounts[@]+"${cfg_mounts[@]}"})
+    KR_USERNS_FLAGS=("${userns_flags[@]}")   # KR_CFG_MOUNTS already set by _build_cfg_mounts above
     fw_setup
     local proxy_url="http://${FW_PROXY_NAME}:${KONRAD_PROXY_PORT}"
     net_flags=(--network "$FW_NET_INTERNAL")
@@ -1061,6 +1112,178 @@ EOF
   info "built $IMAGE_LOCAL_TAG — run with: konrad-dev"
 }
 
+# --- Persistent firewall verb (plumbing for the scaffolded dev container) -----
+# `konrad fw up <id>` / `konrad fw down <id>`. Stands up (or tears down) a named,
+# PERSISTENT egress firewall — the same isolated-network + filtering-proxy
+# topology fw_setup builds per-run, but with stable names and no EXIT-trap
+# teardown so it can outlive a single process. The scaffolded dev container's
+# initializeCommand calls `up`; the container joins the internal network and
+# points HTTP(S)_PROXY at the proxy (see do_init_devcontainer). Idempotent: a
+# VS Code reopen re-runs `up` against the live resources without disrupting them.
+do_fw() {
+  local sub="${1:-}" id="${2:-}"
+  case "$sub" in up|down) ;; *) die "usage: $(basename -- "$0") fw <up|down> <id>" ;; esac
+  [[ "$id" =~ ^[A-Za-z0-9_-]+$ ]] || die "fw: id must be non-empty [A-Za-z0-9_-]+ (got '${id}')"
+  require_podman
+  local net_internal net_egress proxy
+  read -r net_internal net_egress proxy <<<"$(_fw_dc_names "$id")"
+
+  if [[ "$sub" == "down" ]]; then
+    podman rm -f "$proxy" >/dev/null 2>&1 || true
+    podman network rm "$net_internal" "$net_egress" >/dev/null 2>&1 || true
+    info "firewall down ($id): removed proxy + networks"
+    return 0
+  fi
+
+  # up: the proxy runs THIS image (so its config-merge / allow-list logic matches
+  # the agent's image). For a pinned dev-container tag the image may not be local
+  # yet — pull it through the same progress wrapper a normal pull uses.
+  if ! podman image exists "$IMAGE_NAME" 2>/dev/null; then
+    info "fw: image $IMAGE_NAME not present — pulling…"
+    pull_with_progress "$IMAGE_NAME" || die "fw: could not pull $IMAGE_NAME (offline? wrong tag?)"
+  fi
+
+  # Same userns map + org/user config mounts the agent gets, via the shared
+  # builders — so the proxy composes the identical baked<org<user config to
+  # derive the allow-list. Consumer dev containers drive a local daemon;
+  # _build_cfg_mounts also covers the remote-daemon case (konrad-dev self-test).
+  KR_USERNS_FLAGS=("$KONRAD_KEEPID_USERNS")
+  _build_cfg_mounts
+
+  _fw_create_networks "$net_internal" "$net_egress"
+  info "egress firewall: starting filtering proxy ($proxy)…"
+  _fw_start_proxy "$proxy" "$net_internal" "$net_egress" "$KONRAD_ALLOW_HOST"
+  fw_wait_ready "$proxy"
+  info "firewall up ($id): agent network=$net_internal proxy=$proxy"
+}
+
+# --- Scaffold a Dev Container into the user's project -------------------------
+# `konrad init-devcontainer` writes ./.devcontainer/devcontainer.json so the user
+# can drive konrad from VS Code's UI instead of the terminal. The container IS the
+# published konrad image, sealed on an isolated network with the same egress
+# firewall the CLI uses (stood up host-side by `konrad fw up` in initializeCommand).
+# Used exactly like the CLI — open a terminal in the container and run `opencode`.
+# The template is generated from THIS script's own constants (volume names, mount
+# paths, the keep-id flag, proxy port, fw-net naming) so there is a single source
+# of truth; re-run after upgrading konrad to regenerate.
+do_init_devcontainer() {
+  local force=0 image_override=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --force)     force=1; shift ;;
+      --image-tag) [[ $# -ge 2 ]] || die "--image-tag requires a value (e.g. --image-tag ghcr.io/jlbauss/konrad:0.8.0)"
+                   image_override="$2"; shift 2 ;;
+      *)           die "init-devcontainer: unexpected argument '$1' (flags: --force, --image-tag <ref>)" ;;
+    esac
+  done
+
+  local dc_dir dc_json
+  dc_dir="$(pwd -P)/.devcontainer"
+  dc_json="$dc_dir/devcontainer.json"
+  if [[ -e "$dc_json" && "$force" != "1" ]]; then
+    die "$dc_json already exists. Re-run with --force to overwrite."
+  fi
+  require_podman
+
+  # Resolve the image ref to pin. We stamp the IMAGE's published version — NOT the
+  # CLI's $KONRAD_VERSION — because CLI-only patches bump VERSION without firing an
+  # image rebuild, so the CLI version can run ahead of any tag that exists in the
+  # registry (e.g. CLI 0.9.0 while the newest image is :0.8.0). Prefer the local
+  # image's label (what the user runs today), fall back to the registry's label,
+  # then the CLI version. konrad-dev pins its local build; --image-tag overrides.
+  local image_ref
+  if [[ -n "$image_override" ]]; then
+    image_ref="$image_override"
+  elif [[ "$(basename -- "$0")" == "konrad-dev" ]]; then
+    image_ref="$IMAGE_LOCAL_TAG"
+  else
+    local ver=""
+    if podman image exists "$IMAGE_NAME" 2>/dev/null; then
+      ver="$(podman image inspect "$IMAGE_NAME" \
+              --format '{{index .Labels "org.opencontainers.image.version"}}' 2>/dev/null)"
+    fi
+    [[ -z "$ver" || "$ver" == "unknown" ]] && ver="$(registry_image_version "$REGISTRY_IMAGE" 2>/dev/null || true)"
+    [[ -z "$ver" || "$ver" == "dev" ]] && ver="$KONRAD_VERSION"
+    [[ -z "$ver" || "$ver" == "dev" ]] && \
+      die "init-devcontainer: can't determine a published image tag to pin (no local image, registry unreachable, CLI version is 'dev'). Pull the image first with 'konrad --update', or pass --image-tag <ref>."
+    image_ref="${REGISTRY_IMAGE%:*}:${ver}"
+  fi
+
+  # Stable per-project id → firewall resource names (deterministic from the abs
+  # path so the same project always reuses the same names). cksum is POSIX and
+  # everywhere; we only need stable + unique-ish, not cryptographic.
+  local cwd dc_id net_internal net_egress proxy
+  cwd="$(pwd -P)"
+  dc_id="$(printf '%s' "$cwd" | cksum | cut -d' ' -f1)"   # stable digits; names get the konrad-fw-*-dc- prefix
+  read -r net_internal net_egress proxy <<<"$(_fw_dc_names "$dc_id")"
+
+  mkdir -p "$dc_dir"
+  # Unquoted heredoc: $-vars from THIS script interpolate; VS Code's own
+  # \${localWorkspaceFolder} / \${localEnv:HOME} / \$HOME are backslash-escaped so
+  # they reach the file literally and expand per-machine. The file is committable
+  # and machine-independent — so it calls bare `konrad` (PATH lookup on each host),
+  # never this generator's absolute path.
+  cat > "$dc_json" <<EOF
+{
+  // Generated by \`konrad init-devcontainer\`. Re-run to regenerate after an upgrade.
+  //
+  // Opens THIS project inside the konrad image and runs the agent exactly like the
+  // host CLI: same sandbox, same default-on egress firewall. The firewall (an
+  // isolated network + a filtering proxy sidecar) is stood up host-side by
+  // 'konrad fw up' below, so the host needs konrad installed and on PATH.
+  // Open a terminal in the container and run:  opencode
+  "name": "konrad",
+  "image": "${image_ref}",
+  "remoteUser": "node",
+  "containerUser": "node",
+  "updateRemoteUserUID": false,
+  "overrideCommand": true,
+  "workspaceFolder": "/workspace",
+  "workspaceMount": "source=\${localWorkspaceFolder},target=/workspace,type=bind,consistency=delegated",
+  // Host-side, before the container starts: ensure the config dir exists (bind
+  // source below), then stand up this project's firewall. KONRAD_IMAGE pins the
+  // proxy to the same image as the container; 'fw up' pulls it if missing.
+  "initializeCommand": "mkdir -p \$HOME/.config/konrad && KONRAD_IMAGE=${image_ref} konrad fw up ${dc_id}",
+  // Compose baked<org<user config on every start by reusing konrad's own
+  // entrypoint with a no-op command (it composes, links auth.json, then execs true).
+  "postStartCommand": "konrad-entrypoint true",
+  "runArgs": [
+    "${KONRAD_KEEPID_USERNS}",
+    "--network", "${net_internal}",
+    "-v", "${SECRETS_VOLUME}:/home/node/.opencode-secrets:U",
+    "-v", "${CACHE_VOLUME}:/home/node/.cache/opencode:U",
+    "-v", "${STATE_VOLUME}:/home/node/.local/state/opencode:U"
+  ],
+  "mounts": [
+    "source=\${localEnv:HOME}/.config/konrad,target=/home/node/.config/konrad,type=bind,readonly"
+  ],
+  "containerEnv": {
+    "HTTP_PROXY": "http://${proxy}:${KONRAD_PROXY_PORT}",
+    "HTTPS_PROXY": "http://${proxy}:${KONRAD_PROXY_PORT}",
+    "http_proxy": "http://${proxy}:${KONRAD_PROXY_PORT}",
+    "https_proxy": "http://${proxy}:${KONRAD_PROXY_PORT}",
+    "NO_PROXY": "localhost,127.0.0.1",
+    "no_proxy": "localhost,127.0.0.1"
+  }
+}
+EOF
+
+  info "wrote $dc_json"
+  info "pinned image: $image_ref"
+  cat >&2 <<EOF
+
+Next steps:
+  1. Ensure konrad is installed on this host and on PATH — the dev container's
+     firewall is started by 'konrad fw up' before the container launches.
+  2. In VS Code: "Dev Containers: Reopen in Container".
+  3. Open a terminal in the container and run:  opencode
+
+Provider credentials + model selection are shared with your host konrad (same
+named volumes). Tear down this project's firewall manually with:
+  konrad fw down ${dc_id}
+EOF
+}
+
 do_reset() {
   # Two shapes. Without --profile: wipe the shared default state — log dir +
   # all three base volumes (the original, ALL-workspaces reset). With
@@ -1143,6 +1366,7 @@ EOF
   else
     warn "podman not reachable; shared volumes were NOT removed."
   fi
+  _fw_sweep   # remove any orphaned konrad-fw-* proxies/networks (dev-container leftovers)
   info "reset complete. Next run will need a fresh /connect, repopulate caches, and re-pick a model."
 }
 
@@ -1212,6 +1436,7 @@ EOF
   else
     warn "podman not reachable; image(s) were NOT removed. Delete manually with: podman image rm $target_image"
   fi
+  _fw_sweep   # remove any orphaned konrad-fw-* proxies/networks (dev-container leftovers)
 
   # Delete the binary last. Bash has already mmap'd this script, so the
   # remainder of execution is safe. For konrad-dev, $0 is a symlink — rm
@@ -1253,13 +1478,18 @@ $variant_blurb
 Default ($self, no args): launch the interactive opencode TUI against the
 current directory. Pass a flag, or the 'run' subcommand, to do something else.
 
-Subcommand:
+Subcommands:
   $self run <args…>    Non-interactive: exec 'opencode run <args…>' instead of
                         the TUI — one prompt, answer on stdout (pipeable). Args
                         after 'run' pass straight to opencode, so:
                           $self run "summarize this repo"
                           $self run --model <slug> "fix the failing test"
                         Put konrad's own flags (below) BEFORE 'run'.
+  $self init-devcontainer   Scaffold ./.devcontainer/ into the current project so
+                        you can run konrad from VS Code's UI with the same sandbox
+                        + egress firewall as the CLI. --force overwrites; pin a
+                        specific image with --image-tag <ref>. Then "Reopen in
+                        Container" and run 'opencode' in the terminal.
 
 Flags:
   -s, --shell           Open a bash shell in the container instead.
@@ -1331,6 +1561,8 @@ EOF
 SHELL_MODE=0
 ACTION="run"
 RUN_ARGS=()
+INIT_ARGS=()
+FW_ARGS=()
 
 # Each flag is its own token. Short flags bundle (-sv == -s -v). Long flags
 # stand alone. The action flags (--version / --update / --rebuild / --reset
@@ -1340,6 +1572,8 @@ RUN_ARGS=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     run)          ACTION="run-oneshot"; shift; RUN_ARGS=("$@"); break ;;
+    init-devcontainer) ACTION="init-devcontainer"; shift; INIT_ARGS=("$@"); break ;;
+    fw)           ACTION="fw"; shift; FW_ARGS=("$@"); break ;;
     --shell)      SHELL_MODE=1;     shift ;;
     --profile)
       [[ $# -ge 2 ]] || die "--profile requires a name (e.g. --profile selftest)"
@@ -1388,6 +1622,8 @@ case "$ACTION" in
     fi
     ;;
   run-oneshot)   do_run_oneshot ${RUN_ARGS[@]+"${RUN_ARGS[@]}"} ;;
+  init-devcontainer) do_init_devcontainer ${INIT_ARGS[@]+"${INIT_ARGS[@]}"} ;;
+  fw)            do_fw ${FW_ARGS[@]+"${FW_ARGS[@]}"} ;;
   version)       do_version       ;;
   update)        do_update        ;;
   check-updates) do_check_updates ;;
