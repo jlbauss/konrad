@@ -12,6 +12,8 @@ publishes as `:0.X.Y`, `:0.X`, `:latest`, and an immutable
 
 ## [Unreleased]
 
+## [0.9.2] - 2026-06-13
+
 ### Fixed
 - Egress firewall no longer blocks built-in providers (OpenRouter, Anthropic,
   OpenAI, …) enabled with just an API key or `/connect`. These carry no URL in
