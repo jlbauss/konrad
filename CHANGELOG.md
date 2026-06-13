@@ -12,6 +12,14 @@ publishes as `:0.X.Y`, `:0.X`, `:latest`, and an immutable
 
 ## [Unreleased]
 
+## [0.9.3] - 2026-06-13
+
+### Fixed
+- Releases are no longer manual/missing — a `chore(release):` bump to `VERSION`
+  now automatically cuts a `v<VERSION>` git tag and a GitLab Release whose notes
+  are this changelog's section for that version. CHANGELOG.md stays the source
+  of truth.
+
 ## [0.9.2] - 2026-06-13
 
 ### Fixed
