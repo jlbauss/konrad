@@ -10,13 +10,13 @@ cffi==2.0.0
 charset-normalizer==3.4.7
 click==8.4.1
 colorlog==6.10.1
-cryptography==48.0.1
+cryptography==49.0.0
 defusedxml==0.7.1
 dill==0.4.1
 docling-core==2.82.0
 docling-ibm-models==3.13.3
 docling-parse==6.2.0
-docling-slim==2.102.0
+docling-slim==2.102.1
 et-xmlfile==2.0.0
 faker==40.23.0
 filelock==3.29.3
