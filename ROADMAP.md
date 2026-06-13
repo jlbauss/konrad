@@ -22,7 +22,6 @@ _Work done after the repo goes public as alpha. Gates the beta declaration._
 - [ ] **Container hardening (resource limits, read-only mounts).** Two complementary flags for `podman_run()` in `bin/konrad`: (1) `--memory` / `--cpus` / `--pids-limit` — cap RAM, CPU shares, and process count to prevent runaway or fork-bomb scenarios; (2) mount the workspace read-only by default (`-v $WORKSPACE:/workspace:ro`) and provide a dedicated writable output volume for agent writes — prevents an agent from accidentally (or intentionally) modifying source files it was only asked to read. Both should be opt-in flags on the `konrad run` subcommand (`--harden`, `--ro-workspace`) so users who need looser access can still get it. (Network isolation already shipped as the default-on egress firewall — see CHANGELOG 0.8.0.) Pairs with the Security audit todo.
 
 - add hf_token to ci. Conceptualize best way. maybe like this? https://huggingface.co/docs/hub/trusted-publishers
-- use semantic release? Or any other way to automate the release process
 
 ## Tier 2 — beta → 1.0
 

@@ -143,7 +143,7 @@ The separator before the date is a **hyphen**, not a dot, so the tag doesn't rea
 
 ### Git tags & releases
 
-Releases live on **GitLab** — the GitHub mirror is CI-only, no releases there. Pre-1.0, a `v0.X` git tag + a short GitLab Release note is nice-to-have, not required; [CHANGELOG.md](CHANGELOG.md) is the authoritative record. Post-1.0, every MAJOR/MINOR gets a `vX.Y.0` tag and a GitLab Release with "what's new / breaking / migration"; PATCH releases skip the git tag (the image tag suffices).
+Releases live on **GitLab** — the GitHub mirror is CI-only, no releases there. Tags are **`vX.Y.Z`** (`v`-prefixed). The [`release` job in `.gitlab-ci.yml`](.gitlab-ci.yml) cuts the `v<VERSION>` tag + a GitLab Release automatically whenever a `chore(release):` bump to `VERSION` lands on main, pulling the release notes from the matching [CHANGELOG.md](CHANGELOG.md) section — which stays the authoritative record. So every `VERSION` bump (patch included) gets a tag; nothing to do by hand.
 
 ## Repo layout — what goes where
 

@@ -268,3 +268,58 @@ reuse:
     - if: $CI_PIPELINE_SOURCE == "push"
   script:
     - reuse lint
+
+# =============================================================================
+# Tagged GitLab Releases — "tag what I bumped."
+#
+# Releases live on GitLab (the GitHub mirror is CI-only). This job closes
+# the "we don't tag today" gap without touching how releases are authored:
+# the maintainer still hand-bumps VERSION (chore(release): …) and hand-curates
+# CHANGELOG.md. When that bump lands on main, this job creates the git tag
+# `v<VERSION>` at the merge commit and a GitLab Release whose notes are the
+# matching CHANGELOG section — no semantic-release, no generated changelog,
+# no version computation. CHANGELOG.md stays the source of truth.
+#
+# Why GitLab CI (not the GitHub build workflow): tags + releases belong on
+# the source-of-truth forge, and this is a plain API call on the shared
+# runner — no privileged Podman, same as resolve-locks/reuse.
+#
+# Trigger: a push to main that changes VERSION. A FF-merge of a feature
+# branch carries the chore(release) commit, so `changes: [VERSION]` fires
+# exactly once per release and never on doc/CI/roadmap-only pushes.
+#
+# Auth: release-cli uses CI_JOB_TOKEN by default, which can create releases
+# in this project. If `v*` is a *protected* tag and the job token can't
+# create it, either grant the token's user the role or pass the existing
+# BOT_PAT: add `--private-token "$BOT_PAT"` to the release-cli call.
+# =============================================================================
+release:
+  image: registry.gitlab.com/gitlab-org/release-cli:latest
+  tags: [docker]
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main" && $CI_PIPELINE_SOURCE == "push"
+      changes:
+        - VERSION
+  script:
+    - |
+      set -eu
+      VERSION="$(cat VERSION)"
+      TAG="v$VERSION"
+
+      # Extract this version's CHANGELOG section: everything between the
+      # `## [<VERSION>]` heading and the next `## [` heading. Falls back to
+      # a pointer if the section is missing (a bump should always carry one).
+      NOTES="$(awk -v ver="$VERSION" '
+        $0 ~ "^## \\[" ver "\\]" { grab = 1; next }
+        grab && /^## \[/ { exit }
+        grab { print }
+      ' CHANGELOG.md)"
+      NOTES="$(printf '%s\n' "$NOTES" | sed -e '/./,$!d' | sed -e ':a' -e '/^\n*$/{$d;N;ba}')"
+      [ -n "$NOTES" ] || NOTES="See [CHANGELOG.md](CHANGELOG.md) for $TAG."
+
+      echo "Releasing $TAG at $CI_COMMIT_SHA"
+      release-cli create \
+        --name "konrad $TAG" \
+        --tag-name "$TAG" \
+        --ref "$CI_COMMIT_SHA" \
+        --description "$NOTES"
