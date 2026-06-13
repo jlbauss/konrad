@@ -46,6 +46,9 @@ ENV DEBIAN_FRONTEND=noninteractive \
 #                         `./scripts/smoke-test.sh konrad:local`, shelling into
 #                         the image. Daemonless: nothing runs locally, it's a
 #                         pure remote client. See CLAUDE.md "Self-testing".
+#   skopeo              → manifest-only registry inspection (no pull). Backs
+#                         scripts/layer-diff.sh, which diffs two published tags'
+#                         layers to size a user's upgrade download.
 #
 # Plus `uv` (installed via the COPY below, not apt) for spinning up
 # matching Python deps when verifying skill helpers and recipes against
@@ -66,6 +69,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     trash-cli libglib2.0-bin \
     unzip \
     podman \
+    skopeo \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* /var/log/apt/* /var/log/dpkg.log
 
