@@ -4,8 +4,6 @@
 # konrad — sandboxed opencode in a Podman container. See `konrad --help`.
 set -euo pipefail
 
-LM_STUDIO_HOST_URL="http://localhost:1234/v1/models"
-
 # Image tags. Two distinct surfaces:
 #   konrad:latest  — what `konrad --update` writes (= the published image
 #                    from ghcr.io). The default when this script is
@@ -402,12 +400,6 @@ require_image() {
   die "registry pull failed (offline? registry unreachable?). Once connectivity is back: konrad --update"
 }
 
-check_lm_studio() {
-  if ! curl --max-time 2 -sf "$LM_STUDIO_HOST_URL" >/dev/null 2>&1; then
-    info "LM Studio not detected at $LM_STUDIO_HOST_URL (ignore if you're using a different provider)"
-  fi
-}
-
 # If the cwd is inside a git repo, make sure the auto-pruned subdirs of
 # .agent/ are gitignored. .agent/task.md and .agent/artifacts/ stay
 # tracked because the user may want to commit them. Idempotent —
@@ -781,9 +773,6 @@ do_run() {
   info "preflight checks…"
   require_podman; dbg "podman OK"
   require_image;  dbg "image OK"
-  if [[ "$mode" == "agent" ]]; then
-    check_lm_studio; dbg "lm-studio probe done"
-  fi
   migrate_flat_config; dbg "flat-config migration checked"
   ensure_gitignore; dbg "gitignore ensured"
   prune_log_dir; dbg "log dir pruned"
@@ -810,7 +799,6 @@ do_run_oneshot() {
   info "preflight checks…"
   require_podman; dbg "podman OK"
   require_image;  dbg "image OK"
-  check_lm_studio; dbg "lm-studio probe done"
   migrate_flat_config; dbg "flat-config migration checked"
   ensure_gitignore; dbg "gitignore ensured"
   prune_log_dir; dbg "log dir pruned"
