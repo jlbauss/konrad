@@ -25,15 +25,19 @@ DEFAULT_REPO="ghcr.io/jlbauss/konrad"
 
 usage() {
   cat <<EOF
-Usage: ${0##*/} [--arch ARCH] [--repo REPO] FROM [TO]
+Usage: ${0##*/} [--arch ARCH] [--repo REPO] [--local] FROM [TO]
 
 Report the layers a user on tag FROM must download to reach tag TO,
-by diffing the two remote manifests. Nothing is pulled.
+by diffing the two manifests. Nothing is pulled.
 
   FROM, TO   image tags (TO defaults to "latest"). A value with no '/'
              is a tag of --repo; a value with '/' is a full reference.
-  --arch     platform to inspect (amd64, arm64, ...; default: host arch)
+  --arch     platform to inspect (amd64, arm64, ...; default: host arch).
+             Ignored with --local (local images are single-arch).
   --repo     default repository for bare tags (default: $DEFAULT_REPO)
+  --local    diff images from local podman storage (containers-storage)
+             instead of a registry — for verifying a fresh build dedupes.
+             Bare names resolve to konrad:<name>; pass full refs otherwise.
   -h, --help show this help
 EOF
 }
@@ -51,12 +55,14 @@ host_arch() {
 
 ARCH="$(host_arch)"
 REPO="$DEFAULT_REPO"
+LOCAL=0
 POSITIONAL=()
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --arch) [ $# -ge 2 ] || die "--arch requires a value"; ARCH="$2"; shift 2 ;;
     --repo) [ $# -ge 2 ] || die "--repo requires a value"; REPO="$2"; shift 2 ;;
+    --local) LOCAL=1; shift ;;
     -h|--help) usage; exit 0 ;;
     --) shift; while [ $# -gt 0 ]; do POSITIONAL+=("$1"); shift; done ;;
     -*) die "unknown option: $1 (try --help)" ;;
@@ -68,39 +74,87 @@ done
 FROM_TAG="${POSITIONAL[0]}"
 TO_TAG="${POSITIONAL[1]:-latest}"
 
-command -v skopeo >/dev/null 2>&1 \
-  || die "skopeo not found — add it to the dev container (apt-get install skopeo)"
 command -v jq >/dev/null 2>&1 || die "jq not found"
+if [ "$LOCAL" -eq 1 ]; then
+  command -v podman >/dev/null 2>&1 || die "podman not found (needed for --local)"
+else
+  command -v skopeo >/dev/null 2>&1 \
+    || die "skopeo not found — add it to the dev container (apt-get install skopeo)"
+fi
 
-# Bare tag -> default repo; anything with a '/' is already a full ref.
+# Registry refs select a platform out of a manifest list; local images are
+# single-arch, so the overrides only apply to the remote path.
+if [ "$LOCAL" -eq 1 ]; then
+  SOURCE_LABEL="local (podman)"
+else
+  OVERRIDE_ARGS=(--override-os linux --override-arch "$ARCH")
+  SOURCE_LABEL="$REPO"
+fi
+
+# Resolve a CLI argument to a full image reference.
+#   --local : bare name (no ':' or '/') -> konrad:<name>, else verbatim.
+#   remote  : bare tag (no '/')         -> <repo>:<tag>,  else verbatim.
 resolve() {
-  case "$1" in
-    */*) printf '%s' "$1" ;;
-    *)   printf '%s:%s' "$REPO" "$1" ;;
-  esac
+  if [ "$LOCAL" -eq 1 ]; then
+    case "$1" in
+      */*|*:*) printf '%s' "$1" ;;
+      *)       printf 'konrad:%s' "$1" ;;
+    esac
+  else
+    case "$1" in
+      */*) printf '%s' "$1" ;;
+      *)   printf '%s:%s' "$REPO" "$1" ;;
+    esac
+  fi
 }
 
 FROM_REF="$(resolve "$FROM_TAG")"
 TO_REF="$(resolve "$TO_TAG")"
 
-inspect() {
-  skopeo inspect --override-os linux --override-arch "$ARCH" "docker://$1" 2>/dev/null \
+# Source acquisition. skopeo's containers-storage transport can't reach
+# podman's *remote* daemon (the dev container drives the host socket), so for
+# --local we read podman over that socket and reshape its output into the same
+# {LayersData,…} / {history:…} shape skopeo emits — the diff pipeline below is
+# then identical for both sources.
+remote_manifest() {
+  skopeo inspect "${OVERRIDE_ARGS[@]}" "docker://$1" 2>/dev/null \
     || die "could not inspect $1 (arch $ARCH) — tag missing or no registry access?"
 }
 
-FROM_JSON="$(inspect "$FROM_REF")"
-TO_JSON="$(inspect "$TO_REF")"
+# RootFS.Layers gives ordered layer diffIDs; History gives created_by +
+# empty_layer (its non-empty entries align 1:1 with the layers). Per-layer
+# sizes come from `podman history` (reversed to bottom→top, zipped by index).
+pod_manifest() {
+  local insp hist
+  insp="$(podman image inspect "$1" --format '{{json .}}' 2>/dev/null)" \
+    || die "could not inspect local image $1 (podman)"
+  hist="$(podman history --format json "$1" 2>/dev/null || printf '[]')"
+  jq -n --argjson insp "$insp" --argjson hist "$hist" '
+    ($hist | reverse) as $h
+    | [$insp.History | to_entries[]
+       | {empty: (.value.empty_layer // false), size: ($h[.key].size // 0)}] as $rows
+    | [$rows[] | select(.empty | not)] as $layers
+    | {LayersData: [$insp.RootFS.Layers | to_entries[]
+         | {Digest: .value, Size: ($layers[.key].size // 0)}]}'
+}
 
-# The new layers all belong to TO, so we annotate from TO's image config:
-# its history[] non-empty entries map 1:1, in order, to the layers, and each
-# carries the build instruction (created_by) that produced it. Best-effort —
-# a missing/misaligned config just drops the descriptions, never blocks.
-TO_CONFIG="$(skopeo inspect --config --override-os linux --override-arch "$ARCH" \
-  "docker://$TO_REF" 2>/dev/null || true)"
+if [ "$LOCAL" -eq 1 ]; then
+  FROM_JSON="$(pod_manifest "$FROM_REF")"
+  TO_JSON="$(pod_manifest "$TO_REF")"
+  TO_CONFIG="$(podman image inspect "$TO_REF" --format '{{json .History}}' 2>/dev/null \
+    | jq '{history: .}' 2>/dev/null || true)"
+else
+  FROM_JSON="$(remote_manifest "$FROM_REF")"
+  TO_JSON="$(remote_manifest "$TO_REF")"
+  # Annotate the new (TO) layers from TO's image config: history[] non-empty
+  # entries map 1:1, in order, to the layers, each carrying its build
+  # instruction. Best-effort — a missing config just drops the descriptions.
+  TO_CONFIG="$(skopeo inspect --config "${OVERRIDE_ARGS[@]}" "docker://$TO_REF" 2>/dev/null || true)"
+fi
 [ -n "$TO_CONFIG" ] || TO_CONFIG=null
 
 printf '\nLayers to download going %s -> %s\n' "$FROM_TAG" "$TO_TAG"
-printf 'repo: %s   arch: %s\n\n' "$REPO" "$ARCH"
+printf 'source: %s   arch: %s\n\n' "$SOURCE_LABEL" "$ARCH"
 
 jq -rn --argjson from "$FROM_JSON" --argjson to "$TO_JSON" --argjson toconfig "$TO_CONFIG" '
   def human:
