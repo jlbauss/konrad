@@ -64,8 +64,8 @@ This drops `konrad` into `~/.local/bin/` (override with `KONRAD_INSTALL_DIR=…`
 ### Requirements
 
 - **[Podman](https://podman.io/).** On macOS: `podman machine init` once, then `podman machine start`.
-- **A model provider.** Konrad pre-wires three local engines at their default ports — [LM Studio](https://lmstudio.ai/) (`:1234`), [Ollama](https://ollama.com/) (`:11434`), [llama.cpp](https://github.com/ggerganov/llama.cpp) (`:8080`) — and any opencode-supported API provider (Anthropic, OpenAI, OpenRouter, Gemini, …) works via a small config override. **No models ship declared** — you list the ones you've loaded yourself (see [Configuration](#configuration)).
-- **Recommended model class.** Konrad's skills and prompts are tuned for a **30B-class open-weight model with strong agentic ability** — we test against [`qwen/qwen3.6-27b`](https://lmstudio.ai/models/qwen/qwen3.6-27b). Models should have **native vision**, a context window **≥ 256k**, and agentic strength at least on par with Qwen3.6 27B ([Artificial Analysis Agentic Index](https://artificialanalysis.ai/models/capabilities/agentic)). Stronger models only help. As of 2026-05-20, qualifying picks include Qwen3.6 27B and Kimi K2.6 (open weights); Claude Sonnet/Opus ≥ 4.6, GPT ≥ 5.4, and Gemini 3.5 Flash (proprietary).
+- **A model provider.** Any opencode-supported API provider (OpenRouter, Anthropic, OpenAI, Gemini, …) works out of the box — `/connect` it in the TUI, no config. Local engines ([LM Studio](https://lmstudio.ai/) `:1234`, [Ollama](https://ollama.com/) `:11434`, [llama.cpp](https://github.com/ggerganov/llama.cpp) `:8080`) are pre-wired too; for those you declare the model you've loaded (no auto-discovery yet). See [Configuration](#configuration).
+- **Recommended model class.** Konrad's skills and prompts are tuned for a **30B-class open-weight model with strong agentic ability** — we test against [`qwen/qwen3.6-27b`](https://huggingface.co/Qwen). Models should have **native vision**, a context window **≥ 256k**, and agentic strength at least on par with Qwen3.6 27B ([Artificial Analysis Agentic Index](https://artificialanalysis.ai/models/capabilities/agentic)). Stronger models only help. As of 2026-05-20, qualifying picks include Qwen3.6 27B and Kimi K2.6 (open weights); Claude Sonnet/Opus ≥ 4.6, GPT ≥ 5.4, and Gemini 3.5 Flash (proprietary).
 
 Working on Konrad itself? See [CONTRIBUTING.md](CONTRIBUTING.md) for the parallel `konrad-dev` CLI that tracks your checkout.
 
@@ -137,11 +137,16 @@ The merge of `opencode.jsonc` is deep and ordered **baked < org < user** (last w
 
 > **Upgrading from a pre-0.4 install?** Konrad used to keep your config flat at `~/.config/konrad/{opencode.jsonc,agents,…}`. The first run of 0.4+ moves those into `~/.config/konrad/user/` automatically and prints a one-line notice — nothing for you to do.
 
-### You declare your models
+### Set up a model provider
 
-Konrad pre-wires the local providers at their default ports, but **the model list is yours to fill in**. Declare each model you intend to use in `~/.config/konrad/user/opencode.jsonc` — see the [Recipes](#recipes) below. (Auto-discovery used to live here via the [`opencode-models-discovery`](https://github.com/rivy-t/opencode-models-discovery) plugin, but it added ~3-4 s of startup and tripped on LM Studio's embedding modality; an inline replacement is on the [roadmap](ROADMAP.md).)
+**The standard way is `/connect`.** Launch `konrad`, run `/connect` in the TUI, pick your provider (OpenRouter, Anthropic, OpenAI, Gemini, …) and paste a key — or do the browser login. opencode stores the credential in the `konrad-secrets` volume (`auth.json`), never in your config or host environment; it lists that provider's models in the picker (from the bundled [models.dev](https://models.dev) catalog — nothing to declare); and the egress firewall allows the provider automatically, live-reloading mid-session. No file editing. *(One wrinkle: an OAuth login like Claude Pro/Max needs a one-time `--allow-host` for its first handshake — see [Egress firewall](#egress-firewall).)*
 
-opencode Zen — the upstream's paid hosted gateway — is **disabled by default** (`disabled_providers: ["opencode"]`), since Konrad is local-first. Override `disabled_providers` to re-enable.
+Editing `opencode.jsonc` is only needed to:
+
+- **declare a local model** — the local engines (LM Studio / Ollama / llama.cpp) are pre-wired at their default ports, but there's no model auto-discovery yet, so you list what you've loaded (recipe below). *(The [`opencode-models-discovery`](https://github.com/rivy-t/opencode-models-discovery) plugin used to do this but cost ~3-4 s of startup; an inline replacement is on the [roadmap](ROADMAP.md).)*
+- **add a custom / self-hosted endpoint** — anything not in the models.dev catalog needs an explicit `baseURL` (recipe below).
+
+opencode Zen — the upstream's paid hosted gateway — is **disabled by default** (`disabled_providers: ["opencode"]`). Override `disabled_providers` to re-enable.
 
 ### Egress firewall
 
@@ -155,7 +160,7 @@ The allow-list is assembled at launch from:
 
 > One edge: an **OAuth** login (e.g. Claude Pro/Max) does its handshake *before* the credential is saved, so that first connect can't be auto-allowed — run it once with `--allow-host <provider-host>` (or `--no-firewall`). API-key providers have no such step.
 
-Deliberately **not** in the default set: `models.dev` (the external model catalog — Konrad has you declare your own models, so it isn't needed to run one), PyPI (`pip install` — the image already ships a full venv; `--allow-host pypi.org files.pythonhosted.org` when you genuinely need to extend it), and the open web. Add what your task needs.
+Deliberately **not** in the default set: `models.dev` (the external model catalog — opencode bundles a snapshot and Konrad bakes the provider-host map from it, so the live site isn't needed at runtime), PyPI (`pip install` — the image already ships a full venv; `--allow-host pypi.org files.pythonhosted.org` when you genuinely need to extend it), and the open web. Add what your task needs.
 
 It's **on by default**. Turn it off for a run with `konrad --no-firewall`. When the agent reports a host is blocked, that's the firewall doing its job — add the host if you trust it. (Why a proxy and not a raw IP block: remote providers sit behind rotating cloud IPs, so the allow-list is by *hostname*. Full design in [ARCHITECTURE.md](ARCHITECTURE.md#state-secrets--isolation).)
 
@@ -177,49 +182,36 @@ diff -u <(podman run --rm --entrypoint cat ghcr.io/jlbauss/konrad:latest \
 
 ### Recipes
 
-**Use Ollama instead of LM Studio** (the provider is already declared; register your model and switch the default):
+For a **catalog provider** (OpenRouter, Anthropic, OpenAI, …) you don't need a recipe — just `/connect` (above). These two cases are the reason to edit `opencode.jsonc`:
+
+**Declare a local model** (the engine is pre-wired — register the model you've loaded and make it the default):
 
 ```jsonc
-// ~/.config/konrad/user/opencode.jsonc
+// ~/.config/konrad/user/opencode.jsonc — Ollama shown; swap in lmstudio or llamacpp
 {
-  "provider": { "ollama": { "models": { "qwen3:30b": { "name": "Qwen 3 30B (Ollama)" } } } },
+  "provider": { "ollama": { "models": { "qwen3:30b": { "name": "Qwen 3 30B" } } } },
   "model": "ollama/qwen3:30b"
 }
 ```
 
-**Add Anthropic alongside the local providers** (your override only adds — local engines stay available):
+All three local engines are pre-wired at their default ports (LM Studio `:1234`, Ollama `:11434`, llama.cpp `:8080`); you only declare the model.
 
-```jsonc
-{
-  "provider": { "anthropic": { "options": { "apiKey": "{env:ANTHROPIC_API_KEY}" } } },
-  "model": "anthropic/claude-sonnet-4-6"
-}
-```
-
-Then export `ANTHROPIC_API_KEY` on the host before running `konrad`; the CLI passes it through via opencode's `{env:...}` placeholder.
-
-**Add OpenRouter** (one key, many models):
+**Add a custom / self-hosted endpoint** (any OpenAI-compatible URL not in the models.dev catalog):
 
 ```jsonc
 {
   "provider": {
-    "openrouter": {
-      "npm": "@openrouter/ai-sdk-provider",
-      "options": { "apiKey": "{env:OPENROUTER_API_KEY}" }
+    "my-endpoint": {
+      "npm": "@ai-sdk/openai-compatible",
+      "options": { "baseURL": "https://llm.internal.example/v1", "apiKey": "{env:MY_KEY}" },
+      "models": { "my-model": { "name": "My Model" } }
     }
   },
-  "model": "openrouter/anthropic/claude-sonnet-4-6"
+  "model": "my-endpoint/my-model"
 }
 ```
 
-**Run a different model on LM Studio:**
-
-```jsonc
-{
-  "provider": { "lmstudio": { "models": { "your-model-id": { "name": "Friendly display name" } } } },
-  "model": "lmstudio/your-model-id"
-}
-```
+> A *catalog* provider's key can also be pinned in config via `{env:KEY}` instead of `/connect`, if you'd rather keep setup in one file — but `/connect` is recommended: the key stays out of your config and host environment.
 
 ### Adding your own model instructions
 
