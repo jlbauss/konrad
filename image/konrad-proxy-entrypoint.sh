@@ -13,23 +13,34 @@
 #   2. Derive the egress allow-list, default-deny:
 #        - a baked infra floor (the minimum konrad needs to function),
 #        - every provider baseURL host from the merged config,
+#        - every BUILT-IN provider the user has connected (`auth.json`) or
+#          declared (a `provider` block / a `model` prefix), resolved to a host
+#          via the baked provider-id→host map (provider-hosts.json) — these carry
+#          no `baseURL` in config; opencode resolves their endpoint from the SDK /
+#          models.dev catalog, so without this they'd be silently blocked,
 #        - the user's persistent allowed_hosts file (if any),
 #        - any hosts bin/konrad passed at runtime (KONRAD_ALLOWED_HOSTS).
-#   3. Emit a tinyproxy default-deny config with an anchored host filter and exec
-#      it in the foreground (PID 1 under the container's --init).
+#   3. Emit a tinyproxy default-deny config with an anchored host filter, start
+#      it, and LIVE-RELOAD the filter (tinyproxy SIGUSR1) whenever `auth.json`
+#      changes — so connecting a provider in-session (opencode `/connect`) takes
+#      effect within seconds, with no konrad restart and no --no-firewall.
 #
 # Root-owned + run as the unprivileged node user (like the agent): the allow-list
 # logic can't be tampered with from the agent side, and there is no shared writable
-# surface between the two containers.
+# surface between the two containers. auth.json is mounted READ-ONLY; only the
+# provider ids (`keys`) are read — never the key material.
 set -euo pipefail
 
 PROXY_PORT="${KONRAD_PROXY_PORT:-8888}"
+RELOAD_INTERVAL="${KONRAD_PROXY_RELOAD_INTERVAL:-2}"  # seconds between auth.json polls
 CONF=/tmp/konrad-tinyproxy.conf
 FILTER=/tmp/konrad-allow.filter
 
 KONRAD_BAKED=/etc/konrad
 ORG_CFG=/home/node/.config/konrad/org      # bind-mounted RO by bin/konrad (optional)
 USER_CFG=/home/node/.config/konrad/user     # bind-mounted RO by bin/konrad (optional)
+PROVIDER_MAP="$KONRAD_BAKED/provider-hosts.json"   # baked provider-id → host map
+AUTH_JSON=/home/node/.opencode-secrets/auth.json   # konrad-secrets volume, RO (ids only)
 
 say() { printf '[konrad proxy] %s\n' "$*" >&2; }
 
@@ -53,62 +64,108 @@ FLOOR=(
   registry.npmjs.org
 )
 
-# ── Provider endpoints from the merged config ────────────────────────────────
+# ── Provider-id → host map (baked) ───────────────────────────────────────────
+# Generated from models.dev by scripts/resolve-provider-hosts.sh; the source of
+# truth for the endpoint of every BUILT-IN provider (openrouter, anthropic, …)
+# the user enables with just a key / `/connect` and no explicit baseURL.
+declare -A PMAP=()
+if [[ -f "$PROVIDER_MAP" ]]; then
+  while IFS=$'\t' read -r k v; do
+    [[ -n "$k" ]] && PMAP[$k]="$v"
+  done < <(jq -r 'to_entries[] | "\(.key)\t\(.value)"' "$PROVIDER_MAP" 2>/dev/null)
+else
+  say "warning: $PROVIDER_MAP missing; built-in providers won't be auto-allowed"
+fi
+
+# ── Provider endpoints from the merged config (computed ONCE — RO inputs) ─────
 # Same left-fold as image/entrypoint.sh, so the proxy sees exactly the providers
-# the agent will use. We only need the hosts, so a merge failure is non-fatal —
-# the floor still stands and bin/konrad can pass provider hosts explicitly.
+# the agent will use. We only need hosts, so a merge failure is non-fatal — the
+# floor, the map, and auth.json still stand.
 merge_inputs=("$KONRAD_BAKED/opencode-defaults.jsonc")
 [[ -f "$ORG_CFG/opencode.jsonc" ]]  && merge_inputs+=("$ORG_CFG/opencode.jsonc")
 [[ -f "$USER_CFG/opencode.jsonc" ]] && merge_inputs+=("$USER_CFG/opencode.jsonc")
 
-provider_hosts=()
+# Extract the host from a scheme://host[:port][/path] baseURL (scheme stripped,
+# port/path dropped) — the same reduction scripts/resolve-provider-hosts.sh does.
+host_of() { sed -E 's#^[a-zA-Z][a-zA-Z0-9+.-]*://([^/:]+).*#\1#'; }
+
+static_hosts=("${FLOOR[@]}")
 if merged="$(node "$KONRAD_BAKED/merge-config.js" "${merge_inputs[@]}" 2>/dev/null)"; then
+  # 1. Explicit provider baseURLs win (local engines, custom endpoints).
   while IFS= read -r h; do
-    [[ -n "$h" ]] && provider_hosts+=("$h")
+    [[ -n "$h" ]] && static_hosts+=("$h")
   done < <(printf '%s' "$merged" \
-    | jq -r '.provider // {} | to_entries[] | .value.options.baseURL // empty' \
-    | sed -E 's#^[a-zA-Z][a-zA-Z0-9+.-]*://([^/:]+).*#\1#')
+    | jq -r '.provider // {} | to_entries[] | .value.options.baseURL // empty' | host_of)
+
+  # 2. Built-in providers DECLARED in config but WITHOUT a baseURL (e.g. the
+  #    README recipes that set only options.apiKey): resolve id → host via the map.
+  while IFS= read -r id; do
+    [[ -n "$id" && -n "${PMAP[$id]:-}" ]] && static_hosts+=("${PMAP[$id]}")
+  done < <(printf '%s' "$merged" \
+    | jq -r '.provider // {} | to_entries[] | select(.value.options.baseURL == null) | .key')
+
+  # 3. Providers named only by a `model` prefix (top-level or per-agent), e.g.
+  #    "model": "openrouter/…" with the key supplied via env and no provider block.
+  while IFS= read -r id; do
+    [[ -n "$id" && -n "${PMAP[$id]:-}" ]] && static_hosts+=("${PMAP[$id]}")
+  done < <(printf '%s' "$merged" \
+    | jq -r '[.model // empty, (.agent // {} | to_entries[] | .value.model // empty)] | .[] | split("/")[0]')
 else
-  say "warning: config merge failed; allow-list = floor + runtime hosts only"
+  say "warning: config merge failed; allow-list = floor + map(auth.json) + runtime hosts"
 fi
 
 # ── Persistent allow-list files (one host per line, # comments) ──────────────
 # Both layers may ship an `allowed_hosts` file alongside the opencode config —
 # org for organization-wide additions, user for personal ones. Konrad-specific
 # (NOT part of the opencode config merge); read here and unioned in.
-file_hosts=()
 for f in "$ORG_CFG/allowed_hosts" "$USER_CFG/allowed_hosts"; do
   [[ -f "$f" ]] || continue
   while IFS= read -r line; do
     line="${line%%#*}"
     line="${line//[[:space:]]/}"
-    [[ -n "$line" ]] && file_hosts+=("$line")
+    [[ -n "$line" ]] && static_hosts+=("$line")
   done < "$f"
 done
 
 # ── Runtime additions from bin/konrad (--allow-host / KONRAD_ALLOW_HOST) ──────
-runtime_hosts=()
 if [[ -n "${KONRAD_ALLOWED_HOSTS:-}" ]]; then
   # comma- or whitespace-separated
-  read -r -a runtime_hosts <<<"${KONRAD_ALLOWED_HOSTS//,/ }"
+  read -r -a _runtime <<<"${KONRAD_ALLOWED_HOSTS//,/ }"
+  static_hosts+=("${_runtime[@]}")
 fi
 
-# ── Union, dedupe, write the anchored filter ─────────────────────────────────
+# ── auth.json provider ids (DYNAMIC — re-read every reload tick) ──────────────
+# A provider is unusable without credentials, so `auth.json` (written by opencode
+# `/connect`) is the canonical signal for "providers the user actually uses",
+# covering the interactive path. We read only the ids, never the key values.
+auth_ids() {
+  [[ -f "$AUTH_JSON" ]] || return 0
+  jq -r 'keys[]' "$AUTH_JSON" 2>/dev/null || true
+}
+
+# ── Render the anchored, deduped filter (static ∪ map[auth ids]) to $1 ────────
 # Anchoring is load-bearing: tinyproxy's filter does substring regex matching, so
 # a bare `api.example.com` would ALSO pass `api.example.com.attacker.net`. The
 # ^host(:port)?$ anchor closes that bypass. Dots are escaped so they're literal.
-all_hosts=("${FLOOR[@]}" "${provider_hosts[@]}" "${file_hosts[@]}" "${runtime_hosts[@]}")
-: > "$FILTER"
-declare -A seen=()
-allow_count=0
-for h in "${all_hosts[@]}"; do
-  [[ -z "$h" || -n "${seen[$h]:-}" ]] && continue
-  seen[$h]=1
-  esc="${h//./\\.}"
-  printf '^%s(:[0-9]+)?$\n' "$esc" >> "$FILTER"
-  say "allow: $h"
-  allow_count=$((allow_count + 1))
-done
+# Writes the anchored filter to $1 and echoes the plain (deduped) host list to
+# stdout so the caller can log what's allowed.
+render_filter() {
+  local out="$1" h esc id
+  local all=("${static_hosts[@]}")
+  while IFS= read -r id; do
+    [[ -n "$id" && -n "${PMAP[$id]:-}" ]] && all+=("${PMAP[$id]}")
+  done < <(auth_ids)
+
+  declare -A seen=()
+  : > "$out"
+  for h in "${all[@]}"; do
+    [[ -z "$h" || -n "${seen[$h]:-}" ]] && continue
+    seen[$h]=1
+    esc="${h//./\\.}"
+    printf '^%s(:[0-9]+)?$\n' "$esc" >> "$out"
+    printf '%s\n' "$h"   # plain host → stdout, for the allow-list log line
+  done
+}
 
 # ── tinyproxy config: default-deny destinations, allow-list by host ──────────
 # FilterDefaultDeny Yes  → deny every destination except a filter match.
@@ -136,6 +193,31 @@ FilterURLs Off
 LogLevel Info
 EOF
 
-say "tinyproxy listening on :${PROXY_PORT} — default-deny, ${allow_count} host(s) allowed"
+allowed="$(render_filter "$FILTER")"
+say "tinyproxy listening on :${PROXY_PORT} — default-deny, allowing: $(echo "$allowed" | tr '\n' ' ')"
+
 # -d: stay in the foreground and log to stderr so podman captures proxy denials.
-exec tinyproxy -d -c "$CONF"
+# Backgrounded so this script can live-reload the filter; the trap stops it on
+# teardown (bin/konrad's `podman rm -f` sends SIGTERM).
+tinyproxy -d -c "$CONF" &
+TP=$!
+trap 'kill "$TP" 2>/dev/null || true' EXIT
+trap 'exit 0' INT TERM
+
+# ── Live reload: re-derive on auth.json change, SIGUSR1 (no dropped conns) ────
+# tinyproxy reloads its config + filter list on SIGUSR1. Only auth.json changes
+# mid-run (config/allowed_hosts are RO mounts), so a poll of the rendered filter
+# is enough; we signal only when the bytes actually change.
+while kill -0 "$TP" 2>/dev/null; do
+  sleep "$RELOAD_INTERVAL"
+  allowed="$(render_filter "$FILTER.new")"
+  if cmp -s "$FILTER.new" "$FILTER"; then
+    rm -f "$FILTER.new"
+  else
+    mv "$FILTER.new" "$FILTER"
+    kill -USR1 "$TP" 2>/dev/null || true
+    say "allow-list updated (connected provider) — allowing: $(echo "$allowed" | tr '\n' ' ')"
+  fi
+done
+
+wait "$TP"

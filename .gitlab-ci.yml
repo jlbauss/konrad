@@ -219,9 +219,17 @@ resolve-locks:
         MOVED="$MOVED models"
       fi
 
-      MOVED="$(echo "$MOVED" | xargs)"
       cd ../..
 
+      # provider-hosts map: regenerate from models.dev (the built-in-provider
+      # endpoints the egress proxy allow-lists). Same "pin upstream data, bake
+      # the pinned copy" pattern as the locks above — see the script header.
+      cp image/konrad-defaults/provider-hosts.json /tmp/provider-hosts.old
+      ./scripts/resolve-provider-hosts.sh
+      diff -q /tmp/provider-hosts.old image/konrad-defaults/provider-hosts.json >/dev/null 2>&1 \
+        || MOVED="$MOVED provider-hosts"
+
+      MOVED="$(echo "$MOVED" | xargs)"
       if [ -z "$MOVED" ]; then
         echo "Nothing moved — daily noop, exiting clean."
         exit 0
@@ -234,7 +242,7 @@ resolve-locks:
       # tomorrow's run will re-resolve against the new main.
       git config user.email "konrad-bot@gitlab.git.nrw"
       git config user.name  "konrad-locks-bot"
-      git add image/locks
+      git add image/locks image/konrad-defaults/provider-hosts.json
       git commit -m "chore(locks): bump $MOVED"
       git push \
         "https://oauth2:${BOT_PAT}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git" \

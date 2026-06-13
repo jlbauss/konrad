@@ -149,9 +149,11 @@ The agent runs on an isolated container network with **no direct route to the in
 
 The allow-list is assembled at launch from:
 
-- **your configured model providers**, derived automatically from the merged `opencode.jsonc` (so adding a provider just works — local `host.containers.internal` and any remote API host alike);
+- **your model providers**, derived automatically — both the ones you **declare** in `opencode.jsonc` (local `host.containers.internal` and any remote API host alike) and the built-in ones you **connect** with `/connect` (OpenRouter, Anthropic, OpenAI, …). Built-in providers carry no URL in your config, so Konrad resolves them to a host via a baked map generated from [models.dev](https://models.dev). Connecting a provider mid-session just works — the firewall live-reloads within a couple of seconds, no restart needed;
 - **`registry.npmjs.org`**, where opencode fetches a provider's SDK adapter on demand (the OpenAI-compatible adapter that backs the local engines is already bundled; Anthropic/Google-style SDKs are pulled on first use);
 - **your own additions** — list hosts (one per line, `#` comments) in `~/.config/konrad/user/allowed_hosts` (or the org layer's), or pass `--allow-host <host>` for a single run.
+
+> One edge: an **OAuth** login (e.g. Claude Pro/Max) does its handshake *before* the credential is saved, so that first connect can't be auto-allowed — run it once with `--allow-host <provider-host>` (or `--no-firewall`). API-key providers have no such step.
 
 Deliberately **not** in the default set: `models.dev` (the external model catalog — Konrad has you declare your own models, so it isn't needed to run one), PyPI (`pip install` — the image already ships a full venv; `--allow-host pypi.org files.pythonhosted.org` when you genuinely need to extend it), and the open web. Add what your task needs.
 

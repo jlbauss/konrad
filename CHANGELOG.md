@@ -12,6 +12,19 @@ publishes as `:0.X.Y`, `:0.X`, `:latest`, and an immutable
 
 ## [Unreleased]
 
+### Fixed
+- Egress firewall no longer blocks built-in providers (OpenRouter, Anthropic,
+  OpenAI, …) enabled with just an API key or `/connect`. These carry no URL in
+  your config, so the proxy now resolves them to a host via a baked,
+  models.dev-derived map plus the providers you've connected (`auth.json`) —
+  previously only providers with an explicit `baseURL` were allowed.
+
+### Changed
+- The firewall allow-list **live-reloads** when you connect a provider
+  mid-session — connecting now takes effect within seconds, with no konrad
+  restart and no `--no-firewall` (API-key providers; an OAuth first-connect
+  still needs a one-time `--allow-host`).
+
 ## [0.9.1] - 2026-06-13
 
 ### Fixed

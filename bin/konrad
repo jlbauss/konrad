@@ -589,10 +589,14 @@ fw_setup() {
   FW_ACTIVE=1
 
   info "egress firewall: starting filtering proxy…"
+  # Mount the shared secrets volume READ-ONLY so the proxy can read auth.json's
+  # provider *ids* (never the keys) — that's how it allow-lists the built-in
+  # providers the user has connected, live-reloading when that changes.
   podman run -d --rm --name "$FW_PROXY_NAME" --init \
     --network "${FW_NET_INTERNAL},${FW_NET_EGRESS}" \
     "${KR_USERNS_FLAGS[@]}" \
     ${KR_CFG_MOUNTS[@]+"${KR_CFG_MOUNTS[@]}"} \
+    -v "${SECRETS_VOLUME}:/home/node/.opencode-secrets:ro" \
     -e "KONRAD_DEBUG=${KONRAD_DEBUG}" \
     -e "KONRAD_PROXY_PORT=${KONRAD_PROXY_PORT}" \
     -e "KONRAD_ALLOWED_HOSTS=${KONRAD_ALLOW_HOST}" \

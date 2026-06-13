@@ -1,0 +1,14 @@
+{
+  "anthropic": "api.anthropic.com",
+  "openai": "api.openai.com",
+  "google": "generativelanguage.googleapis.com",
+  "groq": "api.groq.com",
+  "mistral": "api.mistral.ai",
+  "xai": "api.x.ai",
+  "perplexity": "api.perplexity.ai",
+  "cohere": "api.cohere.com",
+  "togetherai": "api.together.xyz",
+  "deepinfra": "api.deepinfra.com",
+  "cerebras": "api.cerebras.ai",
+  "venice": "api.venice.ai"
+}

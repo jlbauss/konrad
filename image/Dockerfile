@@ -364,9 +364,12 @@ COPY --chmod=0755 merge-config.js /etc/konrad/merge-config.js
 COPY --chmod=0755 entrypoint.sh /usr/local/bin/konrad-entrypoint
 # The egress-firewall sidecar runs THIS image with konrad-proxy as its command:
 # it composes the same baked<org<user config, derives the allow-list from the
-# merged provider endpoints + a baked infra floor + the user's allowed_hosts,
-# writes a tinyproxy default-deny config, and execs tinyproxy. Root-owned (0755)
-# so the node runtime user can't tamper with the allow-list logic. See bin/konrad.
+# merged provider endpoints + a baked infra floor + the connected/declared
+# built-in providers (auth.json + the baked provider-hosts.json map) + the
+# user's allowed_hosts, writes a tinyproxy default-deny config, and live-reloads
+# it. Root-owned (0755) so the node runtime user can't tamper with the allow-list
+# logic. provider-hosts.json lands here via the konrad-defaults/ COPY below. See
+# bin/konrad and scripts/resolve-provider-hosts.sh.
 COPY --chmod=0755 konrad-proxy-entrypoint.sh /usr/local/bin/konrad-proxy
 COPY --chmod=0755 konrad-defaults/ /etc/konrad/
 
