@@ -12,6 +12,19 @@ publishes as `:0.X.Y`, `:0.X`, `:latest`, and an immutable
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-06-13
+
+### Fixed
+- The opencode layer is now reproducible across rebuilds — npm/Node build cruft
+  (debug logs, V8 compile cache) no longer leaks into image layers, so an
+  unrelated `python.lock` bump stops needlessly re-shipping the opencode layer.
+  Sibling to the 0.9.0 venv-layer dedupe.
+
+### Changed
+- opencode ships a single CPU-portable binary (`-baseline` on x64) instead of one
+  picked from the build host's CPU — halves the opencode layer (~104 → ~52 MB)
+  and removes a latent illegal-instruction risk on older x64 CPUs.
+
 ## [0.9.0] - 2026-06-11
 
 ### Changed

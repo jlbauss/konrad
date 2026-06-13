@@ -370,26 +370,53 @@ COPY --chmod=0755 entrypoint.sh /usr/local/bin/konrad-entrypoint
 COPY --chmod=0755 konrad-proxy-entrypoint.sh /usr/local/bin/konrad-proxy
 COPY --chmod=0755 konrad-defaults/ /etc/konrad/
 
+# NODE_DISABLE_COMPILE_CACHE / NPM_CONFIG_* keep npm and node from writing
+# build-time cruft into their layers — Node's V8 compile cache
+# (/tmp/node-compile-cache, on by default since npm 11), debug logs
+# (/root/.npm/_logs) and the update-notifier stamp. All three are
+# timestamped, so without this any layer that runs npm/node (the opencode
+# install below, and build-manifest.sh) got a fresh digest on every
+# rebuild and stopped deduping. Set once here so every npm/node step is
+# clean; harmless at runtime (opencode is a Bun binary).
 ENV NODE_OPTIONS=--max-old-space-size=4096 \
     PATH="/opt/venv/bin:/home/node/.npm-global/bin:/home/node/.local/bin:$PATH" \
-    NODE_PATH=/usr/local/lib/node_modules
+    NODE_PATH=/usr/local/lib/node_modules \
+    NODE_DISABLE_COMPILE_CACHE=1 \
+    NPM_CONFIG_LOGS_MAX=0 \
+    NPM_CONFIG_UPDATE_NOTIFIER=false
 
 WORKDIR /workspace
 
 # ── npm: install opencode ────────────────────────────────────────────────────
-# Installed as root into /home/node/.npm-global so the runtime user can't
-# mutate it. The opencode-ai version comes from locks/npm.lock so this
-# layer caches when the lock is unchanged. npm itself is whatever the
-# base image ships — base.lock already pins the base image by digest,
-# so the bundled npm is deterministic; pinning it again here was
-# belt-and-suspenders, and every weekly npm release used to bust this
-# layer's cache for no real benefit. The daily resolve-locks workflow
-# re-queries the npm registry and opens a PR when opencode-ai bumps.
+# The opencode-ai version comes from locks/npm.lock; the daily resolve-locks
+# workflow re-queries the npm registry and opens a PR when it bumps. npm itself
+# is whatever the base image ships (base.lock pins the base by digest, so it's
+# deterministic).
+#
+# We install with --ignore-scripts and materialise the binary ourselves rather
+# than let opencode-ai's postinstall do it. The postinstall picks the x64 binary
+# from the BUILD host's /proc/cpuinfo (AVX2 → opencode-linux-x64, else
+# -baseline), which would bake the CI runner's CPU into an image shipped to
+# unknown CPUs — non-deterministic across runners and wrong for users on a
+# different CPU. Instead we pin the -baseline build (runs on every x64) for
+# amd64 and the sole arm64 build for arm64, then drop the unused second x64
+# variant, which also halves the layer (~100 → ~50 MB). Build cruft is kept out
+# by the NODE_DISABLE_COMPILE_CACHE / NPM_CONFIG_* env above; we still drop
+# /root/.npm (the package cache) for size. Net: a reproducible, dedupable layer.
 COPY locks/npm.lock /tmp/npm.lock
 RUN OPENCODE_VERSION="$(jq -r '."opencode-ai"' /tmp/npm.lock)" \
-    && npm install -g "opencode-ai@${OPENCODE_VERSION}" \
-    && npm cache clean --force \
-    && rm /tmp/npm.lock
+    && npm install -g --ignore-scripts "opencode-ai@${OPENCODE_VERSION}" \
+    && case "$TARGETARCH" in \
+         amd64) OC_VARIANT=opencode-linux-x64-baseline ;; \
+         arm64) OC_VARIANT=opencode-linux-arm64 ;; \
+         *) echo "konrad: unsupported TARGETARCH=$TARGETARCH" >&2; exit 1 ;; \
+       esac \
+    && OC_ROOT="$(npm root -g)/opencode-ai" \
+    && ln -sf "../node_modules/${OC_VARIANT}/bin/opencode" "$OC_ROOT/bin/opencode.exe" \
+    && find "$OC_ROOT/node_modules" -maxdepth 1 -name 'opencode-linux-*' \
+         ! -name "$OC_VARIANT" -exec rm -rf {} + \
+    && opencode --version \
+    && rm -rf /root/.npm /tmp/npm.lock
 
 # ── Frequently-changing content (cache-stable across non-opencode commits) ──
 # opencode/ contains agents/, skills/, and environment.md. They change
