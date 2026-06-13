@@ -307,14 +307,17 @@ release:
       TAG="v$VERSION"
 
       # Extract this version's CHANGELOG section: everything between the
-      # `## [<VERSION>]` heading and the next `## [` heading. Falls back to
-      # a pointer if the section is missing (a bump should always carry one).
+      # `## [<VERSION>]` heading and the next `## [` heading, dropping the
+      # leading blank line (started flips on the first non-blank). awk-only —
+      # the release-cli image is BusyBox, whose sed rejects GNU brace/label
+      # trims. Falls back to a pointer if the section is missing (a bump
+      # should always carry one).
       NOTES="$(awk -v ver="$VERSION" '
         $0 ~ "^## \\[" ver "\\]" { grab = 1; next }
         grab && /^## \[/ { exit }
-        grab { print }
+        grab && NF { started = 1 }
+        grab && started { print }
       ' CHANGELOG.md)"
-      NOTES="$(printf '%s\n' "$NOTES" | sed -e '/./,$!d' | sed -e ':a' -e '/^\n*$/{$d;N;ba}')"
       [ -n "$NOTES" ] || NOTES="See [CHANGELOG.md](CHANGELOG.md) for $TAG."
 
       echo "Releasing $TAG at $CI_COMMIT_SHA"
