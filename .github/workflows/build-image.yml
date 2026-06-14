@@ -218,6 +218,15 @@ jobs:
           # Actual build time still lives in /etc/konrad/build-manifest.json
           # and the OCI image labels.
           #
+          # Yes, this means `podman images` / `docker inspect .Created` show
+          # 1970. Verified (2026-06) that you cannot decouple config.created
+          # from the layer-rewrite epoch: dropping SDE re-stamps every layer to
+          # build time (breaks dedup), and the exporter `source-date-epoch`
+          # attribute overrides config.created too — both knobs set them to one
+          # shared value. Only a post-build mutation of the config blob (leaving
+          # layers byte-identical) can give a real date; rejected as not worth
+          # the bespoke tooling + multi-arch handling for a cosmetic field.
+          #
           # type=image,push=true is the equivalent of the bare `push: true`
           # field (which is mutually exclusive with a custom `outputs:`
           # block).
