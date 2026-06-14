@@ -17,6 +17,8 @@ publishes as `:0.X.Y`, `:0.X`, `:latest`, and an immutable
 
 ## [Unreleased]
 
+## [0.9.3] - 2026-06-14
+
 ### Changed
 - Fewer permission prompts: the agent now acts freely inside its sandbox and
   asks only before an irreversible `rm -rf` of your real `/workspace` files.
