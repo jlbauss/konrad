@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2026 Jan-Luca Bauß
+SPDX-License-Identifier: AGPL-3.0-or-later
+-->
+
 # Architecture
 
 How Konrad is built and *why* — the load-bearing choices and the rationale
@@ -49,6 +54,7 @@ baked image defaults   <   org                    <   user
 - **`AGENTS.md` is the user's slot; `instructions` is Konrad's.** opencode loads both, additively. The **org** `AGENTS.md` rides the `instructions` channel — the entrypoint appends it with `jq` *after* the merge, so the array-replace rule can't silently drop it — while the user's global `AGENTS.md` stays theirs alone. Precedence, all additive: `environment.md → org AGENTS.md → user AGENTS.md → project AGENTS.md`.
 - The org layer is **defaults, not enforcement**: files in the user's own home, so "add-only" describes merge precedence, not a permission lock.
 - **No model auto-discovery, no baked `model`.** Provider endpoints ship pre-wired but model lists ship empty — users declare their loaded models in `opencode.jsonc`; opencode prompts for the model on first run and remembers it in the `konrad-state` volume.
+- **Tool permissions are sandbox-shaped and live once, globally.** The baseline `permission` block sits in [opencode-defaults.jsonc](image/konrad-defaults/opencode-defaults.jsonc) (top-level → every agent inherits it via the same deep-merge); per-agent blocks carry **only deltas**, since they merge over it. The model follows the boundary, not the action's scariness: the container is disposable and non-root, so the agent acts freely *inside* it (`allow`), `ask` is reserved for the one irreversible action that hits the user's real files (`rm -rf` in the `/workspace` bind), and `deny` covers the escape vectors — root (`sudo`), host container/cluster control (`podman`/`docker`/`kubectl`), and the secrets volume under `external_directory`. Network tools stay `allow` because the [egress firewall](#egress-firewall) — not a per-command gate — is the real network boundary. Both `allow` and `deny` are prompt-free; only `ask` interrupts, so prompts are rare by design. Subagents add `question: deny` (no user in their loop) and tighten `rm -rf` to a hard `deny`; [manual-transformer](image/opencode/agents/manual-transformer.md) is the worked example.
 
 ## State, secrets & isolation
 

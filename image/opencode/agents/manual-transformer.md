@@ -1,23 +1,19 @@
 ---
+# SPDX-FileCopyrightText: 2026 Jan-Luca Bauß
+# SPDX-License-Identifier: AGPL-3.0-or-later
 description: Faithfully transcribes structured-irregular data (messy OCR, hand-written tables, log dumps with no shared grammar) into a clean intermediate file with mandatory quality assurance. Invoke from a primary agent when code-based parsing has stalled — regex iterations not converging, each row a different special case, long-tail of formatting pathologies. The subagent reads the input in fresh context, writes a clean output file at a specified path, runs four quality-assurance checks (cardinality, random spot-check, field-invariant, suspicious-result scan), and returns a structured report. Use only for transformations where N input items map to N output items; do not use for analysis, summarization, or arbitrary text generation.
 mode: subagent
 temperature: 0.1
+# Subagent deltas only — the shared baseline (edit denies, external_directory,
+# bash allow + sudo/podman/docker/kubectl deny) is inherited from
+# opencode-defaults.jsonc. A narrow, no-user-in-the-loop worker tightens it:
+# `rm -rf` is a hard deny (no one to confirm with), network is off (it transcribes
+# local files — no reason to reach out), and it never raises `question`.
 permission:
-  external_directory:
-    "/tmp/**": allow
-  edit:
-    "**/.env*": deny
-    "**/.git/**": deny
-    "**/*.key": deny
-    "**/*.pem": deny
-    "**/*.secret": deny
-    "node_modules/**": deny
-    "**": allow
   bash:
-    "*": allow
     "rm -rf *": deny
-    "sudo *": deny
   webfetch: deny
+  websearch: deny
   question: deny
 ---
 

@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2026 Jan-Luca Bauß
+SPDX-License-Identifier: AGPL-3.0-or-later
+-->
+
 # Changelog
 
 All notable, user-facing changes to konrad. The format follows
@@ -11,6 +16,14 @@ publishes as `:0.X.Y`, `:0.X`, `:latest`, and an immutable
 [versioning](CONTRIBUTING.md#versioning)).
 
 ## [Unreleased]
+
+### Changed
+- Fewer permission prompts: the agent now acts freely inside its sandbox and
+  asks only before an irreversible `rm -rf` of your real `/workspace` files.
+  Root (`sudo`), host container/cluster control (`podman`/`docker`/`kubectl`),
+  and the secrets volume are denied outright; network stays open because the
+  egress firewall — not a per-command prompt — is the real boundary. Permissions
+  now live once in the baked defaults; agents carry only their deltas.
 
 ## [0.9.2] - 2026-06-13
 

@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2026 Jan-Luca Bauß
+SPDX-License-Identifier: AGPL-3.0-or-later
+-->
+
 # CLAUDE.md
 
 Guidance for AI agents working on Konrad's source. (Konrad's *runtime* agent
@@ -33,6 +38,7 @@ effect (skills, agents, `environment.md`, Dockerfile, deps). `bin/konrad`,
 - Config layering is `baked < org < user`, merged by [image/merge-config.js](image/merge-config.js): **objects merge, arrays replace.** So add agent rules via `AGENTS.md`, never by overriding the `instructions` array — the org `AGENTS.md` is the one exception (appended post-merge so array-replace can't drop it). Rationale: [ARCHITECTURE.md → Configuration & instructions](ARCHITECTURE.md#configuration--instructions).
 - Runtime environment — tool inventory, the `/opt/venv` Python venv (`uv pip install` to extend), Debian renames (`fd`→`fdfind`, `bat`→`batcat`), locale — is manifested in [image/opencode/environment.md](image/opencode/environment.md).
 - Bundled skills live in `image/opencode/skills/` (`do-it-manually`, `spreadsheets`, `pdf`, `quality-assurance`); `quality-assurance` is the cross-skill verification cycle every producer skill invokes before reporting. Fonts catalogue: [pdf/references/fonts.md](image/opencode/skills/pdf/references/fonts.md).
+- The agent's runtime tool `permission`s have **one home** — the baseline in [image/konrad-defaults/opencode-defaults.jsonc](image/konrad-defaults/opencode-defaults.jsonc); agent files (`agents/*.md`) carry **only deltas** (they deep-merge over it). The model is sandbox-shaped, not action-scariness-shaped — `ask` only on `rm -rf`, `deny` only the escape vectors, everything else `allow`. Don't re-add a full permission block to an agent. Rationale: [ARCHITECTURE.md → Configuration & instructions](ARCHITECTURE.md#configuration--instructions). (Not to be confused with the *host* Claude Code deny/ask lists in `.claude/` — a different layer, covered under Tooling & shell discipline below.)
 
 ## Working agreements
 

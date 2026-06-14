@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Jan-Luca Bauß
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//
 // konrad's baked-in opencode defaults.
 //
 // This file is COPIED into the image at /etc/konrad/opencode-defaults.jsonc.
@@ -80,6 +83,53 @@
   //
   // konrad is optimized for Qwen3.6-class local models (e.g.
   // qwen3.6-35b-a3b on LM Studio) — see README → Configuration.
+
+  // Baseline tool permissions, shared by every agent (objects deep-merge, so a
+  // per-agent `permission` block in agents/*.md overrides only the keys it
+  // names — see agents/manual-transformer.md for the subagent pattern). The
+  // model is the *sandbox boundary*: the container is disposable and runs as a
+  // non-root user, so the agent acts freely inside it; the only things gated are
+  // the ones that reach *past* the box.
+  //   - allow  — anything inside the container, and edits to the bind-mounted
+  //              /workspace (the deny list below protects secrets/integrity).
+  //   - ask    — `rm -rf`: /workspace is the user's REAL project files, so an
+  //              irreversible delete there is the one action worth a confirm.
+  //   - deny   — root (`sudo`) and host container/cluster control
+  //              (`podman`/`docker`/`kubectl`): escape vectors, and `deny` is
+  //              prompt-free, so it costs the user nothing.
+  // Network tools (`webfetch`/`websearch`, and `curl` et al. under bash) stay
+  // `allow`: the egress firewall is the real network boundary — it forwards only
+  // an allow-list regardless of which binary makes the call — so gating them
+  // here would only add friction (or a false sense of safety) without adding
+  // containment. `external_directory` opens up too, minus the secrets volume:
+  // auth.json (provider keys) lives there, and the firewall blocks exfil but not
+  // a prompt-injected agent writing a key into the workspace, so keep it out of
+  // reach. See ARCHITECTURE → Configuration & instructions.
+  "permission": {
+    "edit": {
+      "**/.env*": "deny",
+      "**/.git/**": "deny",
+      "**/*.key": "deny",
+      "**/*.pem": "deny",
+      "**/*.secret": "deny",
+      "node_modules/**": "deny",
+      "**": "allow"
+    },
+    "external_directory": {
+      "/home/node/.opencode-secrets/**": "deny",
+      "**": "allow"
+    },
+    "bash": {
+      "*": "allow",
+      "rm -rf *": "ask",
+      "sudo *": "deny",
+      "podman *": "deny",
+      "docker *": "deny",
+      "kubectl *": "deny"
+    },
+    "webfetch": "allow",
+    "websearch": "allow"
+  },
 
   // Primary agent on startup. Defined in agents/konrad.md.
   "default_agent": "konrad",
