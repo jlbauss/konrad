@@ -17,6 +17,8 @@ publishes as `:0.X.Y`, `:0.X`, `:latest`, and an immutable
 
 ## [Unreleased]
 
+## [0.9.4] - 2026-06-15
+
 ### Added
 - The agent now sees the egress allow-list: the concrete set of reachable hosts
   is inlined into its instructions at session start, so it stops wasting turns
