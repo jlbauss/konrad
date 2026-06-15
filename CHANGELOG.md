@@ -17,6 +17,8 @@ publishes as `:0.X.Y`, `:0.X`, `:latest`, and an immutable
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-06-15
+
 ### Added
 - `konrad connect` — authenticate a provider (`opencode auth login`) with no agent
   in the loop and the firewall off, so an OAuth login (Claude Pro/Max, …) no longer
