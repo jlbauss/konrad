@@ -744,6 +744,7 @@ podman_run() {
     -e "KONRAD_TRACE_FETCH=${KONRAD_TRACE_FETCH:-0}"
     -e "KONRAD_HOST_WORKSPACE=${ws_src}"
     -e "KONRAD_HOST_LOG_DIR=${KONRAD_LOG_DIR}"
+    -e "KONRAD_ALLOWED_HOSTS=${KONRAD_ALLOW_HOST}"
     -v "${ws_src}:/workspace${ws_relabel}"
     -v "${SECRETS_VOLUME}:/home/node/.opencode-secrets:U"
     -v "${cache_vol}:/home/node/.cache/opencode:U"

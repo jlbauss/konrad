@@ -17,6 +17,12 @@ publishes as `:0.X.Y`, `:0.X`, `:latest`, and an immutable
 
 ## [Unreleased]
 
+### Added
+- The agent now sees the egress allow-list: the concrete set of reachable hosts
+  is inlined into its instructions at session start, so it stops wasting turns
+  on fetches the firewall would refuse. Derived from the same single source the
+  proxy filters on, so the two can't drift.
+
 ## [0.9.3] - 2026-06-14
 
 ### Changed

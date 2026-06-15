@@ -76,6 +76,37 @@ if [[ -f "$ORG_CFG/AGENTS.md" ]]; then
   dbg "org AGENTS.md appended to .instructions"
 fi
 
+# ── 1b. Inline the egress allow-list into the agent's instructions ───────────
+# The model can't see the firewall's allow-list (the proxy is a separate
+# container with no shared writable surface — deliberate). So derive the SAME
+# list here, with the SAME compose-allowed-hosts.sh the proxy filters on, and
+# hand it to the model as a concrete list of reachable hosts — saving it from
+# spending turns on fetches the firewall will 403. Appended on the `instructions`
+# channel (a generated file path), exactly like the org AGENTS.md above.
+# Only when the firewall is actually on (HTTP_PROXY set by bin/konrad) — under
+# --no-firewall everything is reachable, so a list would mislead. Snapshot at
+# session start: a mid-session `/connect` updates the firewall (it live-reloads)
+# but NOT this list — the firewall stays the source of truth; this is only a
+# hint. jq + the compose script are baked and on PATH (smoke-tested).
+if [[ -n "${HTTP_PROXY:-}" ]]; then
+  ALLOWED_HOSTS_MD="$OPENCODE_CFG/konrad-allowed-hosts.md"
+  # shellcheck disable=SC2016  # backticks below are literal markdown, not subshells
+  {
+    printf '# Reachable hosts (egress allow-list)\n\n'
+    printf 'Network egress is default-deny behind a filtering proxy. A `curl` / fetch\n'
+    printf '/ `git` / `pip install` to any host NOT in the list below is refused\n'
+    printf "(connection error or 403) — it's policy, not an outage, so don't retry in\n"
+    printf 'a loop. The user can open one for a run with `konrad --allow-host <host>`\n'
+    printf 'or permanently via an `allowed_hosts` file in their config layer.\n\n'
+    printf 'Reachable right now (snapshot at session start):\n\n'
+    "$KONRAD_BAKED/compose-allowed-hosts.sh" 2>/dev/null | sed 's/^/- /'
+  } > "$ALLOWED_HOSTS_MD"
+  tmp_jsonc="$(mktemp)"
+  jq --arg p "$ALLOWED_HOSTS_MD" '.instructions += [$p]' "$TARGET_JSONC" > "$tmp_jsonc" \
+    && mv "$tmp_jsonc" "$TARGET_JSONC"
+  dbg "egress allow-list inlined to .instructions ($ALLOWED_HOSTS_MD)"
+fi
+
 # ── 2. Layer in org- and user-shipped agents / skills / AGENTS.md ────────────
 # Each piece is optional. `cp -r` means a later layer OVERWRITES the baked (or
 # org) files on name collision (e.g. a user-shipped `agents/konrad.md` replaces
