@@ -809,6 +809,139 @@ do_run_oneshot() {
   podman_run opencode run "$@"
 }
 
+# Authenticate a provider: `opencode auth login`, with NO LLM agent in the loop.
+# Args after `connect` pass straight through (konrad doesn't re-enumerate
+# opencode's flags), so `konrad connect` opens the picker and
+# `konrad connect -p openrouter` skips it — same as do_run_oneshot forwards to
+# `opencode run`. The credential lands on the konrad-secrets volume (auth.json),
+# exactly like an in-TUI /connect.
+#
+# The firewall is FORCED OFF for this verb. It's safe because authentication runs
+# no agent — there's no prompt-injection surface to contain — and it's the clean
+# fix for the one rough edge of the default-on firewall: an OAuth first-connect
+# (Claude Pro/Max, Copilot) does its handshake BEFORE auth.json exists, so the
+# proxy can't auto-allow the host and the user would otherwise need a one-time
+# --allow-host. With no filter in the loop, OAuth and API-key logins alike just
+# work, no flags. (API-key logins need no egress at all; OAuth needs its host.)
+do_connect() {
+  dbg "do_connect start"
+  # `--custom [id]` runs the guided self-hosted-provider flow (declare + key);
+  # everything else passes straight to `opencode auth login` (integrated + OAuth).
+  if [[ "${1:-}" == "--custom" ]]; then
+    shift
+    do_connect_custom "${1:-}"
+    return
+  fi
+  info "preflight checks…"
+  require_podman; dbg "podman OK"
+  require_image;  dbg "image OK"
+  # The one wrong-door case: a self-hosted endpoint connected via opencode's bare
+  # "Other" gets a credential but no config declaration. Point those users at the
+  # guided flow. Integrated providers are fine here — this IS `opencode auth login`,
+  # the same backend as the TUI's /connect.
+  if [[ $# -eq 0 ]]; then
+    info "tip: a custom / self-hosted endpoint? use 'konrad connect --custom' to declare it too."
+  fi
+  KONRAD_FIREWALL=0   # pure auth, no agent → no injection surface → safe unfiltered
+  info "authenticating a provider (opencode auth login)…"
+  dbg "about to exec podman run (opencode auth login)"
+  podman_run opencode auth login "$@"
+}
+
+# Guided custom / self-hosted provider flow. Two halves: the DECLARATION
+# (baseURL + models) goes into the user config layer — Konrad owns that — and the
+# CREDENTIAL goes to opencode's auth.json via `opencode auth login`, which Konrad
+# never touches (the "keys never leak into konrad" invariant). opencode's auth
+# login only accepts custom ids through its interactive "Other" path (it rejects
+# `-p <non-catalog-id>`), so the key step is a guided hand-off, not a drive.
+#
+# Whether the provider is already declared (e.g. shipped by an org layer) is read
+# straight from the host-side org/user config — baked carries no custom providers,
+# so those two layers are the whole story. jq can't parse JSONC, so a layer that
+# carries comments is treated as "unknown" and we fall back to one y/N — never an
+# unsafe // strip (that would maul a https:// URL). In practice the layers are
+# plain JSON (Konrad writes them that way), so the question simply doesn't appear.
+do_connect_custom() {
+  local id="$1" baseurl model block userfile merged ans declared="" unknown=0 f
+
+  command -v jq >/dev/null 2>&1 \
+    || die "konrad connect --custom needs 'jq' on the host (e.g. 'brew install jq' / 'apt install jq')."
+  require_podman; require_image
+
+  [[ -n "$id" ]] || read -r -p "Provider id (e.g. acme): " id
+  [[ -n "$id" ]] || die "a provider id is required."
+  [[ "$id" =~ ^[A-Za-z0-9_-]+$ ]] \
+    || die "invalid provider id '$id' (allowed: letters, digits, '-', '_')."
+
+  # Auto-detect: is $id declared in a config layer we can read?
+  for f in "$ORG_CFG_DIR/opencode.jsonc" "$USER_CFG_DIR/opencode.jsonc"; do
+    [[ -f "$f" ]] || continue
+    if jq -e --arg id "$id" '(.provider // {}) | has($id)' "$f" >/dev/null 2>&1; then
+      declared=yes; break
+    elif ! jq empty "$f" >/dev/null 2>&1; then
+      unknown=1   # JSONC/unparseable — can't tell from this layer
+    fi
+  done
+  if [[ -z "$declared" && "$unknown" == 1 ]]; then
+    read -r -p "Couldn't fully read your config. Is '$id' already declared (e.g. by your org)? [y/N] " ans
+    [[ "$ans" =~ ^[Yy] ]] && declared=yes
+  fi
+
+  if [[ "$declared" == yes ]]; then
+    info "'$id' is already declared in your config — skipping to the key step."
+  else
+    # Scenario 1 — declare it: endpoint + at least one served model.
+    read -r -p "Base URL (OpenAI-compatible, e.g. https://llm.acme.example/v1): " baseurl
+    [[ -n "$baseurl" ]] || die "a base URL is required for a new custom provider."
+    read -r -p "One model id served there (e.g. acme-large): " model
+    [[ -n "$model" ]] || die "at least one model id is required."
+
+    block="$(jq -n --arg id "$id" --arg url "$baseurl" --arg m "$model" \
+      '{provider: {($id): {npm: "@ai-sdk/openai-compatible", name: $id,
+                           options: {baseURL: $url},
+                           models: {($m): {name: $m}}}}}')"
+
+    userfile="$USER_CFG_DIR/opencode.jsonc"
+    printf '\nkonrad: this provider declaration belongs in %s:\n%s\n\n' "$userfile" "$block" >&2
+
+    if [[ ! -f "$userfile" ]]; then
+      read -r -p "Create $userfile with it? [y/N] " ans
+      if [[ "$ans" =~ ^[Yy] ]]; then
+        mkdir -p "$USER_CFG_DIR"
+        printf '%s\n' "$block" > "$userfile"
+        info "wrote $userfile"
+      else
+        info "skipped — add the block above to $userfile yourself before your next run."
+      fi
+    elif jq empty "$userfile" >/dev/null 2>&1; then
+      # Plain JSON → safe to deep-merge (objects recurse under jq's '*').
+      read -r -p "Merge it into $userfile? [y/N] " ans
+      if [[ "$ans" =~ ^[Yy] ]]; then
+        merged="$(jq -s '.[0] * .[1]' "$userfile" <(printf '%s' "$block"))" \
+          && printf '%s\n' "$merged" > "$userfile" \
+          && info "updated $userfile"
+      else
+        info "skipped — add the block above to $userfile yourself before your next run."
+      fi
+    else
+      # Has comments (JSONC) → don't risk clobbering them with a jq round-trip.
+      info "$userfile has comments — add the block above into its \"provider\" object by hand, then continue."
+    fi
+  fi
+
+  # Guided key hand-off. opencode owns the credential; konrad never reads the key.
+  cat >&2 <<EOF
+
+konrad: opening 'opencode auth login' (firewall off — safe, no agent runs).
+  When it opens:
+    • choose "Other"
+    • enter provider id:  $id
+    • paste your API key
+EOF
+  KONRAD_FIREWALL=0
+  podman_run opencode auth login
+}
+
 # Compose the immutable dated tag (0.X.YYYY-MM-DD) from an image's version
 # and created labels. The dated tag is the registry's rollback handle; we
 # reconstruct it from labels so it's readable without a container run.
@@ -1246,13 +1379,27 @@ $variant_blurb
 Default ($self, no args): launch the interactive opencode TUI against the
 current directory. Pass a flag, or the 'run' subcommand, to do something else.
 
-Subcommand:
+Subcommands:
   $self run <args…>    Non-interactive: exec 'opencode run <args…>' instead of
                         the TUI — one prompt, answer on stdout (pipeable). Args
                         after 'run' pass straight to opencode, so:
                           $self run "summarize this repo"
                           $self run --model <slug> "fix the failing test"
                         Put konrad's own flags (below) BEFORE 'run'.
+  $self connect [a…]   Authenticate a provider ('opencode auth login') with no
+                        agent in the loop — the firewall is off for this step, so
+                        an OAuth login (Claude Pro/Max, …) needs no --allow-host.
+                        Args pass straight to opencode:
+                          $self connect                 # pick a provider
+                          $self connect -p openrouter   # skip the picker
+                        The credential is stored on the konrad-secrets volume.
+                        Same auth backend as the TUI's /connect, just agent-free.
+  $self connect --custom [id]
+                        Guided self-hosted / custom-endpoint flow: declares the
+                        provider (baseURL + a model) in your user config layer,
+                        then walks you through the key step. Prompts for whatever
+                        you don't pass. (Already declared by your org? It just
+                        does the key step.)
 
 Flags:
   -s, --shell           Open a bash shell in the container instead.
@@ -1333,6 +1480,7 @@ RUN_ARGS=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     run)          ACTION="run-oneshot"; shift; RUN_ARGS=("$@"); break ;;
+    connect)      ACTION="connect"; shift; RUN_ARGS=("$@"); break ;;
     --shell)      SHELL_MODE=1;     shift ;;
     --profile)
       [[ $# -ge 2 ]] || die "--profile requires a name (e.g. --profile selftest)"
@@ -1381,6 +1529,7 @@ case "$ACTION" in
     fi
     ;;
   run-oneshot)   do_run_oneshot ${RUN_ARGS[@]+"${RUN_ARGS[@]}"} ;;
+  connect)       do_connect ${RUN_ARGS[@]+"${RUN_ARGS[@]}"} ;;
   version)       do_version       ;;
   update)        do_update        ;;
   check-updates) do_check_updates ;;

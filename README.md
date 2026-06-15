@@ -139,7 +139,9 @@ The merge of `opencode.jsonc` is deep and ordered **baked < org < user** (last w
 
 ### Set up a model provider
 
-**The standard way is `/connect`.** Launch `konrad`, run `/connect` in the TUI, pick your provider (OpenRouter, Anthropic, OpenAI, Gemini, …) and paste a key — or do the browser login. opencode stores the credential in the `konrad-secrets` volume (`auth.json`), never in your config or host environment; it lists that provider's models in the picker (from the bundled [models.dev](https://models.dev) catalog — nothing to declare); and the egress firewall allows the provider automatically, live-reloading mid-session. No file editing. *(One wrinkle: an OAuth login like Claude Pro/Max needs a one-time `--allow-host` for its first handshake — see [Egress firewall](#egress-firewall).)*
+**The standard way is `/connect`.** Launch `konrad`, run `/connect` in the TUI, pick your provider (OpenRouter, Anthropic, OpenAI, Gemini, …) and paste a key — or do the browser login. opencode stores the credential in the `konrad-secrets` volume (`auth.json`), never in your config or host environment; it lists that provider's models in the picker (from the bundled [models.dev](https://models.dev) catalog — nothing to declare); and the egress firewall allows the provider automatically, live-reloading mid-session. No file editing.
+
+Prefer to authenticate without launching the TUI — or doing an **OAuth** login (Claude Pro/Max, Copilot)? Run **`konrad connect`** (`konrad connect -p <provider>` to skip the picker). It runs `opencode auth login` with no agent in the loop and the firewall off, so even an OAuth first-connect needs no `--allow-host` (see [Egress firewall](#egress-firewall)).
 
 Editing `opencode.jsonc` is only needed to:
 
@@ -158,7 +160,7 @@ The allow-list is assembled at launch from:
 - **`registry.npmjs.org`**, where opencode fetches a provider's SDK adapter on demand (the OpenAI-compatible adapter that backs the local engines is already bundled; Anthropic/Google-style SDKs are pulled on first use);
 - **your own additions** — list hosts (one per line, `#` comments) in `~/.config/konrad/user/allowed_hosts` (or the org layer's), or pass `--allow-host <host>` for a single run.
 
-> One edge: an **OAuth** login (e.g. Claude Pro/Max) does its handshake *before* the credential is saved, so that first connect can't be auto-allowed — run it once with `--allow-host <provider-host>` (or `--no-firewall`). API-key providers have no such step.
+> One edge: an **OAuth** login (e.g. Claude Pro/Max) does its handshake *before* the credential is saved, so that first connect can't be auto-allowed mid-session. The clean path is **`konrad connect`** — it authenticates with the firewall off (safe: no agent is running), so no `--allow-host` is needed. (Doing it inside a normal session instead? Pass `--allow-host <provider-host>` once, or `--no-firewall`.) API-key providers have no such step.
 
 Deliberately **not** in the default set: `models.dev` (the external model catalog — opencode bundles a snapshot and Konrad bakes the provider-host map from it, so the live site isn't needed at runtime), PyPI (`pip install` — the image already ships a full venv; `--allow-host pypi.org files.pythonhosted.org` when you genuinely need to extend it), and the open web. Add what your task needs.
 
@@ -196,7 +198,9 @@ For a **catalog provider** (OpenRouter, Anthropic, OpenAI, …) you don't need a
 
 All three local engines are pre-wired at their default ports (LM Studio `:1234`, Ollama `:11434`, llama.cpp `:8080`); you only declare the model.
 
-**Add a custom / self-hosted endpoint** (any OpenAI-compatible URL not in the models.dev catalog):
+**Add a custom / self-hosted endpoint** (any OpenAI-compatible URL not in the models.dev catalog). The first-class way is **`konrad connect --custom`** — it prompts for the id, base URL, and a model, writes the declaration into your user layer for you, then walks you through the key step (no `--allow-host`, the firewall is off for auth). If your org layer already declares the provider, run the same command and it skips straight to the key.
+
+To do it by hand instead, the declaration is just:
 
 ```jsonc
 {
