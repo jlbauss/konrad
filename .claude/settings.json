@@ -21,12 +21,6 @@
       "WebFetch(domain:huggingface.co)",
       "Read"
     ],
-    "ask": [
-      "Bash(podman push:*)",
-      "Bash(podman run:*)",
-      "Bash(gh:*)",
-      "Bash(podman system prune:*)"
-    ],
     "deny": [
       "Bash(git push:*)",
       "Read(.env)",
@@ -47,6 +41,15 @@
       "Read(~/.netrc)",
       "Read(~/.npmrc)",
       "Read(~/.docker/config.json)"
+    ],
+    "ask": [
+      "Bash(podman push:*)",
+      "Bash(podman run:*)",
+      "Bash(gh:*)",
+      "Bash(podman system prune:*)"
     ]
+  },
+  "enabledPlugins": {
+    "ponytail@ponytail": true
   }
 }
