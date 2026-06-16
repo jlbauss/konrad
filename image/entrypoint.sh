@@ -166,6 +166,13 @@ fi
 ln -sf "$SECRETS/auth.json" "$OPENCODE_DATA/auth.json"
 dbg "auth.json symlink ready"
 
+# Remote-MCP OAuth tokens land in a sibling file (opencode writes mcp-auth.json
+# in the data dir, separate from auth.json). Same treatment, same reason: pin it
+# to the secrets volume so a browser MCP login (e.g. `konrad mcp-auth`) survives
+# the ephemeral container instead of evaporating on the next run.
+ln -sf "$SECRETS/mcp-auth.json" "$OPENCODE_DATA/mcp-auth.json"
+dbg "mcp-auth.json symlink ready"
+
 # ── 4. Workspace .agent/ bootstrap + auto-prune ──────────────────────────────
 # .agent/ belongs to the agent end-to-end after the 2026-05-20 state-isolation
 # change. Make the conventional subdirs upfront so skills don't have to
