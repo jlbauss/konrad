@@ -122,7 +122,8 @@
       // keys into ~/.vscode-server/data/Machine/settings.json by hand once.
       "settings": {
         "claudeCode.initialPermissionMode": "bypassPermissions",
-        "claudeCode.allowDangerouslySkipPermissions": true
+        "claudeCode.allowDangerouslySkipPermissions": true,
+        "editor.formatOnSave": true
       },
       "extensions": [
         "anthropic.claude-code",
