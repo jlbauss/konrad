@@ -23,10 +23,29 @@
 #
 # Runs on Linux and macOS hosts (POSIX sh). Both branches are verified on real
 # hardware (macOS: 2026-06-10, rootful-connection route).
+#
+# It also installs the podman-vscode.sh shim to a STABLE host path
+# (~/.local/bin/podman-vscode.sh) so VS Code's `dev.containers.dockerPath` can
+# point there once and keep working across konrad and any config-layer repo
+# that reuses this dev container, without changing the setting per project.
+# FIRST-TIME BOOTSTRAP (per machine): VS Code probes dockerPath ("Check Docker
+# is running") BEFORE it runs initializeCommand, so on a fresh machine where the
+# shim isn't installed yet the probe fails with ENOENT and the container never
+# starts. Run this script once by hand before the very first container open —
+# `sh .devcontainer/ensure-podman-sock.sh` — and from then on it keeps the shim
+# refreshed automatically on every open.
 
 set -eu
 
-cache_dir="$(cd -- "$(dirname -- "$0")" && pwd)/.cache"
+script_dir="$(cd -- "$(dirname -- "$0")" && pwd)"
+
+# Install the dockerPath shim to a stable host path (see header). Plain cp — the
+# shim is small and refreshing it on every open keeps it in sync with the repo.
+mkdir -p "$HOME/.local/bin"
+cp "$script_dir/podman-vscode.sh" "$HOME/.local/bin/podman-vscode.sh"
+chmod +x "$HOME/.local/bin/podman-vscode.sh"
+
+cache_dir="$script_dir/.cache"
 link="$cache_dir/podman-host.sock"
 mkdir -p "$cache_dir"
 

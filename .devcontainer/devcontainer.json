@@ -60,7 +60,12 @@
   // HOST PREREQUISITE (one-time) for self-testing to actually work:
   //   Linux:  systemctl --user enable --now podman.socket
   //   macOS:  point VS Code at the rootful-connection shim — user setting
-  //           "dev.containers.dockerPath": <abs path>/.devcontainer/podman-vscode.sh
+  //           "dev.containers.dockerPath": <output of: echo ~/.local/bin/podman-vscode.sh>
+  //           initializeCommand installs the shim there (a stable path that also
+  //           works for konrad's config-layer repos, so the setting never changes
+  //           when switching projects). First open on a fresh machine: run
+  //           `sh .devcontainer/ensure-podman-sock.sh` once by hand — VS Code
+  //           probes dockerPath before initializeCommand, so the shim must exist.
   // Without either, the container still starts; only the podman calls fail.
   //
   // macOS: the container runs INSIDE the podman-machine VM. The rootless VM
@@ -127,7 +132,8 @@
       },
       "extensions": [
         "anthropic.claude-code",
-        "timonwong.shellcheck"
+        "timonwong.shellcheck",
+        "DavidAnson.vscode-markdownlint"
       ]
     }
   }

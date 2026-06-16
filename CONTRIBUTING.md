@@ -7,12 +7,14 @@ Thanks for your interest. Konrad is early-stage / alpha software — the runtime
 If you're proposing something larger than a typo fix, **open a GitLab issue first** to discuss. A short "I'd like to add X — does that fit?" conversation saves rework when the maintainer would have steered you elsewhere. For tiny things (typos, broken links, obvious one-line bugs), skip straight to a merge request.
 
 What "larger" means in practice:
+
 - A new bundled skill or agent
 - A new CLI subcommand or flag
 - Any change to config layering, state isolation, or the entrypoint
 - Any non-trivial Dockerfile change
 
 What does *not* need an issue first:
+
 - Documentation fixes
 - Tightening shellcheck cleanliness
 - Adding a missing case to the smoke test
@@ -26,7 +28,7 @@ No CLA, no DCO. The license terms attach automatically.
 
 Licensing follows the [REUSE](https://reuse.software) spec, verified by `reuse lint`. **Add an SPDX header to every new or edited source file** — two comment lines near the top:
 
-```
+```text
 # SPDX-FileCopyrightText: 2026 Your Name
 # SPDX-License-Identifier: AGPL-3.0-or-later
 ```
@@ -59,10 +61,11 @@ konrad-dev --rebuild
 ```
 
 You need:
+
 - Podman (Linux/macOS host; Docker is on the roadmap but not supported yet)
 - `~/.local/bin` on your `$PATH`
 
-The repo ships a Dev Container at `.devcontainer/` — "Reopen in Container" in VS Code gives you a portable edit-and-lint environment (shellcheck, hadolint, actionlint, jq, git, ripgrep, the Claude Code extension preinstalled). **`konrad-dev` is preprovisioned here** — the image symlinks it into `/usr/local/bin` (already on `PATH`), so the manual step 2 above is *only* for a native checkout; in the container you can run `konrad-dev --rebuild` straight away. It also mounts the host's rootless Podman socket, so `konrad-dev --rebuild`, `konrad-dev --shell`, and most of `./scripts/smoke-test.sh konrad:local` run **from inside the container** against the host's Podman daemon — no privileged Podman-in-container needed. **Runtime self-testing works on Linux and macOS hosts**, after a one-time prerequisite per OS. Linux: enable the socket once with `systemctl --user enable --now podman.socket`. macOS: point the Dev Containers extension at the rootful-connection shim — add to your VS Code **user** settings JSON: `"dev.containers.dockerPath": "/absolute/path/to/konrad/.devcontainer/podman-vscode.sh"` (and have the podman machine running). The shim creates the dev container via the machine's bundled rootful connection — the only daemon whose API socket a nested container can reach (full rationale in [.devcontainer/podman-vscode.sh](.devcontainer/podman-vscode.sh)); your machine's *default* connection stays rootless, so day-to-day `podman` and `konrad` on the Mac are untouched. Two macOS side effects to know: the dev container and its named volumes live in the rootful daemon's separate store, so the first reopen starts fresh (Claude Code re-login, extensions reinstall — once); and self-tests there exercise a rootful daemon, so rootless-specific behavior (uid semantics, networking, limits) still needs a Linux run. On either OS the remote daemon resolves bind-mount paths on its own side, so konrad translates them to their real host paths: the `/workspace` mount and your config layer (`~/.config/konrad`, bound into the dev container and re-mounted into the runtime container) both come through, so a self-test composes `baked < org < user` and uses your real model / agents / skills exactly like a normal run. Only the host-side log dir is skipped (no daemon-visible path), and the smoke test's own org-layer check is skipped there (it bind-mounts a throwaway `/tmp` dir the daemon can't see — covered by CI on a local daemon instead). Without the prerequisite the container still starts — podman calls just fail cleanly (build/lint/edit all keep working).
+The repo ships a Dev Container at `.devcontainer/` — "Reopen in Container" in VS Code gives you a portable edit-and-lint environment (shellcheck, hadolint, actionlint, jq, git, ripgrep, the Claude Code extension preinstalled). **`konrad-dev` is preprovisioned here** — the image symlinks it into `/usr/local/bin` (already on `PATH`), so the manual step 2 above is *only* for a native checkout; in the container you can run `konrad-dev --rebuild` straight away. It also mounts the host's rootless Podman socket, so `konrad-dev --rebuild`, `konrad-dev --shell`, and most of `./scripts/smoke-test.sh konrad:local` run **from inside the container** against the host's Podman daemon — no privileged Podman-in-container needed. **Runtime self-testing works on Linux and macOS hosts**, after a one-time prerequisite per OS. Linux: enable the socket once with `systemctl --user enable --now podman.socket`. macOS: point the Dev Containers extension at the rootful-connection shim — add to your VS Code **user** settings JSON: `"dev.containers.dockerPath": "/Users/you/.local/bin/podman-vscode.sh"` (run `echo ~/.local/bin/podman-vscode.sh` for the exact path; have the podman machine running). `initializeCommand` installs the shim to that stable path, so the same setting keeps working across konrad and any config-layer repo that reuses this dev container, without changing when you switch projects. One-time bootstrap on a fresh machine: VS Code probes `dockerPath` *before* running `initializeCommand`, so run `sh .devcontainer/ensure-podman-sock.sh` once by hand before the first container open (it self-refreshes on every open thereafter). The shim creates the dev container via the machine's bundled rootful connection — the only daemon whose API socket a nested container can reach (full rationale in [.devcontainer/podman-vscode.sh](.devcontainer/podman-vscode.sh)); your machine's *default* connection stays rootless, so day-to-day `podman` and `konrad` on the Mac are untouched. Two macOS side effects to know: the dev container and its named volumes live in the rootful daemon's separate store, so the first reopen starts fresh (Claude Code re-login, extensions reinstall — once); and self-tests there exercise a rootful daemon, so rootless-specific behavior (uid semantics, networking, limits) still needs a Linux run. On either OS the remote daemon resolves bind-mount paths on its own side, so konrad translates them to their real host paths: the `/workspace` mount and your config layer (`~/.config/konrad`, bound into the dev container and re-mounted into the runtime container) both come through, so a self-test composes `baked < org < user` and uses your real model / agents / skills exactly like a normal run. Only the host-side log dir is skipped (no daemon-visible path), and the smoke test's own org-layer check is skipped there (it bind-mounts a throwaway `/tmp` dir the daemon can't see — covered by CI on a local daemon instead). Without the prerequisite the container still starts — podman calls just fail cleanly (build/lint/edit all keep working).
 
 ## Local development loop
 
@@ -147,7 +150,7 @@ Releases live on **GitLab** — the GitHub mirror is CI-only, no releases there.
 
 ## Repo layout — what goes where
 
-```
+```text
 konrad/
 ├── bin/konrad                         # The host-side CLI (the only thing on your PATH)
 ├── VERSION                            # Drives the image tag scheme (see versioning doc)
@@ -187,7 +190,7 @@ If a change touches multiple concerns, prefer separate commits per concern. The 
 
 [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/), applied fully — by discipline, checked at review (no tooling, exactly like the [VERSION](#versioning) bump).
 
-```
+```text
 type(scope)?: imperative, lowercase subject, no trailing period
 
 Body — expected for anything that needed a design decision: explain *why*
