@@ -17,6 +17,18 @@ publishes as `:0.X.Y`, `:0.X`, `:latest`, and an immutable
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-06-16
+
+### Added
+
+- `konrad mcp-auth <server>` — authenticate a remote MCP server's OAuth (e.g. an
+  internal wiki or issue tracker declared in your config) with no agent in the
+  loop and the firewall off, mirroring `konrad connect`. opencode's loopback
+  callback port is published to `127.0.0.1`, so the browser's post-approval
+  redirect reaches the sandbox and the flow completes on its own instead of
+  hanging on "Waiting for authorization." The token persists on the
+  `konrad-secrets` volume (sibling to `auth.json`) and is reused on every run.
+
 ## [0.10.0] - 2026-06-15
 
 ### Added
