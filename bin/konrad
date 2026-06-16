@@ -135,6 +135,10 @@ KONRAD_TRACE_FETCH="${KONRAD_TRACE_FETCH:-0}"
 KONRAD_FIREWALL="${KONRAD_FIREWALL:-1}"
 KONRAD_PROXY_PORT="${KONRAD_PROXY_PORT:-8888}"
 KONRAD_ALLOW_HOST="${KONRAD_ALLOW_HOST:-}"
+# opencode's loopback port for the remote-MCP OAuth callback. `konrad mcp-auth`
+# publishes it to the host so the post-approval redirect reaches the sandbox.
+# ponytail: opencode uses a fixed port today; env-overridable if that changes.
+KONRAD_MCP_AUTH_PORT="${KONRAD_MCP_AUTH_PORT:-19876}"
 
 # $SECONDS is bash's built-in script-elapsed counter (portable to bash 3.2
 # on macOS). The container side uses GNU `date +%N` for sub-second precision
@@ -734,11 +738,20 @@ podman_run() {
   # KONRAD_HOST_WORKSPACE is read by the entrypoint to write the
   # workspace path into the session sidecar (opencode itself only
   # sees /workspace and can't record the host path).
+  # Optional host port publish, set by callers that need an inbound callback
+  # reachable from the host (konrad mcp-auth's OAuth loopback redirect). Bound to
+  # 127.0.0.1 so it never listens on a routable interface. Only used on the
+  # firewall-off path, where the container is on the default network.
+  local -a publish_flags=()
+  [[ -n "${KONRAD_PUBLISH_PORT:-}" ]] \
+    && publish_flags=(-p "127.0.0.1:${KONRAD_PUBLISH_PORT}:${KONRAD_PUBLISH_PORT}")
+
   local -a run_cmd=(
     podman run
     --rm ${tty_flags[@]+"${tty_flags[@]}"} --init
     "${userns_flags[@]}"
     ${net_flags[@]+"${net_flags[@]}"}
+    ${publish_flags[@]+"${publish_flags[@]}"}
     ${proxy_env[@]+"${proxy_env[@]}"}
     -e "KONRAD_DEBUG=${KONRAD_DEBUG}"
     -e "KONRAD_TRACE_FETCH=${KONRAD_TRACE_FETCH:-0}"
@@ -940,6 +953,38 @@ konrad: opening 'opencode auth login' (firewall off — safe, no agent runs).
 EOF
   KONRAD_FIREWALL=0
   podman_run opencode auth login
+}
+
+# Authenticate a remote MCP server's OAuth: `opencode mcp auth <server>`, with NO
+# agent in the loop. Two sandbox-specific moves on top of a bare auth, both the
+# reason this can't just live in the agent's normal run:
+#   • Firewall OFF — same rationale as do_connect: pure auth has no injection
+#     surface, and the OAuth handshake needs to reach the MCP host before any
+#     allow-list applies.
+#   • Publish opencode's loopback callback port to the host. opencode runs a
+#     local redirect server inside the sandbox; the browser approval redirects to
+#     http://127.0.0.1:PORT/…, which from the host would hit a dead port. Publish
+#     it and the redirect lands back inside, so the flow completes on its own —
+#     no manual code-paste dance. The token persists on the konrad-secrets volume
+#     (mcp-auth.json, symlinked in the entrypoint) and is reused on every run.
+do_mcp_auth() {
+  dbg "do_mcp_auth start"
+  [[ $# -ge 1 ]] \
+    || die "usage: $(basename -- "$0") mcp-auth <server>  (the MCP server's name in your opencode config)"
+  info "preflight checks…"
+  require_podman; dbg "podman OK"
+  require_image;  dbg "image OK"
+  cat >&2 <<EOF
+
+konrad: authenticating MCP server '$1' (firewall off — safe, no agent runs).
+  A URL prints below — open it in your browser and approve. You'll be redirected
+  to localhost; Konrad forwards that callback into the sandbox, so it completes
+  on its own. The token is saved and reused automatically on later runs.
+EOF
+  KONRAD_FIREWALL=0
+  KONRAD_PUBLISH_PORT="$KONRAD_MCP_AUTH_PORT"
+  dbg "about to exec podman run (opencode mcp auth)"
+  podman_run opencode mcp auth "$@"
 }
 
 # Compose the immutable dated tag (0.X.YYYY-MM-DD) from an image's version
@@ -1400,6 +1445,14 @@ Subcommands:
                         then walks you through the key step. Prompts for whatever
                         you don't pass. (Already declared by your org? It just
                         does the key step.)
+  $self mcp-auth <server>
+                        Authenticate a remote MCP server's OAuth (e.g. a wiki or
+                        issue tracker declared in your config). Agent-free,
+                        firewall off, and the browser callback is forwarded into
+                        the sandbox so the approval completes on its own. The
+                        token is stored on the konrad-secrets volume and reused
+                        on every run:
+                          $self mcp-auth wiki
 
 Flags:
   -s, --shell           Open a bash shell in the container instead.
@@ -1481,6 +1534,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     run)          ACTION="run-oneshot"; shift; RUN_ARGS=("$@"); break ;;
     connect)      ACTION="connect"; shift; RUN_ARGS=("$@"); break ;;
+    mcp-auth)     ACTION="mcp-auth"; shift; RUN_ARGS=("$@"); break ;;
     --shell)      SHELL_MODE=1;     shift ;;
     --profile)
       [[ $# -ge 2 ]] || die "--profile requires a name (e.g. --profile selftest)"
@@ -1530,6 +1584,7 @@ case "$ACTION" in
     ;;
   run-oneshot)   do_run_oneshot ${RUN_ARGS[@]+"${RUN_ARGS[@]}"} ;;
   connect)       do_connect ${RUN_ARGS[@]+"${RUN_ARGS[@]}"} ;;
+  mcp-auth)      do_mcp_auth ${RUN_ARGS[@]+"${RUN_ARGS[@]}"} ;;
   version)       do_version       ;;
   update)        do_update        ;;
   check-updates) do_check_updates ;;
