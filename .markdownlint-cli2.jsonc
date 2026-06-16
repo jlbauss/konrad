@@ -1,0 +1,14 @@
+// konrad's markdownlint-cli2 wiring. Rules live in .markdownlint.jsonc (shared,
+// symlinked by config-layer repos); this file only sets what to scan/skip here.
+{
+  "globs": ["**/*.md"],
+  "ignores": [
+    "node_modules",
+    "LICENSES",        // upstream license texts, not ours to lint
+    "examples",        // vendored / illustrative content
+    // Baked runtime skill/agent docs: a cosmetic reflow here forces an image
+    // rebuild for no gain (ethos: no maintenance surface for nothing). They ride
+    // intentional image changes, not a docs linter. Lint the human-facing docs.
+    "image"
+  ]
+}

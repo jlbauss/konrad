@@ -44,7 +44,7 @@ Its second face: **simple, logical, and smooth beats clever.** Konrad should sta
 
 Config is **layered, not replaced** — three host-mergeable layers, folded left, last writer wins:
 
-```
+```text
 baked image defaults   <   org                    <   user
 /etc/konrad/…               ~/.config/konrad/org/      ~/.config/konrad/user/
 ```
@@ -60,7 +60,7 @@ baked image defaults   <   org                    <   user
 
 **`.agent/` belongs to the agent end-to-end; framework state lives elsewhere.**
 
-```
+```text
 .agent/
   task.md                     # planning artifact (committable)
   artifacts/                  # durable mid-task outputs (committable)

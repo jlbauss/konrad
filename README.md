@@ -109,7 +109,7 @@ Short flags bundle (`konrad -sv` is `konrad -s -v`). `konrad-dev` is the contrib
 
 Konrad composes opencode's runtime config from up to four layers at container start. **You only override what you want to change**; everything else stays inherited.
 
-```
+```text
 Layer 1 — Baked defaults     /etc/konrad/opencode-defaults.jsonc   (in the image)
 Layer 2 — Org defaults       ~/.config/konrad/org/                 (on the host, optional)
 Layer 3 — Your overrides     ~/.config/konrad/user/                (on the host)
@@ -118,7 +118,7 @@ Layer 4 — Per-project        <workspace>/.opencode/opencode.json   (opencode-n
 
 Layers 2 and 3 are symmetric — each is a directory with up to five optional pieces:
 
-```
+```text
 ~/.config/konrad/
 ├── org/                Optional. Shipped by your organization (see "For organizations").
 │   └── …same five pieces as user/…
@@ -145,7 +145,7 @@ Prefer to authenticate without launching the TUI — or doing an **OAuth** login
 
 Editing `opencode.jsonc` is only needed to:
 
-- **declare a local model** — the local engines (LM Studio / Ollama / llama.cpp) are pre-wired at their default ports, but there's no model auto-discovery yet, so you list what you've loaded (recipe below). *(The [`opencode-models-discovery`](https://github.com/rivy-t/opencode-models-discovery) plugin used to do this but cost ~3-4 s of startup; an inline replacement is on the [roadmap](ROADMAP.md).)*
+- **declare a local model** — the local engines (LM Studio / Ollama / llama.cpp) are pre-wired at their default ports, but there's no model auto-discovery yet, so you list what you've loaded (recipe below). _(The [`opencode-models-discovery`](https://github.com/rivy-t/opencode-models-discovery) plugin used to do this but cost ~3-4 s of startup; an inline replacement is on the [roadmap](ROADMAP.md).)_
 - **add a custom / self-hosted endpoint** — anything not in the models.dev catalog needs an explicit `baseURL` (recipe below).
 
 opencode Zen — the upstream's paid hosted gateway — is **disabled by default** (`disabled_providers: ["opencode"]`). Override `disabled_providers` to re-enable.
@@ -160,11 +160,11 @@ The allow-list is assembled at launch from:
 - **`registry.npmjs.org`**, where opencode fetches a provider's SDK adapter on demand (the OpenAI-compatible adapter that backs the local engines is already bundled; Anthropic/Google-style SDKs are pulled on first use);
 - **your own additions** — list hosts (one per line, `#` comments) in `~/.config/konrad/user/allowed_hosts` (or the org layer's), or pass `--allow-host <host>` for a single run.
 
-> One edge: an **OAuth** login (e.g. Claude Pro/Max) does its handshake *before* the credential is saved, so that first connect can't be auto-allowed mid-session. The clean path is **`konrad connect`** — it authenticates with the firewall off (safe: no agent is running), so no `--allow-host` is needed. (Doing it inside a normal session instead? Pass `--allow-host <provider-host>` once, or `--no-firewall`.) API-key providers have no such step.
+> One edge: an **OAuth** login (e.g. Claude Pro/Max) does its handshake _before_ the credential is saved, so that first connect can't be auto-allowed mid-session. The clean path is **`konrad connect`** — it authenticates with the firewall off (safe: no agent is running), so no `--allow-host` is needed. (Doing it inside a normal session instead? Pass `--allow-host <provider-host>` once, or `--no-firewall`.) API-key providers have no such step.
 
 Deliberately **not** in the default set: `models.dev` (the external model catalog — opencode bundles a snapshot and Konrad bakes the provider-host map from it, so the live site isn't needed at runtime), PyPI (`pip install` — the image already ships a full venv; `--allow-host pypi.org files.pythonhosted.org` when you genuinely need to extend it), and the open web. Add what your task needs.
 
-It's **on by default**. Turn it off for a run with `konrad --no-firewall`. When the agent reports a host is blocked, that's the firewall doing its job — add the host if you trust it. (Why a proxy and not a raw IP block: remote providers sit behind rotating cloud IPs, so the allow-list is by *hostname*. Full design in [ARCHITECTURE.md](ARCHITECTURE.md#state-secrets--isolation).)
+It's **on by default**. Turn it off for a run with `konrad --no-firewall`. When the agent reports a host is blocked, that's the firewall doing its job — add the host if you trust it. (Why a proxy and not a raw IP block: remote providers sit behind rotating cloud IPs, so the allow-list is by _hostname_. Full design in [ARCHITECTURE.md](ARCHITECTURE.md#state-secrets--isolation).)
 
 ### Quick start: edit your override
 
@@ -215,11 +215,11 @@ To do it by hand instead, the declaration is just:
 }
 ```
 
-> A *catalog* provider's key can also be pinned in config via `{env:KEY}` instead of `/connect`, if you'd rather keep setup in one file — but `/connect` is recommended: the key stays out of your config and host environment.
+> A _catalog_ provider's key can also be pinned in config via `{env:KEY}` instead of `/connect`, if you'd rather keep setup in one file — but `/connect` is recommended: the key stays out of your config and host environment.
 
 ### Adding your own model instructions
 
-Konrad ships its base instructions via the `instructions` config key. **For your own additions, use `AGENTS.md`**, which opencode discovers automatically and loads *on top of* the base:
+Konrad ships its base instructions via the `instructions` config key. **For your own additions, use `AGENTS.md`**, which opencode discovers automatically and loads _on top of_ the base:
 
 - `~/.config/konrad/user/AGENTS.md` — your personal rules, loaded globally.
 - `<workspace>/AGENTS.md` — per-project rules, loaded only in that workspace.
@@ -230,7 +230,7 @@ Both are additive. Don't set `instructions` in your override unless you specific
 
 If you run a fleet of Konrad installs, the **org layer** (`~/.config/konrad/org/`) lets you ship defaults every user inherits — extra model declarations, an internal provider endpoint, house skills or agents, and a corporate `AGENTS.md` — without forking the image or hand-editing each user's config. It holds the same five pieces as the user layer and merges **between** the baked defaults and each user's own overrides (`baked < org < user`), so a user can still stack their preferences on top.
 
-```
+```text
 ~/.config/konrad/org/
 ├── opencode.jsonc      Org-wide config (providers, models, env). Merged under user/.
 ├── agents/             House agents.
@@ -244,7 +244,7 @@ Two things worth knowing:
 - **Discovery is a well-known home-directory folder, not a system path or env var.** Ship your config as a package that drops a folder into each user's `~/.config/konrad/org/`; Konrad finds it with no root, no `podman machine` mount edits, and no per-user setup. (This is what makes it work on macOS, where the Podman VM only auto-shares `$HOME`.)
 - **`org/AGENTS.md` loads via the system `instructions` channel**, not as the discovered global `AGENTS.md` — that one stays the user's. Final instruction precedence is Konrad's `environment.md` → org → user `AGENTS.md` → project `AGENTS.md`, all additive.
 
-**This is a defaults mechanism, not policy enforcement.** The org folder is just files in the user's own home directory, so a determined user can edit them. "Add-only" describes the merge *precedence* (the user stacks on top), not a permission lock. Locking config down would need read-only system locations or signing — a separate concern Konrad doesn't address today.
+**This is a defaults mechanism, not policy enforcement.** The org folder is just files in the user's own home directory, so a determined user can edit them. "Add-only" describes the merge _precedence_ (the user stacks on top), not a permission lock. Locking config down would need read-only system locations or signing — a separate concern Konrad doesn't address today.
 
 A ready-to-adapt starter package — a populated `org/` plus an `install.sh` that drops it into place — lives in [`examples/org-package/`](examples/org-package/). Design rationale (why a `$HOME` folder, why the system instructions channel, why defaults-not-enforcement) is in [ARCHITECTURE.md → Configuration & instructions](ARCHITECTURE.md#configuration--instructions).
 

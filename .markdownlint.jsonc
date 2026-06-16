@@ -1,0 +1,20 @@
+// Shared markdownlint ruleset — the single source of truth for "consistent
+// markdown" across konrad and any config-layer repo that symlinks this file.
+// Repo-specific globs/ignores live in each repo's .markdownlint-cli2.jsonc,
+// never here, so this file stays portable.
+{
+  "default": true,
+  // Long-form prose by deliberate choice — we wrap at paragraphs, not columns.
+  // Line length is the one default that fights that style; everything else stays on.
+  "MD013": false,
+  // Inline HTML shows up in docs (e.g. <br>, shields badges); allow it.
+  "MD033": false,
+  // Not every file leads with an H1 (CHANGELOG sections, partials).
+  "MD041": false,
+  // Duplicate headings are fine across sections (e.g. repeated "Open" in ROADMAP);
+  // only flag true sibling collisions.
+  "MD024": { "siblings_only": true },
+  // Table-column alignment/padding — cosmetic, and aligning pipes in our wide
+  // tables is maintenance for nothing. Content correctness matters, not padding.
+  "MD060": false
+}

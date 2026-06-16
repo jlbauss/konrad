@@ -270,6 +270,25 @@ reuse:
     - reuse lint
 
 # =============================================================================
+# Markdown lint gate.
+#
+# Like `reuse` above: a plain file check on the shared runner, gating at MR/push
+# so the human-facing docs stay consistently formatted. Rules live in
+# .markdownlint.jsonc (shared, symlinked by config-layer repos); scope/ignores in
+# .markdownlint-cli2.jsonc — both auto-discovered. Baked image/** docs are out of
+# scope on purpose (they ride image rebuilds, not a docs linter). Run it locally
+# with `npx --yes markdownlint-cli2` before pushing; CI is the backstop.
+# =============================================================================
+markdownlint:
+  image: node:26-trixie-slim
+  tags: [docker]
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_PIPELINE_SOURCE == "push"
+  script:
+    - npx --yes markdownlint-cli2
+
+# =============================================================================
 # Tagged GitLab Releases — "tag what I bumped."
 #
 # Releases live on GitLab (the GitHub mirror is CI-only). This job closes

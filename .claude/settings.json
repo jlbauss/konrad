@@ -6,6 +6,7 @@
       "Bash(yamllint:*)",
       "Bash(hadolint:*)",
       "Bash(actionlint:*)",
+      "Bash(npx --yes markdownlint-cli2:*)",
       "Bash(bash -n:*)",
       "Bash(sh -n:*)",
       "Bash(git:*)",

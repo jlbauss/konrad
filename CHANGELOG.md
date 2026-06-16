@@ -20,6 +20,7 @@ publishes as `:0.X.Y`, `:0.X`, `:latest`, and an immutable
 ## [0.10.0] - 2026-06-15
 
 ### Added
+
 - `konrad connect` — authenticate a provider (`opencode auth login`) with no agent
   in the loop and the firewall off, so an OAuth login (Claude Pro/Max, …) no longer
   needs a one-time `--allow-host`. Args pass straight through (`konrad connect -p
@@ -33,6 +34,7 @@ publishes as `:0.X.Y`, `:0.X`, `:latest`, and an immutable
 ## [0.9.4] - 2026-06-15
 
 ### Added
+
 - The agent now sees the egress allow-list: the concrete set of reachable hosts
   is inlined into its instructions at session start, so it stops wasting turns
   on fetches the firewall would refuse. Derived from the same single source the
@@ -41,6 +43,7 @@ publishes as `:0.X.Y`, `:0.X`, `:latest`, and an immutable
 ## [0.9.3] - 2026-06-14
 
 ### Changed
+
 - Fewer permission prompts: the agent now acts freely inside its sandbox and
   asks only before an irreversible `rm -rf` of your real `/workspace` files.
   Root (`sudo`), host container/cluster control (`podman`/`docker`/`kubectl`),
@@ -51,6 +54,7 @@ publishes as `:0.X.Y`, `:0.X`, `:latest`, and an immutable
 ## [0.9.2] - 2026-06-13
 
 ### Fixed
+
 - Egress firewall no longer blocks built-in providers (OpenRouter, Anthropic,
   OpenAI, …) enabled with just an API key or `/connect`. These carry no URL in
   your config, so the proxy now resolves them to a host via a baked,
@@ -58,6 +62,7 @@ publishes as `:0.X.Y`, `:0.X`, `:latest`, and an immutable
   previously only providers with an explicit `baseURL` were allowed.
 
 ### Changed
+
 - The firewall allow-list **live-reloads** when you connect a provider
   mid-session — connecting now takes effect within seconds, with no konrad
   restart and no `--no-firewall` (API-key providers; an OAuth first-connect
@@ -66,12 +71,14 @@ publishes as `:0.X.Y`, `:0.X`, `:latest`, and an immutable
 ## [0.9.1] - 2026-06-13
 
 ### Fixed
+
 - The opencode layer is now reproducible across rebuilds — npm/Node build cruft
   (debug logs, V8 compile cache) no longer leaks into image layers, so an
   unrelated `python.lock` bump stops needlessly re-shipping the opencode layer.
   Sibling to the 0.9.0 venv-layer dedupe.
 
 ### Changed
+
 - opencode ships a single CPU-portable binary (`-baseline` on x64) instead of one
   picked from the build host's CPU — halves the opencode layer (~104 → ~52 MB)
   and removes a latent illegal-instruction risk on older x64 CPUs.
@@ -79,6 +86,7 @@ publishes as `:0.X.Y`, `:0.X`, `:latest`, and an immutable
 ## [0.9.0] - 2026-06-11
 
 ### Changed
+
 - The Python venv now ships as three `COPY` layers — torch (~700 MB), the large
   numeric wheels (opencv/scipy/numpy/onnxruntime/sympy, ~450 MB), and the rest
   (~360 MB) — instead of one ~1.5 GB layer. A `python.lock` bump that only moves
@@ -89,6 +97,7 @@ publishes as `:0.X.Y`, `:0.X`, `:latest`, and an immutable
 ## [0.8.0] - 2026-06-10
 
 ### Added
+
 - Egress firewall, **on by default**. The agent container now runs on an
   isolated Podman network with no direct internet route and reaches the outside
   only through a sidecar filtering proxy (tinyproxy, run from the same image)
@@ -104,6 +113,7 @@ publishes as `:0.X.Y`, `:0.X`, `:latest`, and an immutable
 ## [0.7.0] - 2026-06-10
 
 ### Added
+
 - Dev-container self-testing now works on macOS hosts too: a `dockerPath` shim
   ([.devcontainer/podman-vscode.sh](.devcontainer/podman-vscode.sh)) creates the
   dev container via the podman machine's bundled *rootful* connection (the
@@ -125,6 +135,7 @@ publishes as `:0.X.Y`, `:0.X`, `:latest`, and an immutable
   always means the runtime broke.
 
 ### Fixed
+
 - `scripts/smoke-test.sh` now skips its org-layer-compose check on a remote
   daemon (dev-container self-testing) instead of failing on an unreachable
   bind-mount source — matching what `bin/konrad` already does and what
@@ -134,6 +145,7 @@ publishes as `:0.X.Y`, `:0.X`, `:latest`, and an immutable
 ## [0.6.0] - 2026-06-09
 
 ### Changed
+
 - Docling model layers are now commit-pinned (`image/locks/models.lock`),
   metadata-stripped, and split one-per-model — so an unrelated lock bump no
   longer changes their bytes, and an image update re-pulls a model only when
@@ -145,6 +157,7 @@ publishes as `:0.X.Y`, `:0.X`, `:latest`, and an immutable
 ## [0.5.1] - 2026-06-08
 
 ### Changed
+
 - Licensing now follows the [REUSE](https://reuse.software) specification — every
   file's copyright + license is declared in `REUSE.toml` / `LICENSES/` (SPDX-clear,
   `reuse lint`-verified, CI-gated); `NOTICE` retired, its acknowledgements moved
@@ -156,6 +169,7 @@ publishes as `:0.X.Y`, `:0.X`, `:latest`, and an immutable
 ## [0.5.0] - 2026-06-08
 
 ### Added
+
 - `konrad run "<prompt>"` — non-interactive one-shot mode: execs `opencode run`
   instead of the TUI, streams the answer to stdout, propagates the exit code.
   Everything after `run` passes through to opencode verbatim.
@@ -164,17 +178,20 @@ publishes as `:0.X.Y`, `:0.X`, `:latest`, and an immutable
   shared); `--reset --profile` wipes just that profile.
 
 ### Changed
+
 - `-v` no longer dumps raw HTTP traffic; opt in with `KONRAD_TRACE_FETCH=1`.
 
 ## [0.4.1] - 2026-06-03
 
 ### Added
+
 - Dev-container self-testing — drive the host Podman daemon from inside the dev
   container to exercise the runtime image (Linux hosts). Contributor-facing.
 
 ## [0.4.0] - 2026-06-02
 
 ### Added
+
 - Org configuration layer — a third config tier merged `baked < org < user`,
   letting an organization ship fleet-wide defaults (extra models, an internal
   provider endpoint, house skills/agents, a corporate `AGENTS.md`, fonts)
@@ -183,12 +200,14 @@ publishes as `:0.X.Y`, `:0.X`, `:latest`, and an immutable
 ## [0.3.1] - 2026-06-02
 
 ### Fixed
+
 - Keep `/etc/konrad` traversable for the runtime user (`COPY --chmod` was
   setting the parent-dir mode too strictly).
 
 ## [0.3.0] - 2026-06-01
 
 ### Added
+
 - `frontend-design` bundled skill, plus ready-made `grill-me`, `write-a-skill`,
   and `image-editing`.
 
@@ -197,15 +216,18 @@ publishes as `:0.X.Y`, `:0.X`, `:latest`, and an immutable
 A same-day run of CLI and release-plumbing polish.
 
 ### Added
+
 - `konrad --check-updates`; a pull-progress layer counter; `--version` printed
   at the tail of `--update` / install.
 
 ### Changed
+
 - Three-segment pre-1.0 versions (`0.X.Y`) with hyphen-separated dated image
   tags; image rebuilds decoupled from CLI-only `VERSION` bumps; lock-file noise
   reduced (dropped the npm pin, stripped `python.lock` comments).
 
 ### Fixed
+
 - `konrad --update` unbound-variable crash (`REGISTRY_IMAGE` /
   `INSTALL_REMOTE_URL` expansions).
 
@@ -216,6 +238,7 @@ GitHub mirror stays a private CI surface). The accumulated private-development
 feature set at first public release:
 
 ### Added
+
 - Sandboxed opencode in a rootless Podman container (`--userns=keep-id`).
 - Host-mergeable configuration layering and a per-user `~/.config/konrad/`.
 - Bundled skills: `pdf`, `spreadsheets`, and `quality-assurance` (the
@@ -226,6 +249,7 @@ feature set at first public release:
 - Distinct CLI-vs-image version reporting in `konrad --version`.
 
 ### Changed
+
 - Relicensed GPL-3.0 → AGPL-3.0.
 
 > Pre-`0.2` development is summarized here rather than itemized — it predates
