@@ -15,6 +15,7 @@ _Raw ideas land here. Promote into the appropriate tier after a refinement pass.
 
 _Gates the beta declaration — a genuinely usable product for the organization._
 
+- [ ] add a general "context" read-only bind mount, so users can supply files that are personalized context? Maybe even add the option to put stuff to the ask list to gate access to confidential data
 - **Distribution & operations**
   - [ ] `M` **Auto-update.** Keep the latest image at hand — possibly via a background refresh.
   - [ ] `S` **HF token in CI.** Conceptualize the best approach — possibly [trusted publishers](https://huggingface.co/docs/hub/trusted-publishers).
