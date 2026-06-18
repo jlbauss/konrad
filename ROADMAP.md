@@ -11,11 +11,13 @@ Conventions for what lands here (vs. CHANGELOG or a commit message) are in
 
 _Raw ideas land here. Promote into the appropriate tier after a refinement pass._
 
+- [ ] add a general "context" read-only bind mount, so users can supply files that are personalized context? Maybe even add the option to put stuff to the ask list to gate access to confidential data - or rather use skills for that? i.e. a skill with a reference folder where the context goes?
+- [ ] switch macos container engine from podman to apple container?
+
 ## Tier 1 — Road to beta
 
 _Gates the beta declaration — a genuinely usable product for the organization._
 
-- [ ] add a general "context" read-only bind mount, so users can supply files that are personalized context? Maybe even add the option to put stuff to the ask list to gate access to confidential data
 - **Distribution & operations**
   - [ ] `M` **Auto-update.** Keep the latest image at hand — possibly via a background refresh.
   - [ ] `S` **HF token in CI.** Conceptualize the best approach — possibly [trusted publishers](https://huggingface.co/docs/hub/trusted-publishers).
