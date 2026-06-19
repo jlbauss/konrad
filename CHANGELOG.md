@@ -17,6 +17,8 @@ publishes as `:0.X.Y`, `:0.X`, `:latest`, and an immutable
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-06-19
+
 ### Added
 
 - **Apple `container` engine support (Apple-Silicon macOS).** On macOS 26+ with
