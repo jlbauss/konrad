@@ -168,6 +168,18 @@ Deliberately **not** in the default set: `models.dev` (the external model catalo
 
 It's **on by default**. Turn it off for a run with `konrad --no-firewall`. When the agent reports a host is blocked, that's the firewall doing its job — add the host if you trust it. (Why a proxy and not a raw IP block: remote providers sit behind rotating cloud IPs, so the allow-list is by _hostname_. Full design in [ARCHITECTURE.md](ARCHITECTURE.md#state-secrets--isolation).)
 
+### Resource limits
+
+Each run caps the agent container's RAM and CPU, on both engines, at a ceiling **auto-scaled to your machine** — half the host RAM (clamped to `2`–`32 GB`) and all but two of the cores (at least `2`). This bounds a runaway or fork-bombing agent, and — on Apple's `container`, whose per-container default is a tight 1 GB — it lifts a ceiling small enough to get the bundled `docling` models OOM-killed mid-run. The CPU cap doubles as the container's thread budget (`OMP_NUM_THREADS`), so `docling` PDF extraction actually uses your cores instead of self-throttling to 4 threads. `konrad --help` prints the values computed for your host.
+
+Pin explicit values (or opt out) per run with environment variables:
+
+```sh
+KONRAD_MEMORY=8G konrad        # pin the RAM cap (heavy docling / OCR on large scans)
+KONRAD_CPUS=8 konrad           # pin the CPU-core cap (also docling/torch's thread count)
+KONRAD_MEMORY=0 konrad         # no RAM cap (Podman's previous unbounded behaviour)
+```
+
 ### Quick start: edit your override
 
 ```sh
@@ -273,6 +285,7 @@ opencode's sessions and conversation DB are **ephemeral** — gone on container 
 | `LM Studio not reachable at http://localhost:1234`               | LM Studio off or on a wrong port            | LM Studio → Developer → Start Server, port 1234. (Or you're on Ollama / llama.cpp — set your model in [Configuration](#configuration) and ignore the warning.) |
 | `EACCES: permission denied, mkdir '/home/node/.local/state'`     | Stale image (pre-permission-fix)            | `konrad --update`                                                                         |
 | Agent can't find the file you mentioned                          | You ran `konrad` in the wrong directory     | The cwd is what gets mounted at `/workspace`. Always `cd` first.                          |
+| A command (e.g. `docling`) prints `Killed` with no error         | Container hit its RAM cap (out-of-memory)   | Raise it for the run: `KONRAD_MEMORY=8G konrad` (see [Resource limits](#resource-limits)). |
 | `merge-config: failed to parse …/konrad/user/opencode.jsonc`     | Syntax error in your user override          | `cat` it and check the JSONC syntax. Comments are fine. (Same applies to `org/opencode.jsonc`.) |
 | Want to wipe and start over                                      | —                                           | `konrad --reset` (prompts `[y/N]`), then `konrad --update`                                |
 

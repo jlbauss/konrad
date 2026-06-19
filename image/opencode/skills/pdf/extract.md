@@ -4,6 +4,10 @@ For text/markdown/JSON extraction from PDFs, conversion to readable
 formats, chunking for RAG, and structure analysis. Backed by **docling**'s
 standard PDF pipeline (CPU, with OCR via RapidOCR when needed).
 
+docling's thread count auto-scales to the container's CPU budget (the
+host sets `OMP_NUM_THREADS`), so you don't need `--num-threads` — large
+documents already use the cores available to the run.
+
 > The konrad image installs `docling-slim[standard]`, which ships with
 > **RapidOCR** as the OCR engine — not EasyOCR (docling's normal default).
 > The **VLM pipeline**, **Apple-MLX backend**, and alternative OCR

@@ -145,6 +145,22 @@ KONRAD_FIREWALL="${KONRAD_FIREWALL:-1}"
 KONRAD_PROXY_PORT="${KONRAD_PROXY_PORT:-8888}"
 KONRAD_ALLOW_HOST="${KONRAD_ALLOW_HOST:-}"
 
+# Resource limits for the agent container (RAM + CPU). Left empty here on purpose:
+# when unset, podman_run derives a proportional default from the host's own totals
+# (half the RAM, clamped to [2G, 32G]; all cores but two reserved for the host, min
+# 2 — see default_memory / default_cpus), so a small laptop and a big workstation
+# each get a ceiling that fits. The cap does double duty across both engines: Apple's `container` defaults
+# to a tiny 1G VM — too small for the bundled docling models, which OOM-kill
+# mid-run — so the default lifts that floor, while on otherwise-uncapped Podman it
+# bounds runaway/fork-bomb usage. Both CLIs accept --memory/--cpus with the same
+# spelling, so one computation serves both — no eng_* wrapper needed. Override per
+# run by setting the env vars to an explicit value (e.g. KONRAD_MEMORY=8G for heavy
+# OCR), or to 0 to drop that cap entirely (restores Podman's unbounded behaviour).
+# The CPU cap also becomes the container's OMP_NUM_THREADS (see podman_run), so
+# docling/torch actually use the granted cores instead of self-throttling to 4.
+KONRAD_MEMORY="${KONRAD_MEMORY:-}"
+KONRAD_CPUS="${KONRAD_CPUS:-}"
+
 # Container engine. Konrad runs on Podman everywhere, with one exception: on
 # Apple-Silicon macOS where Apple's `container` CLI (apple/container, macOS 26+)
 # is installed, that native engine is preferred — it drops the `podman machine`
@@ -849,6 +865,64 @@ fw_setup() {
   fi
 }
 
+# --- Resource-limit defaults -------------------------------------------------
+# Proportional caps derived from the host's own totals, so the ceiling fits the
+# machine. Detection is best-effort (Linux /proc, macOS sysctl); any miss falls
+# back to the fixed 4G / 4. Both engines take the same --memory/--cpus spelling,
+# so one computation serves both. Users override via KONRAD_MEMORY / KONRAD_CPUS.
+
+# Total physical RAM in MiB, or empty if it can't be read. Always exits 0.
+host_mem_mib() {
+  local raw=""
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    raw="$(sysctl -n hw.memsize 2>/dev/null || true)"
+    if [[ "$raw" =~ ^[0-9]+$ ]]; then printf '%s' "$(( raw / 1048576 ))"; fi
+  else
+    raw="$(awk '/^MemTotal:/{print $2; exit}' /proc/meminfo 2>/dev/null || true)"
+    if [[ "$raw" =~ ^[0-9]+$ ]]; then printf '%s' "$(( raw / 1024 ))"; fi
+  fi
+  return 0
+}
+
+# Logical CPU count, or empty if it can't be read. Always exits 0.
+host_cpu_count() {
+  local raw=""
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    raw="$(sysctl -n hw.ncpu 2>/dev/null || true)"
+  else
+    raw="$(nproc 2>/dev/null || true)"
+  fi
+  if [[ "$raw" =~ ^[0-9]+$ ]]; then printf '%s' "$raw"; fi
+  return 0
+}
+
+# Default memory cap: half the host RAM, clamped to [2G, 32G] and never above the
+# host total. Emitted as <n>G when a whole GiB, else <n>M. Falls back to 4G.
+default_memory() {
+  local total half
+  total="$(host_mem_mib)"
+  if [[ ! "$total" =~ ^[0-9]+$ ]] || (( total <= 0 )); then printf '4G'; return 0; fi
+  half=$(( total / 2 ))
+  if (( half < 2048 ));  then half=2048;  fi
+  if (( half > 32768 )); then half=32768; fi
+  if (( half > total )); then half="$total"; fi
+  if (( half % 1024 == 0 )); then printf '%sG' "$(( half / 1024 ))"; else printf '%sM' "$half"; fi
+  return 0
+}
+
+# Default CPU cap: all cores but two reserved for the host, min 2, never above the
+# host count. Falls back to 4.
+default_cpus() {
+  local total cap
+  total="$(host_cpu_count)"
+  if [[ ! "$total" =~ ^[0-9]+$ ]] || (( total <= 0 )); then printf '4'; return 0; fi
+  cap=$(( total - 2 ))
+  if (( cap < 2 ));     then cap=2;        fi
+  if (( cap > total )); then cap="$total"; fi
+  printf '%s' "$cap"
+  return 0
+}
+
 # Run a command inside the konrad container with the standard mount set.
 # All variables are quoted, so paths containing spaces are safe.
 podman_run() {
@@ -1023,6 +1097,31 @@ podman_run() {
   [[ -n "${KONRAD_PUBLISH_PORT:-}" ]] \
     && publish_flags=(-p "127.0.0.1:${KONRAD_PUBLISH_PORT}:${KONRAD_PUBLISH_PORT}")
 
+  # Resource caps (RAM + CPU; see KONRAD_MEMORY / KONRAD_CPUS up top). Unset env →
+  # a proportional default from host totals; explicit value used as-is; 0 → no cap.
+  # Same flag spelling on both engines.
+  local mem_cap cpu_cap
+  mem_cap="${KONRAD_MEMORY:-$(default_memory)}"
+  cpu_cap="${KONRAD_CPUS:-$(default_cpus)}"
+  local -a res_flags=()
+  [[ "$mem_cap" != 0 ]] && res_flags+=(--memory "$mem_cap")
+  [[ "$cpu_cap" != 0 ]] && res_flags+=(--cpus   "$cpu_cap")
+
+  # Let CPU-bound libraries use the cores we just granted. docling/torch (and any
+  # OpenMP/numpy work) otherwise self-throttle to 4 threads regardless of --cpus,
+  # so on a big host the extra cores sit idle on the heaviest tool in the image.
+  # Track the CPU cap as an integer (floor a fractional --cpus; min 1); when the
+  # cap is off, fall back to the host core count. Best-effort — skip if unknown.
+  local omp_threads=""
+  if [[ "$cpu_cap" != 0 ]]; then omp_threads="${cpu_cap%%.*}"; else omp_threads="$(host_cpu_count)"; fi
+  if [[ "$omp_threads" =~ ^[0-9]+$ ]]; then
+    if (( omp_threads < 1 )); then omp_threads=1; fi
+  else
+    omp_threads=""
+  fi
+  local -a omp_flags=()
+  [[ -n "$omp_threads" ]] && omp_flags+=(-e "OMP_NUM_THREADS=$omp_threads")
+
   local -a run_cmd=(
     "$KONRAD_ENGINE" run
     --rm ${tty_flags[@]+"${tty_flags[@]}"} --init
@@ -1030,6 +1129,8 @@ podman_run() {
     ${seal_flags[@]+"${seal_flags[@]}"}
     ${net_flags[@]+"${net_flags[@]}"}
     ${publish_flags[@]+"${publish_flags[@]}"}
+    ${res_flags[@]+"${res_flags[@]}"}
+    ${omp_flags[@]+"${omp_flags[@]}"}
     ${proxy_env[@]+"${proxy_env[@]}"}
     -e "KONRAD_DEBUG=${KONRAD_DEBUG}"
     -e "KONRAD_TRACE_FETCH=${KONRAD_TRACE_FETCH:-0}"
@@ -1771,6 +1872,12 @@ $cross_pointer
 Override which image runs:
   KONRAD_IMAGE=konrad:pr-42 $self    Test a published PR image.
   KONRAD_IMAGE=konrad:my-tag $self   Run a custom-tagged image you built or pulled.
+
+Resource caps (auto-scaled to this host: $(default_memory) RAM / $(default_cpus) CPUs;
+bounds runaway use and lifts Apple container's tight 1G default that OOM-kills docling):
+  KONRAD_MEMORY=8G $self             Pin the RAM cap (heavy docling / OCR).
+  KONRAD_MEMORY=0 $self              Drop the RAM cap (Podman's old unbounded run).
+  KONRAD_CPUS=8 $self                Pin the CPU-core cap (also docling/torch's thread budget).
 
 Files in the workspace (.agent/ belongs to the agent end-to-end):
   .agent/task.md        Current task's plan + outcome (committable).

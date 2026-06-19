@@ -17,6 +17,21 @@ publishes as `:0.X.Y`, `:0.X`, `:latest`, and an immutable
 
 ## [Unreleased]
 
+### Added
+
+- **Default RAM + CPU caps on the agent container, auto-scaled to the host.** Every
+  `run` / `--shell` / `run`-oneshot launch now caps the agent (`--memory` / `--cpus`,
+  both engines) at a ceiling derived from the machine — half the host RAM (clamped to
+  `2G`–`32G`) and all but two of the cores (min `2`). This lifts Apple `container`'s tight 1G
+  default — too small for the bundled docling models, which the kernel OOM-killed
+  mid-run — and bounds runaway/fork-bomb usage on otherwise-uncapped Podman. Pin an
+  explicit value with `KONRAD_MEMORY` / `KONRAD_CPUS`; set either to `0` to drop that
+  cap (restoring Podman's previous unbounded behaviour). The CPU cap also sets the
+  container's `OMP_NUM_THREADS`, so docling/torch use the granted cores instead of
+  self-throttling to their 4-thread default — a multi-core host now actually speeds up
+  PDF extraction. Partial delivery of the roadmap's container-hardening item.
+  See [ARCHITECTURE → State, secrets & isolation](ARCHITECTURE.md#state-secrets--isolation).
+
 ## [0.12.0] - 2026-06-19
 
 ### Added
