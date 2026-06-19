@@ -17,6 +17,8 @@ publishes as `:0.X.Y`, `:0.X`, `:latest`, and an immutable
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-06-19
+
 ### Added
 
 - **Default RAM + CPU caps on the agent container, auto-scaled to the host.** Every
