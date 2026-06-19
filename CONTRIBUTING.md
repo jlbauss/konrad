@@ -146,7 +146,7 @@ The separator before the date is a **hyphen**, not a dot, so the tag doesn't rea
 
 ### Git tags & releases
 
-Releases live on **GitLab** — the GitHub mirror is CI-only, no releases there. Tags are **`vX.Y.Z`** (`v`-prefixed). The [`release` job in `.gitlab-ci.yml`](.gitlab-ci.yml) cuts the `v<VERSION>` tag + a GitLab Release automatically whenever a `chore(release):` bump to `VERSION` lands on main, pulling the release notes from the matching [CHANGELOG.md](CHANGELOG.md) section — which stays the authoritative record. So every `VERSION` bump (patch included) gets a tag; nothing to do by hand.
+Releases live on **GitLab** — the GitHub mirror is CI-only, no releases there. Tags are **`vX.Y.Z`** (`v`-prefixed). The [`release` job in `.gitlab-ci.yml`](.gitlab-ci.yml) cuts the `v<VERSION>` tag + a GitLab Release automatically whenever a `chore(release):` bump to `VERSION` lands on main, pulling the release notes from the matching [CHANGELOG.md](CHANGELOG.md) section — which stays the authoritative record. So every `VERSION` bump (patch included) gets a tag; nothing to do by hand **except promote the CHANGELOG section in the bump commit** (see [Release commit](#when-to-update-what)) — the job fails closed if `## [<VERSION>]` is missing.
 
 ## Repo layout — what goes where
 
@@ -207,7 +207,7 @@ Co-Authored-By: ...                               (when applicable)
 
 **Breaking changes** — mark with `!` after the type/scope (e.g. `feat!:`) and/or a `BREAKING CHANGE:` footer. This drives the version bump: **MINOR pre-1.0** (no MAJOR slot yet), **MAJOR post-1.0** — see [Versioning](#versioning).
 
-**Release commit** — the `VERSION` bump is `chore(release): <version>`, made as the last commit before merge (see [the maintainer flow](#branching-and-pull-requests)).
+**Release commit** — the `VERSION` bump is `chore(release): <version>`, made as the last commit before merge (see [the maintainer flow](#branching-and-pull-requests)). **In that same commit, promote the CHANGELOG**: rename `## [Unreleased]` to `## [<version>] - <YYYY-MM-DD>` and open a fresh empty `## [Unreleased]` above it, so the [release job](#git-tags--releases) finds a matching section to publish. Bumping `VERSION` while the entries still sit under `## [Unreleased]` is the classic slip — the release job now **fails closed** on a missing `## [<version>]` section rather than shipping an empty release, so forgetting breaks the release loudly instead of silently.
 
 ## When to update what
 

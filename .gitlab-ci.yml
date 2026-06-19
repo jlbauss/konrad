@@ -329,15 +329,23 @@ release:
       # `## [<VERSION>]` heading and the next `## [` heading, dropping the
       # leading blank line (started flips on the first non-blank). awk-only —
       # the release-cli image is BusyBox, whose sed rejects GNU brace/label
-      # trims. Falls back to a pointer if the section is missing (a bump
-      # should always carry one).
+      # trims.
       NOTES="$(awk -v ver="$VERSION" '
         $0 ~ "^## \\[" ver "\\]" { grab = 1; next }
         grab && /^## \[/ { exit }
         grab && NF { started = 1 }
         grab && started { print }
       ' CHANGELOG.md)"
-      [ -n "$NOTES" ] || NOTES="See [CHANGELOG.md](CHANGELOG.md) for $TAG."
+      # Fail closed: a VERSION bump must carry a matching `## [<VERSION>]`
+      # CHANGELOG section. The easy slip is bumping VERSION but leaving the
+      # entry under `## [Unreleased]` — that used to ship a silent pointer-only
+      # release. Better to break the release loudly and fix the CHANGELOG than
+      # publish empty notes (recovery: add the section, then re-run this job).
+      if [ -z "$NOTES" ]; then
+        echo "release: no '## [$VERSION]' section in CHANGELOG.md — promote the" \
+             "## [Unreleased] entry to '## [$VERSION] - <date>' before releasing." >&2
+        exit 1
+      fi
 
       echo "Releasing $TAG at $CI_COMMIT_SHA"
       release-cli create \
