@@ -336,8 +336,13 @@ eng_image_exists() {
 # Pull / retag / remove an image.
 eng_pull() {
   case "$KONRAD_ENGINE" in
+    # podman resolves a multi-arch index to the host platform on its own
+    # (its VM is host-arch), so no --platform needed. Apple's `container`
+    # does NOT: an unqualified pull unpacks *every* platform in the index
+    # (you'd watch it unpack amd64 then arm64 on Apple Silicon — wasted
+    # bandwidth + disk for layers that never run). Pin it to the host arch.
     podman)    podman pull "$1" ;;
-    container) container image pull "$1" ;;
+    container) container image pull --platform "linux/$(_pull_arch)" "$1" ;;
   esac
 }
 eng_tag() {

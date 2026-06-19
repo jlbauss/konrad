@@ -17,6 +17,14 @@ publishes as `:0.X.Y`, `:0.X`, `:latest`, and an immutable
 
 ## [Unreleased]
 
+### Fixed
+
+- **macOS `--update` no longer unpacks every architecture.** On Apple Silicon the
+  native `container image pull` was unqualified, so it unpacked the whole multi-arch
+  index (amd64 *and* arm64) before running the arm64 image — wasted bandwidth and disk.
+  The pull is now pinned to `linux/<host-arch>`. Podman was already host-arch-only and
+  is unchanged.
+
 ## [0.13.0] - 2026-06-19
 
 ### Added
