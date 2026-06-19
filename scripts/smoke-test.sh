@@ -8,9 +8,12 @@
 #   ./scripts/smoke-test.sh my-tag:1.2            # tests an arbitrary tag
 #   CONTAINER_ENGINE=docker ./scripts/smoke-test.sh   # use docker not podman
 #
-# CONTAINER_ENGINE defaults to podman (matches the local konrad runtime)
-# but accepts docker (used in GitHub Actions, where docker is preinstalled
-# and podman is not). Both engines accept the same flags we use here
+# Engine selection: an explicit CONTAINER_ENGINE wins (CI sets docker, where
+# podman isn't installed). Otherwise we mirror konrad's own choice — KONRAD_ENGINE
+# if set, else auto: Apple's `container` on Apple-Silicon macOS when present, else
+# podman — so a local `konrad-dev --rebuild && ./scripts/smoke-test.sh` inspects
+# the SAME image store konrad just built into (a `container build` lands the image
+# in container's store, not podman's). All three engines accept the flags we use
 # (`run --rm --entrypoint ""`, `image inspect`).
 #
 # The checks are deliberately "installed and importable" rather than
@@ -20,7 +23,15 @@
 set -euo pipefail
 
 IMAGE="${1:-konrad:latest}"
-ENGINE="${CONTAINER_ENGINE:-podman}"
+if [ -n "${CONTAINER_ENGINE:-}" ]; then
+  ENGINE="$CONTAINER_ENGINE"
+elif [ -n "${KONRAD_ENGINE:-}" ]; then
+  ENGINE="$KONRAD_ENGINE"
+elif [ "$(uname -s)" = Darwin ] && [ "$(uname -m)" = arm64 ] && command -v container >/dev/null 2>&1; then
+  ENGINE="container"
+else
+  ENGINE="podman"
+fi
 
 # --- Output helpers ---
 pass() { printf '  \033[32mPASS\033[0m  %s\n' "$*"; }
@@ -102,6 +113,16 @@ in_image test -x /usr/local/bin/konrad-entrypoint \
   || fail "konrad-entrypoint missing or non-executable"
 in_image test -f /etc/konrad/merge-config.js \
   || fail "merge-config.js missing"
+# apple/container egress seal + local-model host alias depend on the shared
+# privilege-drop helper, a privilege-drop tool (setpriv preferred), and `ip`
+# (iproute2). Missing any would make the root prelude fail closed and abort the
+# run on that engine, so assert them here even though they're inert on Podman.
+in_image test -f /usr/local/lib/konrad-privdrop.sh \
+  || fail "konrad-privdrop.sh missing (apple/container seal helper)"
+in_image sh -c 'command -v setpriv || command -v gosu || command -v runuser' >/dev/null \
+  || fail "no privilege-drop tool (setpriv/gosu/runuser) — apple/container root prelude can't drop to node"
+in_image which ip >/dev/null \
+  || fail "ip (iproute2) missing — apple/container egress seal can't install the blackhole route"
 in_image test -f /etc/konrad/opencode-defaults.jsonc \
   || fail "opencode-defaults.jsonc missing"
 # opencode-discoverable content

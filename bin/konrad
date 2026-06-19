@@ -45,6 +45,15 @@ SECRETS_VOLUME="konrad-secrets"
 CACHE_VOLUME="konrad-cache"
 STATE_VOLUME="konrad-state"
 
+# Where the three stores above live when the engine is apple/container. Podman
+# uses real named volumes (chowned to the runtime user via the :U mount option);
+# apple/container can't chown a named volume and has no :U, and a fresh named
+# volume there is root-owned — so node (uid 1000) can't write it. A host-dir
+# bind sidesteps that: VirtioFS remaps the owner to the container user (the same
+# reason the /workspace bind is writable). So on that engine each store is a
+# subdir here, bind-mounted; Podman ignores this entirely. See eng_volume_*.
+KONRAD_STORE_HOME="${XDG_STATE_HOME:-$HOME/.local/state}/konrad/store"
+
 # Volume profile (--profile <name>). When set, the state + cache volumes are
 # suffixed (konrad-state → konrad-state-<name>, konrad-cache → konrad-cache-<name>)
 # so a named profile gets throwaway opencode state — its own session DB, model
@@ -135,6 +144,18 @@ KONRAD_TRACE_FETCH="${KONRAD_TRACE_FETCH:-0}"
 KONRAD_FIREWALL="${KONRAD_FIREWALL:-1}"
 KONRAD_PROXY_PORT="${KONRAD_PROXY_PORT:-8888}"
 KONRAD_ALLOW_HOST="${KONRAD_ALLOW_HOST:-}"
+
+# Container engine. Konrad runs on Podman everywhere, with one exception: on
+# Apple-Silicon macOS where Apple's `container` CLI (apple/container, macOS 26+)
+# is installed, that native engine is preferred — it drops the `podman machine`
+# VM entirely. Empty here → detect_engine() picks one at startup. Pin explicitly
+# with KONRAD_ENGINE=podman (stay on Podman on a Mac) or =container (force it).
+# The dev container is Linux, so it always resolves to podman — working ON konrad
+# stays on Podman. Every engine call below routes through an eng_* wrapper, since
+# the two CLIs are NOT subcommand-compatible (`container image pull` vs
+# `podman pull`, `container delete` vs `podman rm`, JSON-only inspect, no
+# `--userns`, no `:z`/`:U`/`:ro` mount suffixes).
+KONRAD_ENGINE="${KONRAD_ENGINE:-}"
 # opencode's loopback port for the remote-MCP OAuth callback. `konrad mcp-auth`
 # publishes it to the host so the post-approval redirect reaches the sandbox.
 # ponytail: opencode uses a fixed port today; env-overridable if that changes.
@@ -148,22 +169,19 @@ dbg() {
   printf 'konrad [debug +%ss]: %s\n' "$SECONDS" "$*" >&2
 }
 
-# --- Image-pull progress + registry probes (manifest preflight + awk counter) ---
+# --- Registry probes (manifest preflight for --check-updates) ----------------
 #
-# Why this shape: podman doesn't expose byte-level pull progress anywhere
-# (libpod & docker-compat endpoints, events, debug log — all silent on bytes;
-# containers/podman issue #24887 is open). The ceiling is a layer counter.
-# We fetch the platform-specific manifest via curl+jq to learn the total
-# layer count M, then pipe `podman pull` through awk to render `[N/M]` per
-# `Copying blob sha256:…` line. jq is a soft-dep — missing jq → warn once
-# and fall back to bare `podman pull`. Whole flow is registry-agnostic in
-# shape but the token endpoint is ghcr.io-specific today (the only registry
-# konrad pulls from).
+# `--check-updates` reads the registry's image-version label without pulling:
+# anon token → platform-specific manifest → config blob →
+# `org.opencontainers.image.version`, compared against the locally-installed
+# image to tell the user whether a pull would change anything. Registry-agnostic
+# in shape, but the token endpoint is ghcr.io-specific today (the only registry
+# konrad pulls from). jq + curl are soft-deps — missing either → silent skip.
 #
-# The same primitives also power `--check-updates`: token + platform
-# manifest + config blob → `org.opencontainers.image.version` label, which
-# we compare against the locally-installed image to tell the user whether
-# a pull would change anything.
+# Pulls themselves no longer wrap a custom progress counter: each engine renders
+# its own native pull progress (Podman's per-layer bars on Linux, Apple's
+# `container` UX on macOS), which beats piping podman through an aggregator that
+# suppressed those bars. The pull goes straight through eng_pull().
 
 # Split `<registry>/<repo>:<tag>` into three space-separated tokens on stdout.
 # Defaults `tag` to `latest`. Repo may contain slashes; tokens won't.
@@ -232,21 +250,6 @@ _registry_platform_manifest() {
   esac
 }
 
-# Fetch the layer count for the platform-specific manifest of $1.
-# Prints the count on stdout, or nothing on any failure / unknown registry.
-# Always returns 0 so callers can `total="$(manifest_total_layers ... )"`.
-manifest_total_layers() {
-  command -v jq   >/dev/null 2>&1 || return 0
-  command -v curl >/dev/null 2>&1 || return 0
-  local registry repo tag token
-  read -r registry repo tag <<<"$(_parse_image_ref "$1")"
-  token="$(_registry_anon_token "$registry" "$repo")"
-  [[ -z "$token" ]] && return 0
-  _registry_platform_manifest "$registry" "$repo" "$tag" "$token" \
-    | jq -r '.layers | length' 2>/dev/null
-  return 0
-}
-
 # Fetch the `org.opencontainers.image.version` label from the registry's
 # platform-specific image config blob. Three HTTP calls (token, manifest,
 # config blob). Prints the label on stdout, or nothing on failure.
@@ -272,92 +275,243 @@ registry_image_version() {
   return 0
 }
 
-# Run `podman pull <image>` with an aggregated [N/M] layer counter on stderr.
-# Single-line `\r`-overwrite shape: each blob redraws one line in place,
-# sealed with a `\n` at the end. Falls back to a bare pull (no counter)
-# when the manifest preflight returns nothing — keeping the happy path
-# moving when offline-resolution failed, jq is missing, or a non-ghcr
-# registry was passed.
-pull_with_progress() {
-  local image_ref="$1"
-  local total
-  total="$(manifest_total_layers "$image_ref" 2>/dev/null || true)"
-  if [[ -z "$total" ]] || ! [[ "$total" =~ ^[0-9]+$ ]] || (( total <= 0 )); then
-    if ! command -v jq >/dev/null 2>&1; then
-      warn "jq not installed; pull-progress counter disabled (install jq for the [N/M] aggregation)."
-    fi
-    podman pull "$image_ref"
-    return $?
-  fi
+# --- Container engine abstraction -------------------------------------------
+# One selector ($KONRAD_ENGINE) and a set of eng_* wrappers. detect_engine()
+# fixes the choice once at startup; every host-side engine call goes through a
+# wrapper so the Podman ⇄ apple/container CLI differences live in exactly one
+# place. The run/network/volume verbs map cleanly; the cosmetic bits that don't
+# (image-label introspection on apple/container, which is JSON-only and not
+# contract-stable) degrade gracefully rather than failing the command.
 
-  # Why a bash `while read` loop instead of awk: the previous awk wrapper
-  # used `\r` + `\033[K` for in-place overwrite, but on at least one real
-  # macOS Terminal + fish setup the counter rendered as 23 stacked lines
-  # instead of one updating line. Most likely cause is awk-side stdio
-  # buffering — BSD awk on macOS line-buffers stdout when it sees a TTY,
-  # and a `printf` without `\n` doesn't trigger that flush, while
-  # `fflush()` on a `>&2`-redirected fd isn't reliably reaching the
-  # underlying terminal synchronously. bash's `printf` is a builtin —
-  # writes go straight to fd2, which libc treats as unbuffered by default
-  # — so the bytes hit the terminal in the order and timing the terminal
-  # needs to interpret `\r` correctly.
-  #
-  # `2>&1` merges podman's stderr (progress lives there) and stdout (final
-  # image digest) into the pipe. The brace block reads line-by-line. After
-  # the pipe closes, `|| rc=${PIPESTATUS[0]}` captures podman's exit code
-  # (PIPESTATUS[0], evaluated before any later command clobbers it; the
-  # `||` keeps `set -e` from aborting on a non-zero pull). Note that the
-  # brace block runs in a subshell (right side of a pipe), so `$n` doesn't
-  # escape — that's why the seal `\n` is inside the brace, not after.
-  #
-  # Filtering (default quiet — pass everything in KONRAD_DEBUG=1):
-  #   - `Copying blob sha256:` → counter (the show)
-  #   - `Copying config sha256:`, `Trying to pull`, `Getting image source
-  #     signatures`, `Writing manifest …`, `Storing signatures`, the bare
-  #     64-hex final image-ID → swallowed
-  #   - everything else → pass through (errors land here)
-  local rc=0 verbose=0
-  [[ "$KONRAD_DEBUG" == "1" ]] && verbose=1
-  podman pull "$image_ref" 2>&1 | {
-    n=0
-    while IFS= read -r line; do
-      case "$line" in
-        "Copying blob sha256:"*)
-          ((n+=1))
-          if (( n > total )); then n=$total; fi
-          if (( verbose )); then
-            printf '  [%d/%d] %s\n' "$n" "$total" "$line" >&2
-          else
-            printf '\r  [%d/%d] %s\033[K' "$n" "$total" "$line" >&2
-          fi
-          ;;
-        "Copying config sha256:"*|\
-        "Trying to pull"*|\
-        "Getting image source signatures"|\
-        "Writing manifest to image destination"|\
-        "Storing signatures")
-          if (( verbose )); then printf '%s\n' "$line" >&2; fi
-          ;;
-        *)
-          if [[ "$line" =~ ^[0-9a-f]{64}$ ]]; then
-            if (( verbose )); then printf '%s\n' "$line" >&2; fi
-          else
-            printf '%s\n' "$line" >&2
-          fi
-          ;;
-      esac
-    done
-    if (( n > 0 )) && (( verbose == 0 )); then printf '\n' >&2; fi
-  } || rc=${PIPESTATUS[0]}
-  return "$rc"
+# Pick the engine. Podman unless we're on Apple Silicon macOS with the
+# `container` CLI present, where the native engine wins (no podman-machine VM).
+# An explicit KONRAD_ENGINE always overrides. Idempotent.
+detect_engine() {
+  if [[ -n "$KONRAD_ENGINE" ]]; then
+    case "$KONRAD_ENGINE" in
+      podman|container) return 0 ;;
+      *) die "KONRAD_ENGINE must be 'podman' or 'container' (got '$KONRAD_ENGINE')." ;;
+    esac
+  fi
+  if [[ "$(uname -s)" == "Darwin" && "$(uname -m)" == "arm64" ]] \
+     && command -v container >/dev/null 2>&1; then
+    KONRAD_ENGINE="container"
+  else
+    KONRAD_ENGINE="podman"
+  fi
+}
+
+# True when the selected engine's service is reachable.
+eng_running() {
+  case "$KONRAD_ENGINE" in
+    podman)    podman info >/dev/null 2>&1 ;;
+    container) container system status >/dev/null 2>&1 ;;
+  esac
+}
+
+# Does an image exist locally? (exit status only)
+eng_image_exists() {
+  case "$KONRAD_ENGINE" in
+    podman)    podman image exists "$1" ;;
+    container) container image inspect "$1" >/dev/null 2>&1 ;;
+  esac
+}
+
+# Pull / retag / remove an image.
+eng_pull() {
+  case "$KONRAD_ENGINE" in
+    podman)    podman pull "$1" ;;
+    container) container image pull "$1" ;;
+  esac
+}
+eng_tag() {
+  case "$KONRAD_ENGINE" in
+    podman)    podman tag "$1" "$2" ;;
+    container) container image tag "$1" "$2" ;;
+  esac
+}
+eng_image_rm() {
+  case "$KONRAD_ENGINE" in
+    podman)    podman image rm "$1" >/dev/null ;;
+    container) container image delete "$1" >/dev/null ;;
+  esac
+}
+
+# Read an OCI image label. Podman has a Go-template formatter; apple/container
+# emits JSON only, so we dig the label out with jq — best-effort, since the
+# exact inspect JSON path isn't version-stable. A miss returns empty, which
+# callers already render as "unknown". Always exits 0 so callers can capture.
+eng_image_label() {
+  local ref="$1" key="$2"
+  case "$KONRAD_ENGINE" in
+    podman)
+      podman image inspect "$ref" \
+        --format "{{index .Labels \"$key\"}}" 2>/dev/null
+      ;;
+    container)
+      command -v jq >/dev/null 2>&1 || return 0
+      container image inspect "$ref" 2>/dev/null \
+        | jq -r --arg k "$key" '
+            [ .. | objects | (.labels? // .Labels? // empty)
+              | objects | .[$k]? ]
+            | map(select(. != null and . != "")) | first // empty' 2>/dev/null
+      ;;
+  esac
+  return 0
+}
+
+# Container lifecycle: force-remove, logs, existence. Force-remove and rm are
+# best-effort (teardown must never mask the agent's exit code).
+eng_rm_container() {
+  case "$KONRAD_ENGINE" in
+    podman)    podman rm -f "$1" >/dev/null 2>&1 || true ;;
+    container) container delete --force "$1" >/dev/null 2>&1 || true ;;
+  esac
+}
+eng_logs() {  # stdout+stderr of the container, merged
+  case "$KONRAD_ENGINE" in
+    podman)    podman logs "$1" 2>&1 ;;
+    container) container logs "$1" 2>&1 ;;
+  esac
+}
+eng_container_exists() {
+  case "$KONRAD_ENGINE" in
+    podman)    podman container exists "$1" ;;
+    container) container inspect "$1" >/dev/null 2>&1 ;;
+  esac
+}
+
+# Networks. The internal (no-egress) net carries --internal on both engines.
+eng_network_create_internal() {
+  case "$KONRAD_ENGINE" in
+    podman)    podman network create --internal "$1" >/dev/null ;;
+    container) container network create --internal "$1" >/dev/null ;;
+  esac
+}
+eng_network_create() {
+  case "$KONRAD_ENGINE" in
+    podman)    podman network create "$1" >/dev/null ;;
+    container) container network create "$1" >/dev/null ;;
+  esac
+}
+eng_network_rm() {  # variadic, best-effort
+  case "$KONRAD_ENGINE" in
+    podman)    podman network rm "$@" >/dev/null 2>&1 || true ;;
+    container) container network delete "$@" >/dev/null 2>&1 || true ;;
+  esac
+}
+
+# Named-store backing. On Podman these are real named volumes; on apple/container
+# they're host directories under KONRAD_STORE_HOME (see there for why). The three
+# wrappers below all branch on that — keep them in lockstep.
+
+# Print the `-v` SOURCE for store $1 and, on apple/container, ensure its host dir
+# exists. Deterministic by name, so the agent and the proxy resolve the shared
+# secrets store to the identical path.
+eng_volume_source() {
+  if [[ "$KONRAD_ENGINE" == "podman" ]]; then
+    printf '%s' "$1"
+    return 0
+  fi
+  mkdir -p "${KONRAD_STORE_HOME}/$1"
+  printf '%s' "${KONRAD_STORE_HOME}/$1"
+}
+eng_volume_exists() {
+  if [[ "$KONRAD_ENGINE" == "podman" ]]; then
+    podman volume exists "$1"
+  else
+    [[ -d "${KONRAD_STORE_HOME}/$1" ]]
+  fi
+}
+eng_volume_rm() {
+  if [[ "$KONRAD_ENGINE" == "podman" ]]; then
+    podman volume rm "$1" >/dev/null
+  else
+    rm -rf "${KONRAD_STORE_HOME:?}/$1"
+  fi
+}
+
+# Set the global RO_BIND array to the engine-correct argv for a READ-ONLY bind
+# of host $1 → guest $2. Podman takes the :ro suffix on -v; apple/container's -v
+# has no :ro suffix, so it needs the --mount form with the readonly option (a
+# global array because bash 3.2 has no namerefs). Callers splice
+# "${RO_BIND[@]}" into their run argv. (A literal comma in a source path would
+# break the --mount key=value syntax — none of konrad's mount sources have one.)
+RO_BIND=()
+ro_bind() {
+  if [[ "$KONRAD_ENGINE" == "container" ]]; then
+    RO_BIND=(--mount "type=bind,source=$1,target=$2,readonly")
+  else
+    RO_BIND=(-v "$1:$2:ro")
+  fi
+}
+
+# Print container $1's IPv4 address on network $2 (empty on failure). Podman
+# resolves a sidecar by hostname over its internal DNS even on an --internal
+# net, so callers never need this for Podman; on apple/container DNS is dead on
+# --internal, so the agent must be handed the proxy's literal IP. The two
+# documented JSON shapes disagree (`container inspect` → .networks[].address as
+# CIDR; `container ls --format json` → .status.networks[].ipv4Address), so we
+# recurse for any object whose .network/.name matches $2 and take whichever
+# address field is present, stripping a /prefix. Robust to either shape.
+eng_container_ip() {
+  local name="$1" net="$2"
+  command -v jq >/dev/null 2>&1 || return 1
+  container inspect "$name" 2>/dev/null \
+    | jq -r --arg net "$net" '
+        [ .. | objects
+          | select((.network? // .name?) == $net)
+          | (.ipv4Address? // .address? // empty) ]
+        | map(select(. != null and . != "")) | first // empty' 2>/dev/null \
+    | sed 's#/.*##'
+}
+
+# Print network $1's IPv4 gateway, /prefix stripped (empty on failure). This is
+# apple/container's vmnet gateway for the net — and on a "host-only" (--internal)
+# or the egress `default` net that gateway IS the Mac host. Two consumers, both
+# apple/container-only: the agent's host-gateway SEAL (the internal net's gateway,
+# blackholed in the entrypoint) and the proxy's local-model route (the egress
+# net's gateway, mapped to host.containers.internal in the proxy's /etc/hosts).
+# Podman needs neither — its --internal net exposes no host route, and it injects
+# host.containers.internal into the proxy itself. Defensive jq like
+# eng_container_ip(): the inspect JSON path isn't contract-stable, so we recurse
+# for any object carrying a gateway field rather than hard-coding a path.
+eng_network_gateway() {
+  local net="$1"
+  command -v jq >/dev/null 2>&1 || return 1
+  # Observed shape (apple/container 0.x): .status.ipv4Gateway = "192.168.133.1".
+  # We recurse for any of the plausible field spellings rather than pinning the
+  # path, so a future inspect-schema tweak degrades gracefully (empty → callers
+  # fail closed / warn) instead of silently reading the wrong field.
+  container network inspect "$net" 2>/dev/null \
+    | jq -r '
+        [ .. | objects | (.ipv4Gateway? // .gateway? // .Gateway? // empty) ]
+        | map(select(type == "string" and . != "")) | first // empty' 2>/dev/null \
+    | sed 's#/.*##'
 }
 
 # --- Preflight checks ---
 
-require_podman() {
-  command -v podman >/dev/null 2>&1 \
-    || die "podman is not installed."
-  if ! podman info >/dev/null 2>&1; then
+# Engine-aware reachability check, used by both the runtime verbs and the build
+# (do_rebuild). The image now builds on whichever engine is selected — Podman via
+# buildah, apple/container via its BuildKit `container build` — so the same check
+# covers both; there's no longer a Podman-only build path needing its own guard.
+require_engine() {
+  command -v "$KONRAD_ENGINE" >/dev/null 2>&1 \
+    || die "$KONRAD_ENGINE is not installed."
+  eng_running && return 0
+  if [[ "$KONRAD_ENGINE" == "container" ]]; then
+    cat >&2 <<'EOF'
+konrad: cannot reach Apple's container service.
+
+Start it with:
+
+  container system start
+
+(First time: install it from https://github.com/apple/container/releases.)
+Or set KONRAD_ENGINE=podman to use Podman instead. Then re-run your command.
+EOF
+  else
     cat >&2 <<'EOF'
 konrad: cannot reach Podman.
 
@@ -368,12 +522,12 @@ On macOS this usually means the Podman VM isn't running. Start it with:
 
 Then re-run your command.
 EOF
-    exit 1
   fi
+  exit 1
 }
 
 require_image() {
-  if podman image exists "$IMAGE_NAME"; then
+  if eng_image_exists "$IMAGE_NAME"; then
     return 0
   fi
   # Non-default tags don't auto-resolve — user must build/pull explicitly.
@@ -396,8 +550,8 @@ require_image() {
   # and re-downloads model weights, so it's substantially slower. The
   # registry path is the default user experience.
   info "image '$IMAGE_NAME' not found locally — pulling ${REGISTRY_IMAGE}…"
-  if pull_with_progress "$REGISTRY_IMAGE"; then
-    podman tag "$REGISTRY_IMAGE" "$IMAGE_NAME"
+  if eng_pull "$REGISTRY_IMAGE"; then
+    eng_tag "$REGISTRY_IMAGE" "$IMAGE_NAME"
     info "pulled and tagged as $IMAGE_NAME"
     return 0
   fi
@@ -500,13 +654,18 @@ remote_host_path() {
 }
 
 # --- Egress firewall (sidecar filtering proxy) -------------------------------
-# Topology (validated): two Podman networks per run —
+# Topology (validated on Podman AND apple/container): two networks per run —
 #   <net-internal>  --internal (no route out): the agent's ONLY network.
 #   <net-egress>    normal bridge: carries the proxy's outbound traffic.
 # The proxy container joins BOTH; the agent joins only <net-internal> and is
 # pointed at the proxy via HTTP(S)_PROXY. So the agent has no direct path to the
 # internet — every request is filtered against the allow-list or refused. The
-# boundary lives in Podman-managed networking the agent (uid 1000) can't alter.
+# boundary lives in engine-managed networking the agent (uid 1000) can't alter.
+# Engine deltas (proven 2026-06: live test on macOS 26 / Apple Silicon):
+#   - the agent reaches the proxy by IP, not hostname (DNS is dead on an
+#     --internal net under apple/container) — see fw_proxy_url();
+#   - the proxy attaches to both nets via repeated --network (multi-attach),
+#     which Podman accepts too, so one code path serves both engines.
 #
 # Why a forward proxy (HTTP_PROXY) and not something fancier: opencode runs on
 # Bun, which honours HTTP_PROXY/HTTPS_PROXY for fetch — verified end-to-end that
@@ -521,6 +680,16 @@ FW_ACTIVE=0
 FW_NET_INTERNAL=""
 FW_NET_EGRESS=""
 FW_PROXY_NAME=""
+# apple/container only: the internal net's gateway (the Mac host). Read once the
+# proxy is up (fw_setup) and handed to the agent's entrypoint, which blackholes
+# the route to it so the agent can't reach host services directly, bypassing the
+# proxy. Empty on Podman (no host route to seal). See the seal prelude in
+# image/entrypoint.sh and the host-gateway note in ARCHITECTURE → Egress firewall.
+FW_SEAL_GATEWAY=""
+# Whether WE created the egress net and must tear it down. 1 on Podman (a
+# dedicated konrad-fw-out-$$); 0 on apple/container, where the egress leg is the
+# engine-managed built-in `default` net (see fw_setup for why) — never ours to rm.
+FW_EGRESS_MANAGED=1
 
 # Remove this run's proxy + networks. Idempotent (EXIT trap may double-fire);
 # every step is best-effort so teardown never masks the agent's exit code.
@@ -528,15 +697,9 @@ fw_teardown() {
   [[ "$FW_ACTIVE" == "1" ]] || return 0
   FW_ACTIVE=0
   dbg "firewall: tearing down proxy + networks"
-  if [[ -n "$FW_PROXY_NAME" ]]; then
-    podman rm -f "$FW_PROXY_NAME" >/dev/null 2>&1 || true
-  fi
-  if [[ -n "$FW_NET_INTERNAL" ]]; then
-    podman network rm "$FW_NET_INTERNAL" >/dev/null 2>&1 || true
-  fi
-  if [[ -n "$FW_NET_EGRESS" ]]; then
-    podman network rm "$FW_NET_EGRESS" >/dev/null 2>&1 || true
-  fi
+  [[ -n "$FW_PROXY_NAME"  ]] && eng_rm_container "$FW_PROXY_NAME"
+  [[ -n "$FW_NET_INTERNAL" ]] && eng_network_rm "$FW_NET_INTERNAL"
+  [[ "$FW_EGRESS_MANAGED" == "1" && -n "$FW_NET_EGRESS" ]] && eng_network_rm "$FW_NET_EGRESS"
 }
 
 # Block until tinyproxy is accepting connections (it logs the line on start);
@@ -544,29 +707,67 @@ fw_teardown() {
 fw_wait_ready() {
   local i
   for i in $(seq 1 100); do
-    if podman logs "$FW_PROXY_NAME" 2>&1 | grep -q "Accepting connections"; then
+    if eng_logs "$FW_PROXY_NAME" | grep -q "Accepting connections"; then
       dbg "firewall: proxy ready"
       return 0
     fi
-    if ! podman container exists "$FW_PROXY_NAME" 2>/dev/null; then
-      podman logs "$FW_PROXY_NAME" 2>&1 | tail -20 >&2 || true
+    if ! eng_container_exists "$FW_PROXY_NAME"; then
+      eng_logs "$FW_PROXY_NAME" | tail -20 >&2 || true
       die "egress firewall: proxy exited during startup (see logs above; --no-firewall to bypass)"
     fi
     sleep 0.1
   done
-  podman logs "$FW_PROXY_NAME" 2>&1 | tail -20 >&2 || true
+  eng_logs "$FW_PROXY_NAME" | tail -20 >&2 || true
   die "egress firewall: proxy did not become ready (--no-firewall to bypass)"
 }
 
-# Create the networks and start the proxy sidecar. Reads two arrays the caller
-# (podman_run) exports as globals — KR_USERNS_FLAGS and KR_CFG_MOUNTS — because
-# the proxy needs the same userns mapping and the same org/user config mounts as
-# the agent (it derives the provider allow-list from the merged config). Sets
-# the FW_* globals and the EXIT trap so a partial setup is always cleaned up.
+# The URL the agent points HTTP(S)_PROXY at. On Podman the proxy is reachable by
+# its container hostname over the engine's internal DNS (works even on an
+# --internal net). On apple/container DNS is dead on --internal, so we hand the
+# agent the proxy's literal IPv4 on the internal net (re-read every run — it
+# changes on each recreate). Must be called AFTER fw_wait_ready (the IP only
+# exists once the container is up).
+fw_proxy_url() {
+  if [[ "$KONRAD_ENGINE" == "podman" ]]; then
+    printf 'http://%s:%s' "$FW_PROXY_NAME" "$KONRAD_PROXY_PORT"
+    return 0
+  fi
+  local ip
+  ip="$(eng_container_ip "$FW_PROXY_NAME" "$FW_NET_INTERNAL")" \
+    || die "egress firewall: could not read proxy IP (jq missing? --no-firewall to bypass)"
+  [[ -n "$ip" ]] \
+    || die "egress firewall: proxy has no IP on $FW_NET_INTERNAL yet (--no-firewall to bypass)"
+  printf 'http://%s:%s' "$ip" "$KONRAD_PROXY_PORT"
+}
+
+# Create the networks and start the proxy sidecar. Reads globals the caller
+# (podman_run) exports — KR_USERNS_FLAGS and KR_CFG_MOUNTS — because the proxy
+# needs the same userns mapping and the same org/user config mounts as the agent
+# (it derives the provider allow-list from the merged config). The proxy's own
+# read-only secrets mount it builds here via ro_bind. Sets the FW_* globals and
+# the EXIT trap so a partial setup is always cleaned up.
 fw_setup() {
   FW_NET_INTERNAL="konrad-fw-net-$$"
-  FW_NET_EGRESS="konrad-fw-out-$$"
   FW_PROXY_NAME="konrad-fw-proxy-$$"
+  # The proxy's egress leg differs by engine. On Podman every created network
+  # resolves (aardvark) and NATs, so we use a dedicated, torn-down egress net.
+  # On apple/container that doesn't hold: a `container network create` net has NO
+  # DNS resolver (only the built-in `default` net resolves + provides egress), and
+  # a container takes its resolver from the FIRST attached network — so the egress
+  # leg must be `default`, attached BEFORE the internal net, or the proxy can't
+  # resolve any allow-listed host (verified on macOS 26: a custom egress net, or
+  # `default` listed second, both yield "could not resolve host"). `default` is
+  # engine-managed — we neither create nor tear it down.
+  local -a fw_net_args
+  if [[ "$KONRAD_ENGINE" == "container" ]]; then
+    FW_NET_EGRESS="default"
+    FW_EGRESS_MANAGED=0
+    fw_net_args=(--network "$FW_NET_EGRESS" --network "$FW_NET_INTERNAL")  # egress (resolver) FIRST
+  else
+    FW_NET_EGRESS="konrad-fw-out-$$"
+    FW_EGRESS_MANAGED=1
+    fw_net_args=(--network "$FW_NET_INTERNAL" --network "$FW_NET_EGRESS")  # Podman's proven order
+  fi
   trap fw_teardown EXIT
   trap 'exit 143' TERM   # TERM → exit → EXIT trap → teardown (don't leak nets);
                           # SIGINT is left untrapped so the interactive TUI's
@@ -574,25 +775,60 @@ fw_setup() {
                           # this function's caller fall through to teardown.
 
   # Defensive: clear any same-named leftovers (PID reuse after a hard kill).
-  podman rm -f "$FW_PROXY_NAME" >/dev/null 2>&1 || true
-  podman network rm "$FW_NET_INTERNAL" "$FW_NET_EGRESS" >/dev/null 2>&1 || true
+  eng_rm_container "$FW_PROXY_NAME"
+  eng_network_rm "$FW_NET_INTERNAL"
+  [[ "$FW_EGRESS_MANAGED" == "1" ]] && eng_network_rm "$FW_NET_EGRESS"
 
-  dbg "firewall: creating networks $FW_NET_INTERNAL (internal) + $FW_NET_EGRESS"
-  podman network create --internal "$FW_NET_INTERNAL" >/dev/null \
+  dbg "firewall: creating internal network $FW_NET_INTERNAL (egress via $FW_NET_EGRESS)"
+  eng_network_create_internal "$FW_NET_INTERNAL" \
     || die "egress firewall: could not create internal network (--no-firewall to bypass)"
-  podman network create "$FW_NET_EGRESS" >/dev/null \
-    || die "egress firewall: could not create egress network (--no-firewall to bypass)"
+  if [[ "$FW_EGRESS_MANAGED" == "1" ]]; then
+    eng_network_create "$FW_NET_EGRESS" \
+      || die "egress firewall: could not create egress network (--no-firewall to bypass)"
+  fi
   FW_ACTIVE=1
 
   info "egress firewall: starting filtering proxy…"
-  # Mount the shared secrets volume READ-ONLY so the proxy can read auth.json's
+  # Mount the shared secrets store READ-ONLY (ro_bind → :ro on Podman,
+  # --mount …,readonly on apple/container) so the proxy can read auth.json's
   # provider *ids* (never the keys) — that's how it allow-lists the built-in
-  # providers the user has connected, live-reloading when that changes.
-  podman run -d --rm --name "$FW_PROXY_NAME" --init \
-    --network "${FW_NET_INTERNAL},${FW_NET_EGRESS}" \
-    "${KR_USERNS_FLAGS[@]}" \
+  # providers the user has connected, live-reloading when that changes. The proxy
+  # never writes secrets, so RO holds on both engines. fw_net_args attaches the
+  # sidecar to both nets (egress-first on apple/container — see above).
+  local -a fw_secrets_mount
+  ro_bind "$(eng_volume_source "$SECRETS_VOLUME")" /home/node/.opencode-secrets
+  fw_secrets_mount=("${RO_BIND[@]}")
+
+  # Local-model route (apple/container only). On Podman the engine injects
+  # host.containers.internal into every container's /etc/hosts, so the proxy
+  # resolves it (→ the host) for free and local models work through the proxy
+  # like any other allow-listed host. apple/container injects no such alias and
+  # has no --add-host, so we hand the proxy the egress (`default`) net's gateway —
+  # which IS the Mac host — and its root prelude maps host.containers.internal to
+  # it in /etc/hosts before dropping to node (see image/entrypoint.sh). That name
+  # is in the baked allow-list floor, so a model request the agent sends through
+  # the proxy to that name is forwarded to the host; any OTHER name/IP is still
+  # default-denied. The agent never resolves it (it hands the name to the proxy
+  # over HTTP(S)_PROXY). Best-effort: if the gateway can't be read we warn and
+  # carry on — egress filtering is unaffected, only local-model name resolution.
+  local -a fw_alias_flags=()
+  if [[ "$KONRAD_ENGINE" == "container" ]]; then
+    local egress_gw
+    egress_gw="$(eng_network_gateway "$FW_NET_EGRESS")"
+    if [[ -n "$egress_gw" ]]; then
+      fw_alias_flags=(--user 0 -e "KONRAD_HOST_ALIAS_IP=$egress_gw")
+      dbg "firewall: proxy host alias host.containers.internal -> $egress_gw (via $FW_NET_EGRESS)"
+    else
+      warn "could not read the $FW_NET_EGRESS gateway; a local model addressed as host.containers.internal may not resolve in the proxy (egress filtering is unaffected)"
+    fi
+  fi
+
+  "$KONRAD_ENGINE" run -d --rm --name "$FW_PROXY_NAME" --init \
+    "${fw_net_args[@]}" \
+    ${fw_alias_flags[@]+"${fw_alias_flags[@]}"} \
+    ${KR_USERNS_FLAGS[@]+"${KR_USERNS_FLAGS[@]}"} \
     ${KR_CFG_MOUNTS[@]+"${KR_CFG_MOUNTS[@]}"} \
-    -v "${SECRETS_VOLUME}:/home/node/.opencode-secrets:ro" \
+    "${fw_secrets_mount[@]}" \
     -e "KONRAD_DEBUG=${KONRAD_DEBUG}" \
     -e "KONRAD_PROXY_PORT=${KONRAD_PROXY_PORT}" \
     -e "KONRAD_ALLOWED_HOSTS=${KONRAD_ALLOW_HOST}" \
@@ -600,6 +836,17 @@ fw_setup() {
     || die "egress firewall: could not start proxy container (--no-firewall to bypass)"
 
   fw_wait_ready
+
+  # Host-gateway seal (apple/container only). Read the internal net's gateway —
+  # the Mac host, directly reachable from the agent on this "host-only" net —
+  # now that the net exists and the proxy has attached (so it's populated). The
+  # agent's entrypoint blackholes the route to it (see KONRAD_SEAL_GATEWAY wiring
+  # in podman_run and the seal prelude in image/entrypoint.sh). Podman needs no
+  # seal: its --internal net exposes no route to the host at all.
+  if [[ "$KONRAD_ENGINE" == "container" ]]; then
+    FW_SEAL_GATEWAY="$(eng_network_gateway "$FW_NET_INTERNAL")"
+    dbg "firewall: internal-net gateway to seal: ${FW_SEAL_GATEWAY:-<unresolved>}"
+  fi
 }
 
 # Run a command inside the konrad container with the standard mount set.
@@ -615,6 +862,17 @@ podman_run() {
   if [[ -n "$KONRAD_PROFILE" ]]; then
     state_vol="${STATE_VOLUME}-${KONRAD_PROFILE}"
     cache_vol="${CACHE_VOLUME}-${KONRAD_PROFILE}"
+  fi
+
+  # Mount-option suffixes for READ-WRITE binds. Podman uses :z (SELinux relabel)
+  # and :U (chown the volume to the mapped user); apple/container supports neither
+  # (VirtioFS maps UIDs, no SELinux, and its -v rejects suffixes), so they're
+  # empty there. vol_relabel may be cleared again below for the rootful-remote
+  # Podman path (chcon fails on virtiofs). Read-ONLY binds don't use these — they
+  # go through ro_bind(), which picks :ro vs --mount …,readonly per engine.
+  local vol_relabel=":z" vol_chown=":U"
+  if [[ "$KONRAD_ENGINE" == "container" ]]; then
+    vol_relabel=""; vol_chown=""
   fi
 
   # TTY / stdin allocation. The interactive TUI and the --shell path want a
@@ -659,15 +917,15 @@ podman_run() {
     # works on the very first launch. The entrypoint writes a per-session
     # sidecar here and opencode writes its structured log alongside.
     mkdir -p "$KONRAD_LOG_DIR"
-    home_mounts+=(-v "${KONRAD_LOG_DIR}:/home/node/.local/share/opencode/log:z")
+    home_mounts+=(-v "${KONRAD_LOG_DIR}:/home/node/.local/share/opencode/log${vol_relabel}")
     # Config-layer mounts. The org layer (~/.config/konrad/org/) and the
     # per-user layer (~/.config/konrad/user/) are each surfaced WHOLE into
     # the container at /home/node/.config/konrad/{org,user}; the entrypoint
     # composes them over the baked defaults (precedence: baked < org < user).
     # Read-only — the container never writes back. Gated on existence so a
     # user with no org package (the common case) just gets the user mount.
-    [[ -d "$ORG_CFG_DIR" ]]  && cfg_mounts+=(-v "$ORG_CFG_DIR:/home/node/.config/konrad/org:ro")
-    [[ -d "$USER_CFG_DIR" ]] && cfg_mounts+=(-v "$USER_CFG_DIR:/home/node/.config/konrad/user:ro")
+    [[ -d "$ORG_CFG_DIR" ]]  && { ro_bind "$ORG_CFG_DIR"  /home/node/.config/konrad/org;  cfg_mounts+=("${RO_BIND[@]}"); }
+    [[ -d "$USER_CFG_DIR" ]] && { ro_bind "$USER_CFG_DIR" /home/node/.config/konrad/user; cfg_mounts+=("${RO_BIND[@]}"); }
   else
     # REMOTE daemon: mount the SAME config layers, but from the daemon-visible
     # host path (KONRAD_REMOTE_HOST_CONFIG); the -d guards stat the copy the dev
@@ -675,8 +933,8 @@ podman_run() {
     # or an older dev container) → no config mount, baked-only, as before.
     local host_cfg="${KONRAD_REMOTE_HOST_CONFIG:-}"
     if [[ -n "$host_cfg" ]]; then
-      [[ -d "$ORG_CFG_DIR" ]]  && cfg_mounts+=(-v "$host_cfg/org:/home/node/.config/konrad/org:ro")
-      [[ -d "$USER_CFG_DIR" ]] && cfg_mounts+=(-v "$host_cfg/user:/home/node/.config/konrad/user:ro")
+      [[ -d "$ORG_CFG_DIR" ]]  && { ro_bind "$host_cfg/org"  /home/node/.config/konrad/org;  cfg_mounts+=("${RO_BIND[@]}"); }
+      [[ -d "$USER_CFG_DIR" ]] && { ro_bind "$host_cfg/user" /home/node/.config/konrad/user; cfg_mounts+=("${RO_BIND[@]}"); }
     fi
     if [[ "$cwd" != "${KONRAD_REMOTE_GUEST_ROOT:-/workspace}"* ]]; then
       warn "remote-socket mode: cwd ($cwd) is outside ${KONRAD_REMOTE_GUEST_ROOT:-/workspace}; the workspace mount resolves against the host fs and will likely be empty. Run konrad from under ${KONRAD_REMOTE_GUEST_ROOT:-/workspace}."
@@ -694,12 +952,16 @@ podman_run() {
   # mapped to the Mac user's uid/gid (KONRAD_REMOTE_UID/GID, injected by the
   # same shim). SELinux labeling is disabled there (Enforcing in the machine
   # VM) and the workspace `:z` relabel skipped (chcon fails on virtiofs).
-  local ws_relabel=":z"
+  # apple/container takes neither path: VirtioFS maps guest UIDs → the host user
+  # automatically, so it gets no userns flag at all (and no relabel — vol_relabel
+  # was already emptied for it above).
   local -a userns_flags=("--userns=keep-id:uid=1000,gid=1000")
-  if [[ "${KONRAD_DAEMON_ROOTFUL:-0}" == "1" ]]; then
+  if [[ "$KONRAD_ENGINE" == "container" ]]; then
+    userns_flags=()
+  elif [[ "${KONRAD_DAEMON_ROOTFUL:-0}" == "1" ]]; then
     local ruid="${KONRAD_REMOTE_UID:?KONRAD_DAEMON_ROOTFUL=1 requires KONRAD_REMOTE_UID}"
     local rgid="${KONRAD_REMOTE_GID:?KONRAD_DAEMON_ROOTFUL=1 requires KONRAD_REMOTE_GID}"
-    ws_relabel=""
+    vol_relabel=""
     userns_flags=(
       --security-opt label=disable
       --uidmap 0:100000:999 --uidmap 999:0:1
@@ -714,13 +976,28 @@ podman_run() {
   # userns map + config mounts (exported as globals for fw_setup, since bash 3.2
   # has no array passing). With the firewall off, the agent keeps Podman's default
   # networking and unrestricted egress — the pre-firewall behaviour.
-  local -a net_flags=() proxy_env=()
+  # seal_flags: apple/container-only host-gateway seal (see fw_setup + the seal
+  # prelude in image/entrypoint.sh). The agent starts as root with CAP_NET_ADMIN
+  # so its entrypoint can blackhole the route to the host, then drops to node
+  # with the capability stripped. Empty on Podman (no host route to seal) and on
+  # the firewall-off path (no internal net, no proxy — egress is unrestricted by
+  # design there, so there is nothing to bypass).
+  local -a net_flags=() proxy_env=() seal_flags=()
   if firewall_on; then
-    KR_USERNS_FLAGS=("${userns_flags[@]}")
+    KR_USERNS_FLAGS=(${userns_flags[@]+"${userns_flags[@]}"})
     KR_CFG_MOUNTS=(${cfg_mounts[@]+"${cfg_mounts[@]}"})
     fw_setup
-    local proxy_url="http://${FW_PROXY_NAME}:${KONRAD_PROXY_PORT}"
+    local proxy_url
+    proxy_url="$(fw_proxy_url)"   # hostname on Podman, IP on apple/container
     net_flags=(--network "$FW_NET_INTERNAL")
+    # Fail CLOSED: if we couldn't determine the host gateway to seal, refuse to
+    # run rather than expose the agent to host services directly. The user keeps
+    # two explicit escape hatches (both surrender the seal knowingly).
+    if [[ "$KONRAD_ENGINE" == "container" ]]; then
+      [[ -n "$FW_SEAL_GATEWAY" ]] \
+        || die "egress firewall: could not determine the host-gateway IP to seal (apple/container). Refusing to run with the host reachable directly. Re-run with --no-firewall, or KONRAD_ENGINE=podman, to bypass."
+      seal_flags=(--user 0 --cap-add NET_ADMIN -e "KONRAD_SEAL_GATEWAY=${FW_SEAL_GATEWAY}")
+    fi
     # Bun's fetch (opencode) honours these; lower- and upper-case both, since
     # different tools read different spellings. localhost stays direct.
     proxy_env=(
@@ -747,9 +1024,10 @@ podman_run() {
     && publish_flags=(-p "127.0.0.1:${KONRAD_PUBLISH_PORT}:${KONRAD_PUBLISH_PORT}")
 
   local -a run_cmd=(
-    podman run
+    "$KONRAD_ENGINE" run
     --rm ${tty_flags[@]+"${tty_flags[@]}"} --init
-    "${userns_flags[@]}"
+    ${userns_flags[@]+"${userns_flags[@]}"}
+    ${seal_flags[@]+"${seal_flags[@]}"}
     ${net_flags[@]+"${net_flags[@]}"}
     ${publish_flags[@]+"${publish_flags[@]}"}
     ${proxy_env[@]+"${proxy_env[@]}"}
@@ -758,10 +1036,10 @@ podman_run() {
     -e "KONRAD_HOST_WORKSPACE=${ws_src}"
     -e "KONRAD_HOST_LOG_DIR=${KONRAD_LOG_DIR}"
     -e "KONRAD_ALLOWED_HOSTS=${KONRAD_ALLOW_HOST}"
-    -v "${ws_src}:/workspace${ws_relabel}"
-    -v "${SECRETS_VOLUME}:/home/node/.opencode-secrets:U"
-    -v "${cache_vol}:/home/node/.cache/opencode:U"
-    -v "${state_vol}:/home/node/.local/state/opencode:U"
+    -v "${ws_src}:/workspace${vol_relabel}"
+    -v "$(eng_volume_source "$SECRETS_VOLUME"):/home/node/.opencode-secrets${vol_chown}"
+    -v "$(eng_volume_source "$cache_vol"):/home/node/.cache/opencode${vol_chown}"
+    -v "$(eng_volume_source "$state_vol"):/home/node/.local/state/opencode${vol_chown}"
     ${home_mounts[@]+"${home_mounts[@]}"}
     -w /workspace
     "$IMAGE_NAME" "$@"
@@ -785,7 +1063,7 @@ do_run() {
   local mode="$1"  # "agent" or "shell"
   dbg "do_run start (mode=$mode)"
   info "preflight checks…"
-  require_podman; dbg "podman OK"
+  require_engine; dbg "engine OK"
   require_image;  dbg "image OK"
   migrate_flat_config; dbg "flat-config migration checked"
   ensure_gitignore; dbg "gitignore ensured"
@@ -811,7 +1089,7 @@ do_run() {
 do_run_oneshot() {
   dbg "do_run_oneshot start"
   info "preflight checks…"
-  require_podman; dbg "podman OK"
+  require_engine; dbg "engine OK"
   require_image;  dbg "image OK"
   migrate_flat_config; dbg "flat-config migration checked"
   ensure_gitignore; dbg "gitignore ensured"
@@ -846,7 +1124,7 @@ do_connect() {
     return
   fi
   info "preflight checks…"
-  require_podman; dbg "podman OK"
+  require_engine; dbg "engine OK"
   require_image;  dbg "image OK"
   # The one wrong-door case: a self-hosted endpoint connected via opencode's bare
   # "Other" gets a credential but no config declaration. Point those users at the
@@ -879,7 +1157,7 @@ do_connect_custom() {
 
   command -v jq >/dev/null 2>&1 \
     || die "konrad connect --custom needs 'jq' on the host (e.g. 'brew install jq' / 'apt install jq')."
-  require_podman; require_image
+  require_engine; require_image
 
   [[ -n "$id" ]] || read -r -p "Provider id (e.g. acme): " id
   [[ -n "$id" ]] || die "a provider id is required."
@@ -972,7 +1250,7 @@ do_mcp_auth() {
   [[ $# -ge 1 ]] \
     || die "usage: $(basename -- "$0") mcp-auth <server>  (the MCP server's name in your opencode config)"
   info "preflight checks…"
-  require_podman; dbg "podman OK"
+  require_engine; dbg "engine OK"
   require_image;  dbg "image OK"
   cat >&2 <<EOF
 
@@ -1005,12 +1283,13 @@ image_dated_tag() {
 do_version() {
   printf 'konrad %s\n' "$KONRAD_VERSION"
   printf '  CLI:    %s\n' "$KONRAD_VERSION"
+  printf '  engine: %s\n' "$KONRAD_ENGINE"
 
-  if ! command -v podman >/dev/null 2>&1 || ! podman info >/dev/null 2>&1; then
-    printf '  image:  %s (cannot inspect — podman unavailable)\n' "$IMAGE_NAME"
+  if ! command -v "$KONRAD_ENGINE" >/dev/null 2>&1 || ! eng_running; then
+    printf '  image:  %s (cannot inspect — %s unavailable)\n' "$IMAGE_NAME" "$KONRAD_ENGINE"
     return 0
   fi
-  if ! podman image exists "$IMAGE_NAME"; then
+  if ! eng_image_exists "$IMAGE_NAME"; then
     local hint
     if [[ "$(basename -- "$0")" == "konrad-dev" ]]; then
       hint="not built — run: konrad-dev --rebuild"
@@ -1022,22 +1301,28 @@ do_version() {
   fi
 
   local digest image_ver image_rev image_created image_tag
-  digest="$(podman image inspect "$IMAGE_NAME" --format '{{.Id}}' 2>/dev/null \
-            || printf 'unknown')"
-  image_ver="$(podman image inspect "$IMAGE_NAME" \
-               --format '{{index .Labels "org.opencontainers.image.version"}}' 2>/dev/null)"
+  # The image Id (digest) comes from podman's Go-template formatter; on
+  # apple/container we skip it (JSON-only inspect, no stable digest path) and
+  # show just the rev. Labels go through eng_image_label (best-effort on
+  # container — a miss reads as "unknown").
+  digest=""
+  [[ "$KONRAD_ENGINE" == "podman" ]] \
+    && digest="$(podman image inspect "$IMAGE_NAME" --format '{{.Id}}' 2>/dev/null || true)"
+  image_ver="$(eng_image_label "$IMAGE_NAME" org.opencontainers.image.version)"
   [[ -z "$image_ver" ]] && image_ver="unknown"
-  image_rev="$(podman image inspect "$IMAGE_NAME" \
-               --format '{{index .Labels "org.opencontainers.image.revision"}}' 2>/dev/null)"
+  image_rev="$(eng_image_label "$IMAGE_NAME" org.opencontainers.image.revision)"
   [[ -z "$image_rev" ]] && image_rev="unknown"
-  image_created="$(podman image inspect "$IMAGE_NAME" \
-                   --format '{{index .Labels "org.opencontainers.image.created"}}' 2>/dev/null)"
+  image_created="$(eng_image_label "$IMAGE_NAME" org.opencontainers.image.created)"
   image_tag="$(image_dated_tag "$image_ver" "$image_created")"
 
   local override_note=""
   [[ -n "${KONRAD_IMAGE:-}" ]] && override_note="  (KONRAD_IMAGE override)"
   printf '  image:  %s   (%s)%s\n' "$image_tag" "$IMAGE_NAME" "$override_note"
-  printf '          %s · rev %s\n' "${digest:0:19}" "$image_rev"
+  if [[ -n "$digest" ]]; then
+    printf '          %s · rev %s\n' "${digest:0:19}" "$image_rev"
+  else
+    printf '          rev %s\n' "$image_rev"
+  fi
   # No CLI-vs-image skew warning by design. CLI-only patches don't trigger
   # an image rebuild (the workflow's paths: filter excludes VERSION), so a
   # patch-line drift between CLI and image labels is normal and harmless —
@@ -1062,11 +1347,10 @@ do_check_updates() {
   fi
 
   local image_local_ver="" image_remote_ver=""
-  if command -v podman >/dev/null 2>&1 \
-     && podman info >/dev/null 2>&1 \
-     && podman image exists "$IMAGE_NAME" 2>/dev/null; then
-    image_local_ver="$(podman image inspect "$IMAGE_NAME" \
-                         --format '{{index .Labels "org.opencontainers.image.version"}}' 2>/dev/null)"
+  if command -v "$KONRAD_ENGINE" >/dev/null 2>&1 \
+     && eng_running \
+     && eng_image_exists "$IMAGE_NAME"; then
+    image_local_ver="$(eng_image_label "$IMAGE_NAME" org.opencontainers.image.version)"
   fi
   image_remote_ver="$(registry_image_version "$REGISTRY_IMAGE" 2>/dev/null || true)"
 
@@ -1115,12 +1399,12 @@ do_pull_image() {
   if [[ "$(basename -- "$0")" == "konrad-dev" ]]; then
     die "konrad-dev doesn't pull from the registry. To rebuild the dev image: konrad-dev --rebuild."
   fi
-  require_podman
+  require_engine
   info "pulling ${REGISTRY_IMAGE}…"
-  if ! pull_with_progress "$REGISTRY_IMAGE"; then
+  if ! eng_pull "$REGISTRY_IMAGE"; then
     die "registry pull failed (offline? registry unreachable?)"
   fi
-  podman tag "$REGISTRY_IMAGE" "$IMAGE_DEFAULT"
+  eng_tag "$REGISTRY_IMAGE" "$IMAGE_DEFAULT"
 }
 
 # Re-read the KONRAD_VERSION_BAKED placeholder off disk after install-remote.sh
@@ -1214,21 +1498,23 @@ To just refresh the published image: konrad --update
 EOF
     exit 1
   fi
-  require_podman
+  require_engine
   # konrad-dev should always have the source next to it (the symlink points
   # at a checkout's bin/konrad), but guard anyway — a sparse checkout or a
   # stale symlink would otherwise fail downstream with a confusing error.
   if [[ ! -f "$IMAGE_CONTEXT/Dockerfile" ]]; then
     die "konrad-dev: expected $IMAGE_CONTEXT/Dockerfile (is the symlink pointing at a complete checkout?)"
   fi
-  # Delegate the three-stage build to scripts/build-image.sh — the single
-  # source of truth for the local build (lock reading, git-sha/build-date
-  # metadata, the cache-tagged intermediate stages, the build-args). It writes
-  # $IMAGE_LOCAL_TAG (konrad:local), so the pulled image at $IMAGE_DEFAULT is
-  # never clobbered. Safe to assume present: --rebuild only runs from a full
-  # checkout (the Dockerfile guard above already proved that).
-  info "building $IMAGE_LOCAL_TAG from $IMAGE_CONTEXT (konrad=$KONRAD_VERSION)"
-  "$REPO_ROOT/scripts/build-image.sh" || die "image build failed"
+  # Delegate to scripts/build-image.sh — the single source of truth for the
+  # local build (lock reading, git-sha/build-date metadata, build-args). It
+  # builds on the selected engine: Podman via buildah (the cache-tagged
+  # three-stage path), apple/container via `container build` straight into
+  # container's own store (no podman, no machine VM). KONRAD_ENGINE is exported
+  # so the script picks the matching path. It writes $IMAGE_LOCAL_TAG
+  # (konrad:local), never clobbering the pulled $IMAGE_DEFAULT. Safe to assume
+  # present: --rebuild only runs from a full checkout (guarded just above).
+  info "building $IMAGE_LOCAL_TAG from $IMAGE_CONTEXT (konrad=$KONRAD_VERSION, engine=$KONRAD_ENGINE)"
+  KONRAD_ENGINE="$KONRAD_ENGINE" "$REPO_ROOT/scripts/build-image.sh" || die "image build failed"
   info "built $IMAGE_LOCAL_TAG — run with: konrad-dev"
 }
 
@@ -1262,15 +1548,15 @@ EOF
       y|Y|yes|YES) ;;
       *) info "aborted; nothing was deleted."; exit 0 ;;
     esac
-    if command -v podman >/dev/null 2>&1 && podman info >/dev/null 2>&1; then
+    if command -v "$KONRAD_ENGINE" >/dev/null 2>&1 && eng_running; then
       for vol in "$p_state" "$p_cache"; do
-        if podman volume exists "$vol" 2>/dev/null; then
-          podman volume rm "$vol" >/dev/null
+        if eng_volume_exists "$vol"; then
+          eng_volume_rm "$vol"
           info "removed profile volume $vol"
         fi
       done
     else
-      warn "podman not reachable; profile volumes were NOT removed."
+      warn "$KONRAD_ENGINE not reachable; profile volumes were NOT removed."
     fi
     info "profile '$KONRAD_PROFILE' reset complete."
     return 0
@@ -1304,15 +1590,15 @@ EOF
     rm -rf "$KONRAD_LOG_DIR"
     info "removed $KONRAD_LOG_DIR"
   fi
-  if command -v podman >/dev/null 2>&1 && podman info >/dev/null 2>&1; then
+  if command -v "$KONRAD_ENGINE" >/dev/null 2>&1 && eng_running; then
     for vol in "$SECRETS_VOLUME" "$CACHE_VOLUME" "$STATE_VOLUME"; do
-      if podman volume exists "$vol" 2>/dev/null; then
-        podman volume rm "$vol" >/dev/null
+      if eng_volume_exists "$vol"; then
+        eng_volume_rm "$vol"
         info "removed shared volume $vol"
       fi
     done
   else
-    warn "podman not reachable; shared volumes were NOT removed."
+    warn "$KONRAD_ENGINE not reachable; shared volumes were NOT removed."
   fi
   info "reset complete. Next run will need a fresh /connect, repopulate caches, and re-pick a model."
 }
@@ -1365,23 +1651,25 @@ EOF
     *) info "aborted; nothing was removed."; exit 0 ;;
   esac
 
-  # Remove images first (podman). Quiet if missing.
-  if command -v podman >/dev/null 2>&1 && podman info >/dev/null 2>&1; then
-    if podman image exists "$target_image" 2>/dev/null; then
-      podman image rm "$target_image" >/dev/null
+  # Remove this binary's image from the runtime engine. Quiet if missing.
+  if command -v "$KONRAD_ENGINE" >/dev/null 2>&1 && eng_running; then
+    if eng_image_exists "$target_image"; then
+      eng_image_rm "$target_image"
       info "removed image $target_image"
     fi
-    if [[ "$self" == "konrad-dev" ]]; then
-      local img
-      for img in konrad-python-base:cache konrad-python-models:cache; do
-        if podman image exists "$img" 2>/dev/null; then
-          podman image rm "$img" >/dev/null
-          info "removed image $img"
-        fi
-      done
-    fi
   else
-    warn "podman not reachable; image(s) were NOT removed. Delete manually with: podman image rm $target_image"
+    warn "$KONRAD_ENGINE not reachable; image $target_image was NOT removed. Delete it manually."
+  fi
+  # konrad-dev's intermediate build-cache images are podman build artifacts
+  # regardless of the runtime engine — sweep them via podman whenever it's around.
+  if [[ "$self" == "konrad-dev" ]] && command -v podman >/dev/null 2>&1 && podman info >/dev/null 2>&1; then
+    local img
+    for img in konrad-python-base:cache konrad-python-models:cache; do
+      if podman image exists "$img" 2>/dev/null; then
+        podman image rm "$img" >/dev/null
+        info "removed image $img"
+      fi
+    done
   fi
 
   # Delete the binary last. Bash has already mmap'd this script, so the
@@ -1573,6 +1861,9 @@ while [[ $# -gt 0 ]]; do
     *)            die "unexpected argument: $1 (try: $(basename -- "$0") --help)" ;;
   esac
 done
+
+# Fix the container engine once, now that flags (and any KONRAD_ENGINE) are in.
+detect_engine
 
 case "$ACTION" in
   run)

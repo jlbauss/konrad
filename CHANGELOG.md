@@ -17,6 +17,31 @@ publishes as `:0.X.Y`, `:0.X`, `:latest`, and an immutable
 
 ## [Unreleased]
 
+### Added
+
+- **Apple `container` engine support (Apple-Silicon macOS).** On macOS 26+ with
+  Apple's [`container`](https://github.com/apple/container) CLI installed, Konrad
+  uses it as the native engine instead of Podman — no `podman machine` VM to start.
+  Podman stays the default everywhere else (Linux, the dev container, and Macs
+  without `container`); pin the choice with `KONRAD_ENGINE=podman|container`. The
+  egress firewall ports across unchanged — the agent reaches the dual-homed proxy
+  by IP (DNS is dead on an `--internal` net there, and the proxy egresses via the
+  built-in `default` net), and mount-option suffixes / userns mapping are dropped
+  (VirtioFS maps UIDs; the persistent stores become host-dir binds). apple/container's
+  isolated network is "host-only" (its gateway sits on the Mac), so the agent's
+  direct route to the host is **sealed** — a privileged prelude blackholes that
+  gateway, then drops to the unprivileged, capability-less `node` user — bringing
+  it to parity with rootless Podman: the host is reachable only through the proxy,
+  at the allow-listed `host.containers.internal`. Local models keep working over
+  that same path. See [ARCHITECTURE → Egress firewall](ARCHITECTURE.md#egress-firewall).
+
+### Changed
+
+- Image pulls now show each engine's **native** progress (Podman's per-layer bars
+  on Linux, Apple `container`'s on macOS) instead of Konrad's custom `[N/M]` layer
+  counter, which had to pipe `podman pull` and so suppressed its native bars. The
+  registry probe that powers `konrad --check-updates` is unchanged.
+
 ## [0.11.0] - 2026-06-16
 
 ### Added

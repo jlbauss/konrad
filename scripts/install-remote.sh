@@ -125,31 +125,58 @@ case ":$PATH:" in
     ;;
 esac
 
-# --- Podman preflight (warn-only) -------------------------------------------
-if ! command -v podman >/dev/null 2>&1; then
-  warn "podman is not installed. konrad needs it at runtime."
-  say  "  macOS:  brew install podman && podman machine init && podman machine start"
-  say  "  Linux:  see https://podman.io/docs/installation"
-  say  "Install podman and re-run; the CLI is already in place."
+# --- Container engine preflight (warn-only) ---------------------------------
+# Mirror bin/konrad's detect_engine(): Podman everywhere, except Apple-Silicon
+# macOS with Apple's `container` CLI present, where that native engine is the
+# default (no podman-machine VM). KONRAD_ENGINE pins the choice. The pre-pull
+# below delegates to `konrad --pull-image`, which re-detects identically — so
+# here we only steer a missing engine to the right install and skip the pre-pull
+# cleanly when the engine isn't up.
+ENGINE="${KONRAD_ENGINE:-}"
+if [ -z "$ENGINE" ]; then
+  if [ "$(uname -s)" = "Darwin" ] && [ "$(uname -m)" = "arm64" ] \
+     && command -v container >/dev/null 2>&1; then
+    ENGINE="container"
+  else
+    ENGINE="podman"
+  fi
+fi
+
+if ! command -v "$ENGINE" >/dev/null 2>&1; then
+  if [ "$ENGINE" = "container" ]; then
+    warn "Apple's 'container' is not installed. konrad needs a container engine at runtime."
+    say  "  Install from https://github.com/apple/container/releases, then: container system start"
+    say  "  (or 'brew install podman && podman machine init && podman machine start' to use Podman instead)"
+  else
+    warn "podman is not installed. konrad needs it at runtime."
+    say  "  macOS:  brew install podman && podman machine init && podman machine start"
+    say  "  Linux:  see https://podman.io/docs/installation"
+  fi
+  say  "Install it and re-run; the CLI is already in place."
   exit 0
 fi
 
 # --- Pre-pull the image ------------------------------------------------------
-# The pull goes through the freshly-installed `konrad --pull-image` rather
-# than a bare `podman pull` so the layer counter (jq + curl manifest
-# preflight + awk wrapper) has one implementation. KONRAD_NO_PULL=1 is set
-# by `konrad --update` when it re-runs this installer for the CLI refresh —
-# in that case the caller already pulled and already prints --version, so
-# both steps are short-circuited.
+# The pull goes through the freshly-installed `konrad --pull-image` so the one
+# engine-aware pull implementation in bin/konrad is reused. KONRAD_NO_PULL=1 is
+# set by `konrad --update` when it re-runs this installer for the CLI refresh —
+# the caller already pulled and printed --version, so both steps short-circuit.
 if [ "${KONRAD_NO_PULL:-0}" = "1" ]; then
   chatter "skipping image pre-pull (KONRAD_NO_PULL=1). Run 'konrad --update' when ready."
   exit 0
 fi
 
-if ! podman info >/dev/null 2>&1; then
-  warn "podman is installed but not reachable (VM not started? socket missing?)."
-  say  "  On macOS:  podman machine init && podman machine start"
-  say  "Skipping pre-pull. Run 'konrad --update' once podman is up."
+if [ "$ENGINE" = "container" ]; then
+  engine_up()    { container system status >/dev/null 2>&1; }
+  engine_start="container system start"
+else
+  engine_up()    { podman info >/dev/null 2>&1; }
+  engine_start="podman machine init && podman machine start"
+fi
+if ! engine_up; then
+  warn "$ENGINE is installed but not reachable (not started? socket missing?)."
+  say  "  Start it:  $engine_start"
+  say  "Skipping pre-pull. Run 'konrad --update' once $ENGINE is up."
   exit 0
 fi
 

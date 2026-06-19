@@ -355,6 +355,11 @@ RUN mkdir -p \
 # parents, so this only surfaces in CI's BuildKit build. 0755 is harmless for a
 # node-run script (still world-readable; the +x bit is unused). Keep it 0755.
 COPY --chmod=0755 merge-config.js /etc/konrad/merge-config.js
+# Shared root→node privilege-drop helper, sourced by konrad-entrypoint's root
+# prelude (the apple/container egress seal + local-model host alias; see
+# image/konrad-privdrop.sh and entrypoint.sh). Root-owned so the node runtime
+# user can't tamper with the drop logic.
+COPY --chmod=0755 konrad-privdrop.sh /usr/local/lib/konrad-privdrop.sh
 # --chmod=0755 is load-bearing: this file is the ENTRYPOINT, so crun must be
 # able to exec it. Plain COPY inherits the build-context mode, which is not
 # preserved reliably when the context ships to a remote builder (e.g. the

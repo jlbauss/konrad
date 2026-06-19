@@ -29,10 +29,69 @@ KONRAD_HOST_LOG_DIR="${KONRAD_HOST_LOG_DIR:-(unknown — KONRAD_HOST_LOG_DIR not
 
 say() { printf '[konrad container] %s\n' "$*" >&2; }
 warn() { printf '[konrad container] warning: %s\n' "$*" >&2; }
+fatal() { printf '[konrad container] FATAL: %s\n' "$*" >&2; exit 1; }
 dbg() {
   [[ "$KONRAD_DEBUG" != "1" ]] && return 0
   printf '[konrad container debug %s] %s\n' "$(date +%H:%M:%S.%3N)" "$*" >&2
 }
+
+# Shared root→node privilege-drop helper (exec_as_node), used by the root prelude
+# below. One canonical implementation; sourced, not executed.
+# shellcheck source=konrad-privdrop.sh
+. /usr/local/lib/konrad-privdrop.sh \
+  || fatal "missing /usr/local/lib/konrad-privdrop.sh (broken image)"
+
+valid_ipv4() { [[ "$1" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; }
+
+# ── 0. Root prelude (apple/container only) — privileged setup, then drop ──────
+# This entrypoint is the image ENTRYPOINT for BOTH the agent and the egress proxy
+# (the proxy is this image launched with `konrad-proxy` as its command). On
+# Apple's `container` engine bin/konrad starts one or the other as uid 0 to do a
+# single privileged network step, identified by which env var it sets, then we
+# drop to the unprivileged node user — so all real work (this script's remainder
+# and the exec'd command alike) runs as node, never root. Podman and the
+# firewall-off path never start us as root, so this block is wholly inert there.
+#
+#   KONRAD_SEAL_GATEWAY  (agent) — apple/container's --internal net is "host-only":
+#       its gateway IS the Mac host, so a service on 0.0.0.0 there would be
+#       reachable DIRECTLY from the agent, bypassing the egress proxy (rootless
+#       Podman has no such route — "network unreachable" to the host; see
+#       ARCHITECTURE → Egress firewall). bin/konrad adds CAP_NET_ADMIN and hands
+#       us the gateway IP; we blackhole the route to it. The route persists as
+#       kernel state the dropped node user can't remove, so the agent ends up
+#       both sealed and capability-less. After this, the ONLY path to the host is
+#       the same as on Podman: via the proxy, at host.containers.internal.
+#   KONRAD_HOST_ALIAS_IP (proxy) — apple/container injects no host.containers.internal
+#       alias and has no --add-host, so we map that name (konrad's canonical
+#       local-model host, in the allow-list floor) to the egress net's gateway —
+#       the Mac host — in /etc/hosts, so tinyproxy can resolve and forward a
+#       model request. Podman gets this alias from the engine for free.
+#
+# Fail CLOSED: a malformed value or a failed privileged step aborts the container
+# rather than running with the leak open / silently broken. We always drop to
+# node at the end, so even an unexpected uid-0 start never runs the workload as
+# root. The uid guard makes the re-exec skip this block (node ≠ 0).
+if [[ "$(id -u)" == "0" ]]; then
+  if [[ -n "${KONRAD_SEAL_GATEWAY:-}" ]]; then
+    valid_ipv4 "$KONRAD_SEAL_GATEWAY" \
+      || fatal "refusing to seal — KONRAD_SEAL_GATEWAY is not a valid IPv4 address: '$KONRAD_SEAL_GATEWAY'"
+    say "egress seal: blackholing host-gateway route $KONRAD_SEAL_GATEWAY (host reachable only via the proxy)"
+    ip route add blackhole "$KONRAD_SEAL_GATEWAY/32" \
+      || fatal "could not install the egress seal route (is CAP_NET_ADMIN present?) — aborting rather than run with the host-gateway leak open"
+  fi
+  if [[ -n "${KONRAD_HOST_ALIAS_IP:-}" ]]; then
+    valid_ipv4 "$KONRAD_HOST_ALIAS_IP" \
+      || fatal "KONRAD_HOST_ALIAS_IP is not a valid IPv4 address: '$KONRAD_HOST_ALIAS_IP'"
+    printf '%s host.containers.internal\n' "$KONRAD_HOST_ALIAS_IP" >> /etc/hosts \
+      || fatal "could not write the local-model host alias to /etc/hosts"
+    say "local-model host alias: host.containers.internal -> $KONRAD_HOST_ALIAS_IP"
+  fi
+  # Clear so they never reach the workload's environment; the uid guard already
+  # blocks re-entry, this just keeps the dropped process's env clean.
+  unset KONRAD_SEAL_GATEWAY KONRAD_HOST_ALIAS_IP
+  dbg "root prelude done; dropping to node"
+  exec_as_node "$0" "$@"
+fi
 
 dbg "entrypoint start"
 
