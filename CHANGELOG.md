@@ -17,6 +17,8 @@ publishes as `:0.X.Y`, `:0.X`, `:latest`, and an immutable
 
 ## [Unreleased]
 
+## [0.13.1] - 2026-06-19
+
 ### Fixed
 
 - **macOS `--update` no longer unpacks every architecture.** On Apple Silicon the
