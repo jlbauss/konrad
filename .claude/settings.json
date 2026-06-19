@@ -41,12 +41,12 @@
       "Read(**/.git-credentials)",
       "Read(~/.netrc)",
       "Read(~/.npmrc)",
-      "Read(~/.docker/config.json)"
+      "Read(~/.docker/config.json)",
+      "Bash(gh:*)"
     ],
     "ask": [
       "Bash(podman push:*)",
       "Bash(podman run:*)",
-      "Bash(gh:*)",
       "Bash(podman system prune:*)"
     ]
   },
