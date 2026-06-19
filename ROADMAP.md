@@ -11,12 +11,14 @@ Conventions for what lands here (vs. CHANGELOG or a commit message) are in
 
 _Raw ideas land here. Promote into the appropriate tier after a refinement pass._
 
-- [ ] add a general "context" read-only bind mount, so users can supply files that are personalized context? Maybe even add the option to put stuff to the ask list to gate access to confidential data - or rather use skills for that? i.e. a skill with a reference folder where the context goes?
+- [ ] **Confidential `context-confidential/` tier (opt-in mount).** A second tier of the `context/` mount (Tier 1) for sensitive material, enforced by mount _presence_, not an in-agent "ask": opencode has no read-permission primitive (only `edit`/`external_directory`/`bash`/`webfetch`/`websearch`), an `external_directory: ask` would gate only the Read tool and miss bash `grep`/`cat` (the natural access path), and a cooperation-dependent ask is the kind of boundary konrad refuses elsewhere (cf. the egress firewall). So host `~/.config/konrad/context-confidential/<name>/` → guest `/context-confidential/<name>` `:ro`, mounted _only_ on opt-in (`--confidential` / `KONRAD_CONFIDENTIAL=1`) — the "ask" moves to the human at launch, the only place it's a real boundary. Coarse boolean opt-in to start (the egress firewall already bounds exfil); per-name selection (`--context <name>`) only if all-or-nothing grants get too broad. Optional secondary speed-bump once mounted: `external_directory: {"/context-confidential/**": "ask"}` (Read-tool only — polish, not the boundary). Caveat: only as private as the provider (the model sees whatever text it is handed), so pair with an internal endpoint. Builds on the Tier-1 `context/` mount.
 
 ## Tier 1 — Road to beta
 
 _Gates the beta declaration — a genuinely usable product for the organization._
 
+- **Agent context**
+  - [ ] `S` **Read-only `context/` mount.** Bind-mount org/user-supplied reference material read-only into the sandbox so the agent can grep it with no network and no stored secret: host `~/.config/konrad/context/` → guest `/context` `:ro` (named material in subdirs, `/context/<name>`), mounted only when the dir exists — one `ro_bind` gated on `[[ -d ]]`, mirroring the org/user config mounts in [bin/konrad](bin/konrad) (~L1006-1016). One bind of the whole dir, N consumers via subdirs; a sync script or the user drops a named subdir in. Reads already fall under the default `external_directory: {"**": "allow"}`, so no permission change. Document in ARCHITECTURE's mount table. First consumer: konrad-asg's host-mirrored wiki. Confidential opt-in tier is a separate Inbox follow-on.
 - **Distribution & operations**
   - [ ] `M` **Auto-update.** Keep the latest image at hand — possibly via a background refresh.
   - [ ] `S` **HF token in CI.** Conceptualize the best approach — possibly [trusted publishers](https://huggingface.co/docs/hub/trusted-publishers).
