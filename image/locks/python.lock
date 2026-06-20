@@ -13,10 +13,10 @@ colorlog==6.10.1
 cryptography==49.0.0
 defusedxml==0.7.1
 dill==0.4.1
-docling-core==2.83.0
+docling-core==2.83.1
 docling-ibm-models==3.13.3
 docling-parse==6.2.0
-docling-slim==2.103.0
+docling-slim==2.104.0
 et-xmlfile==2.0.0
 faker==40.23.0
 filelock==3.29.4
@@ -65,7 +65,7 @@ pyclipper==1.4.0
 pycparser==3.0
 pydantic==2.13.4
 pydantic-core==2.46.4
-pydantic-settings==2.14.1
+pydantic-settings==2.14.2
 pygments==2.20.0
 pylatexenc==2.10
 pypdf==6.13.3
@@ -84,7 +84,7 @@ rich==15.0.0
 rpds-py==2026.5.1
 rtree==1.4.1
 safetensors==0.8.0
-scipy==1.17.1
+scipy==1.18.0
 semchunk==3.2.5
 setuptools==81.0.0
 shapely==2.1.2
