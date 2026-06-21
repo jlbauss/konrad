@@ -1599,7 +1599,6 @@ do_update() {
     info "CLI is a symlink — update it with 'git pull' inside the checkout it points at."
     do_pull_image
     printf '\n'
-    do_check_updates
     return 0
   fi
 
@@ -1614,7 +1613,7 @@ do_update() {
     do_check_updates
     return 0
   fi
-  info "updating konrad (CLI first, then image)…"
+  info "updating konrad…"
   local install_dir
   install_dir="$(dirname "$0")"
   # Env-var prefix on the *right* side of the pipe — `VAR=x curl … | sh` only
@@ -1634,8 +1633,6 @@ do_update() {
   # then does the local-vs-registry probe — more useful right after an update than
   # the standalone digest/rev block (still at `konrad --version`).
   reread_baked_version
-  printf '\n'
-  do_check_updates
 }
 
 do_rebuild() {
