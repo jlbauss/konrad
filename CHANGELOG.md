@@ -16,6 +16,12 @@ build publishes as `:0.X` (minor line), `:latest`, and an immutable
 
 ## [Unreleased]
 
+## [0.14.1] - 2026-06-21
+
+### Fixed
+
+- **Update check removed after update via install.sh.** There was a leftover call to do_update after updating via the install.sh, which let to duplicate output at the end of the update process.
+
 ## [0.14.0] - 2026-06-21
 
 ### Changed
