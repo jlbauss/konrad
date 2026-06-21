@@ -16,6 +16,8 @@ build publishes as `:0.X` (minor line), `:latest`, and an immutable
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-06-21
+
 ### Changed
 
 - **Image tags reduced to `:0.X` / `:latest` / `:<short-sha>`.** Dropped the
@@ -23,6 +25,39 @@ build publishes as `:0.X` (minor line), `:latest`, and an immutable
   reliably present (`VERSION` drives the CLI, not image content). `:<short-sha>`
   is now the one immutable per-build handle, and `konrad --version` prints it as
   the image identity. See [image tags](CONTRIBUTING.md#image-tags).
+- **CLI action verbs are subcommands, not flags (breaking).** `konrad update`,
+  `shell`, `reset`, `uninstall` (and `konrad-dev rebuild`) replace `--update`,
+  `--shell`/`-s`, `--reset`, `--uninstall`, `--rebuild`; `--check-updates` is now
+  `update --check`. Only run modifiers (`--profile`, `--no-firewall`,
+  `--allow-host`, `-v`) and the meta flags `--version`/`--help` remain flags.
+- **Restyled startup output.** One `konrad` identity (host + container) with
+  indented ✓/→ phase steps, color- and TTY-gated (plain when piped / in CI);
+  incidental lines (prune count, log path, preflight) moved behind `-v`. The
+  config line names the active layers (e.g. `config · baked + user`).
+- **The engine is started automatically when stopped** — a halted Podman machine
+  or Apple `container` service is brought up instead of erroring out.
+- **`konrad update` refreshes the CLI first, then the image**, by delegating the
+  whole job to the installer (one source of truth for both halves).
+- Renamed the installer `scripts/install-remote.sh` → `scripts/install.sh`.
+
+### Added
+
+- **`konrad opencode <args…>` pass-through.** A generic escape hatch that execs
+  `opencode <args…>` in the sandbox — covers the opencode subcommands konrad
+  doesn't wrap (`opencode models`, `agent list`, `session list`, …) without a
+  bespoke verb each. Firewall on, stdout output, like `run`.
+- **`$HOME`-as-workspace guard.** konrad refuses to run with your home directory
+  as `/workspace` — it would expose all of `$HOME` to the agent and the mount is
+  refused outright on SELinux / macOS — and names the fix (`cd` into a project).
+- **Clearer "engine not installed" error** with the per-OS install one-liner.
+
+### Removed
+
+- **konrad no longer touches your workspace at startup** — no `.gitignore` edits,
+  no `.agent/` pre-creation, no `.agent/` auto-prune, no session sidecar. The
+  agent and the quality-assurance helper create what they need on demand.
+- **Dropped the pre-0.4 flat-config auto-migration.** Move a pre-0.4 config into
+  `~/.config/konrad/user/` by hand (see README → Configuration).
 
 ## [0.13.1] - 2026-06-19
 
