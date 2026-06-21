@@ -40,7 +40,7 @@
   // starts; create with `mkdir -p ~/.claude/skills` on the host.
   //
   // Self-testing socket mount: bind the HOST's rootless podman socket in,
-  // so `podman` here (and therefore `konrad-dev --rebuild` / smoke-test /
+  // so `podman` here (and therefore `konrad-dev rebuild` / smoke-test /
   // shelling into the runtime image) drives the host daemon. This is what
   // lets the agent working ON konrad actually exercise the konrad runtime
   // image without round-tripping through the user. containerEnv below

@@ -36,7 +36,7 @@
 #                      patches automatically and stop at the next X bump.
 #                      Post-1.0 the same shape becomes `:X` (major line).
 #   :latest            rolling alias for the newest passing build overall.
-#                      The only tag the CLI itself reads (konrad --update).
+#                      The only tag the CLI itself reads (konrad update).
 #   :<short-sha>       immutable; the one per-build handle that never moves.
 #                      Maps 1:1 to a commit — rollback, bisect, layer-diff.
 #                      No version- or date-derived tag: VERSION drives the
@@ -141,7 +141,7 @@ jobs:
           # write to distinct tags. Publish merges them later.
           TRANSIENT="$IMG:ci-${{ github.run_id }}-${{ matrix.arch }}"
           # Pinned image refs (full name@digest) from the lock files. Local
-          # `konrad-dev --rebuild` reads the same files, so the CI build
+          # `konrad-dev rebuild` reads the same files, so the CI build
           # resolves to identical digests as a developer's local build.
           BASE_IMAGE=$(cat image/locks/base.lock)
           UV_IMAGE=$(cat image/locks/uv.lock)

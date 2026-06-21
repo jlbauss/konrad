@@ -11,7 +11,7 @@
 # Engine selection: an explicit CONTAINER_ENGINE wins (CI sets docker, where
 # podman isn't installed). Otherwise we mirror konrad's own choice — KONRAD_ENGINE
 # if set, else auto: Apple's `container` on Apple-Silicon macOS when present, else
-# podman — so a local `konrad-dev --rebuild && ./scripts/smoke-test.sh` inspects
+# podman — so a local `konrad-dev rebuild && ./scripts/smoke-test.sh` inspects
 # the SAME image store konrad just built into (a `container build` lands the image
 # in container's store, not podman's). All three engines accept the flags we use
 # (`run --rm --entrypoint ""`, `image inspect`).
@@ -222,34 +222,6 @@ CONTAINER
 pass "org layer merges under user precedence; instructions append; skill loads"
 fi
 
-# --- 9. Host-side: flat → user/ config migration (bin/konrad) ---
-# Migration lives in bin/konrad (host CLI), not the image. Source it with the
-# KONRAD_SOURCE_ONLY=1 test seam so migrate_flat_config runs in isolation
-# against a throwaway $HOME.
-info "config migration (host-side)"
-SMOKE_REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-if [[ -f "$SMOKE_REPO_ROOT/bin/konrad" ]]; then
-  MIG_HOME="$(mktemp -d)"
-  mkdir -p "$MIG_HOME/.config/konrad/agents"
-  printf '{}\n'      > "$MIG_HOME/.config/konrad/opencode.jsonc"
-  printf '# rules\n' > "$MIG_HOME/.config/konrad/AGENTS.md"
-  # shellcheck source=/dev/null
-  ( HOME="$MIG_HOME" KONRAD_SOURCE_ONLY=1 . "$SMOKE_REPO_ROOT/bin/konrad"
-    set +eu; migrate_flat_config >/dev/null 2>&1 )
-  test -f "$MIG_HOME/.config/konrad/user/opencode.jsonc" || fail "migration: opencode.jsonc not moved into user/"
-  test -d "$MIG_HOME/.config/konrad/user/agents"         || fail "migration: agents/ not moved into user/"
-  test -f "$MIG_HOME/.config/konrad/user/AGENTS.md"      || fail "migration: AGENTS.md not moved into user/"
-  test ! -e "$MIG_HOME/.config/konrad/opencode.jsonc"    || fail "migration: flat opencode.jsonc still present after move"
-  # Idempotent: a second run (user/ now exists) must no-op without error.
-  # shellcheck source=/dev/null
-  ( HOME="$MIG_HOME" KONRAD_SOURCE_ONLY=1 . "$SMOKE_REPO_ROOT/bin/konrad"
-    set +eu; migrate_flat_config >/dev/null 2>&1 )
-  test -f "$MIG_HOME/.config/konrad/user/opencode.jsonc" || fail "migration: not idempotent"
-  rm -rf "$MIG_HOME"
-  pass "flat config migrated into user/ (idempotent)"
-else
-  printf '  \033[33mSKIP\033[0m  config migration (bin/konrad not found next to smoke-test.sh)\n'
-fi
 
 # --- All clear ---
 printf '\n\033[32mall checks passed for %s\033[0m\n' "$IMAGE"

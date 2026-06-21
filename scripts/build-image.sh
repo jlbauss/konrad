@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
 # Build the konrad container image to konrad:local — the single source of
-# truth for the local build, which `konrad-dev --rebuild` also delegates to.
+# truth for the local build, which `konrad-dev rebuild` also delegates to.
 # Usable without having the CLI installed yet. (The :latest / :0.x / :<sha>
 # tags are CI-only; this convenience build never writes them.)
 #

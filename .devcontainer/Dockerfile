@@ -42,7 +42,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 #   podman              → client only. Talks to the HOST's rootless podman
 #                         socket (mounted by devcontainer.json, addressed via
 #                         CONTAINER_HOST) so the agent can exercise the konrad
-#                         runtime image from in here — `konrad-dev --rebuild`,
+#                         runtime image from in here — `konrad-dev rebuild`,
 #                         `./scripts/smoke-test.sh konrad:local`, shelling into
 #                         the image. Daemonless: nothing runs locally, it's a
 #                         pure remote client. See CLAUDE.md "Self-testing".
@@ -130,7 +130,7 @@ RUN ln -sf /usr/bin/fdfind /usr/local/bin/fd \
 # konrad-dev → the checkout's CLI, preprovisioned for self-testing. bin/konrad
 # picks its default image from its own basename (invoked as `konrad-dev` ⇒
 # defaults to konrad:local), so the symlink NAME is the whole mechanism —
-# `konrad-dev --rebuild` / `konrad-dev --shell` then work the moment the
+# `konrad-dev rebuild` / `konrad-dev shell` then work the moment the
 # container is up, no manual setup. /usr/local/bin is already on PATH, so no
 # ~/.local/bin dance (that recipe is for a native checkout — see CONTRIBUTING).
 # Target resolves at runtime via the /workspace bind mount; a dangling symlink

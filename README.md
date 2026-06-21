@@ -22,7 +22,7 @@ It's a thin, sandboxed wrapper around [opencode](https://github.com/sst/opencode
 - **Your models, your choice.** Local engines (LM Studio / Ollama / llama.cpp) or any opencode-supported API provider — never locked to one vendor.
 - **Batteries included.** One container image ships the agent's tools (ripgrep, fd, jq, pandoc, poppler, Python 3 + a system venv, Typst, LibreOffice) and a curated skill set already wired together: no venv, no pip, no host setup.
 - **Fully open source.** AGPL-3.0, no telemetry, nothing proprietary.
-- **Always current.** A bot tracks every upstream and CI rebuilds the image as they move; `konrad --update` keeps you fresh. See [build & reproducibility](ARCHITECTURE.md#build--reproducibility).
+- **Always current.** A bot tracks every upstream and CI rebuilds the image as they move; `konrad update` keeps you fresh. See [build & reproducibility](ARCHITECTURE.md#build--reproducibility).
 
 What ships in the box:
 
@@ -34,7 +34,6 @@ What ships in the box:
 
 **Alpha.** The runtime works and the build/publish pipeline is solid, but the surface area is still moving. **Don't run Konrad in production or on anything you can't afford to lose if you're not sure what you're doing.** Specifically, today:
 
-- **Egress firewall on by default; no permission ACLs yet.** Network egress is restricted to an allow-list (your providers + a small trusted set) by a sidecar filtering proxy — `--no-firewall` opts out, `--allow-host` widens it. Per-tool permission ACLs and read-only-workspace mode are still on the roadmap — see [ROADMAP.md](ROADMAP.md).
 - **Podman everywhere, or Apple `container` on Apple-Silicon macOS; Linux and macOS only.** Podman is the default. On macOS 26+ with Apple's [`container`](https://github.com/apple/container) CLI installed, Konrad uses that native engine instead — no `podman machine` VM (`KONRAD_ENGINE=podman` pins Podman; `=container` forces Apple's). Docker support is on the roadmap, untested. No Windows support — WSL is at your own discretion and untested.
 - **Pre-1.0: expect churn, but versioned.** Konrad uses [semantic versioning](CONTRIBUTING.md#versioning) — pre-1.0 that's `0.X.Y` (`X`/minor = new functionality or any user-visible change, `Y`/patch = fixes). The leading `0.` means config shapes, flags, and image internals can still change without a migration path; no stability promise until 1.0.
 - **No automated test suite.** Validation is manual (shellcheck + a smoke build). Regressions can slip through; the baked build manifest is the safety net, not a test suite.
@@ -56,7 +55,7 @@ Konrad is for someone who wants an AI agent to work on **their own files, on the
 One-liner, no clone needed:
 
 ```sh
-curl -fsSL https://gitlab.git.nrw/jbauss2/konrad/-/raw/main/scripts/install-remote.sh | sh
+curl -fsSL https://gitlab.git.nrw/jbauss2/konrad/-/raw/main/scripts/install.sh | sh
 ```
 
 This drops `konrad` into `~/.local/bin/` (override with `KONRAD_INSTALL_DIR=…`), pre-pulls the container image (skippable with `KONRAD_NO_PULL=1`), and warns if you need to install Podman or fix your `PATH`. Re-run any time to upgrade in place. The first `konrad` run also auto-pulls if the image isn't present, so the explicit pre-pull is optional; if the registry is unreachable, Konrad falls back to a (much slower) local build.
@@ -78,22 +77,36 @@ konrad
 
 That's the whole UX: the current directory is mounted at `/workspace` inside the container, opencode starts pointing at your configured provider, and you go.
 
+### Subcommands
+
+The action verbs are subcommands; `konrad` with no subcommand launches the TUI.
+
+| Subcommand             | What it does                                                            |
+| ---------------------- | ----------------------------------------------------------------------- |
+| _(none)_               | Default. Launch the opencode TUI against the current directory.         |
+| `run <args…>`          | Non-interactive: `opencode run <args…>` — one prompt, answer on stdout (pipeable). |
+| `opencode <args…>`     | Pass-through to `opencode <args…>` in the sandbox — the escape hatch for opencode subcommands konrad doesn't wrap (`opencode models`, `agent list`, `session list`, …). |
+| `shell`                | Open a bash shell in the container instead of the TUI.                  |
+| `connect [args…]`      | Authenticate a provider (`opencode auth login`) — agent-free, firewall off. `connect --custom [id]` declares a self-hosted endpoint. |
+| `mcp-auth <server>`    | Authenticate a remote MCP server's OAuth; the browser callback is forwarded into the sandbox. |
+| `update`               | Pull the latest image from `ghcr.io/jlbauss/konrad:latest` and refresh the CLI script itself. `update --check` compares without pulling. |
+| `reset`                | Wipe shared volumes + log dir. Prompts `[y/N]`; affects all workspaces. |
+| `uninstall`            | Remove the CLI binary + the image. Prompts `[y/N]`. Leaves user config, shared volumes, and log dir alone. |
+
 ### Flags
+
+Modifiers — pass them **before** the subcommand.
 
 | Flag                     | What it does                                                            |
 | ------------------------ | ----------------------------------------------------------------------- |
-| _(none)_                 | Default. Runs opencode against the current directory.                   |
-| `-s`, `--shell`          | Open a bash shell in the container instead of opencode.                 |
 | `--no-firewall`          | Disable the egress firewall for this run (default ON). Restores unrestricted network access. |
 | `--allow-host <host>`    | Add a host to the egress allow-list for this run (repeatable). Permanent entries go in `~/.config/konrad/user/allowed_hosts`. |
+| `--profile <name>`       | Use throwaway state + cache volumes suffixed with `<name>` (credentials stay shared). |
 | `-v`, `--verbose`        | Per-phase timestamps + verbose opencode logs. Useful for chasing slow startup. |
 | `--version`              | Print CLI version + image tag/digest/revision.                          |
-| `--update`               | Pull the latest image from `ghcr.io/jlbauss/konrad:latest` and refresh the CLI script itself. |
-| `--reset`                | Wipe shared volumes + log dir. Prompts `[y/N]`; affects all workspaces. |
-| `--uninstall`            | Remove the CLI binary + the image. Prompts `[y/N]`. Leaves user config, shared volumes, and log dir alone. |
 | `-h`, `--help`           | Show usage.                                                             |
 
-Short flags bundle (`konrad -sv` is `konrad -s -v`). `konrad-dev` is the contributor binary — same flags, except `--rebuild` replaces `--update`. See [CONTRIBUTING.md](CONTRIBUTING.md).
+`konrad-dev` is the contributor binary — same surface, except the `rebuild` subcommand replaces `update`. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ### Occasional maintenance (one-liners)
 
@@ -103,7 +116,7 @@ Short flags bundle (`konrad -sv` is `konrad -s -v`). `konrad-dev` is the contrib
 | Start from the baked default         | `podman run --rm --entrypoint cat ghcr.io/jlbauss/konrad:latest /etc/konrad/opencode-defaults.jsonc > ~/.config/konrad/user/opencode.jsonc` |
 | Diff your override vs. baked default | `diff -u <(podman run --rm --entrypoint cat ghcr.io/jlbauss/konrad:latest /etc/konrad/opencode-defaults.jsonc) ~/.config/konrad/user/opencode.jsonc` |
 | Clear just the log dir               | `rm -rf ~/.local/state/konrad/log/`                                                           |
-| Nuclear reset                        | `konrad --reset` (wipes log dir + all shared volumes; prompts `[y/N]`)                        |
+| Nuclear reset                        | `konrad reset` (wipes log dir + all shared volumes; prompts `[y/N]`)                        |
 
 ## Configuration
 
@@ -135,7 +148,7 @@ Layers 2 and 3 are symmetric — each is a directory with up to five optional pi
 
 The merge of `opencode.jsonc` is deep and ordered **baked < org < user** (last writer wins): **objects merge recursively, the later layer's keys win on conflict, new keys from any layer come through, arrays replace.** That last one matters — see [the AGENTS.md convention](#adding-your-own-model-instructions).
 
-> **Upgrading from a pre-0.4 install?** Konrad used to keep your config flat at `~/.config/konrad/{opencode.jsonc,agents,…}`. The first run of 0.4+ moves those into `~/.config/konrad/user/` automatically and prints a one-line notice — nothing for you to do.
+> **Upgrading from a pre-0.4 install?** Konrad used to keep your config flat at `~/.config/konrad/{opencode.jsonc,agents,…}`. Move those into a `user/` subdir — `mkdir -p ~/.config/konrad/user && mv ~/.config/konrad/{opencode.jsonc,agents,skills,AGENTS.md,fonts} ~/.config/konrad/user/ 2>/dev/null` — so they merge as your layer (precedence: `baked < org < user`).
 
 ### Set up a model provider
 
@@ -270,9 +283,9 @@ One rule: **`.agent/` belongs to the agent.** Framework state (opencode sessions
 |---|---|---|
 | `<workspace>/.agent/task.md` | Current task's plan + outcome | Overwritten next task; committable. |
 | `<workspace>/.agent/artifacts/` | Durable mid-task outputs | Hands-off; committable. |
-| `<workspace>/.agent/scratch/`, `.agent/quality-assurance/` | Agent scripts; verification evidence | Auto-pruned >7d; gitignored (added on first run). |
-| `~/.local/state/konrad/log/` | opencode logs + per-launch session sidecar | Auto-pruned >7d; `ls -t` / `tail -f`. |
-| Named volumes `konrad-secrets` / `-cache` / `-state` | Auth, cache, last-model + UI state | Shared across projects; wiped by `konrad --reset`. |
+| `<workspace>/.agent/scratch/`, `.agent/quality-assurance/` | Agent scripts; verification evidence | Created by the agent on demand; konrad neither creates, prunes, nor gitignores them — they're yours to manage. |
+| `~/.local/state/konrad/log/` | opencode logs | Auto-pruned >7d; `ls -t` / `tail -f`. |
+| Named volumes `konrad-secrets` / `-cache` / `-state` | Auth, cache, last-model + UI state | Shared across projects; wiped by `konrad reset`. |
 
 opencode's sessions and conversation DB are **ephemeral** — gone on container exit. Durable task memory is `.agent/task.md`, not the framework's history. Full rationale and the exact mount topology in [state isolation](ARCHITECTURE.md#state-secrets--isolation).
 
@@ -283,17 +296,18 @@ opencode's sessions and conversation DB are **ephemeral** — gone on container 
 | `Cannot connect to Podman` / `connection refused`                | Podman VM not running (macOS)               | `podman machine init` (once), then `podman machine start`                                 |
 | `cannot reach Apple's container service`                         | Apple `container` not started (macOS)       | `container system start` (or `KONRAD_ENGINE=podman` to use Podman instead)                |
 | `LM Studio not reachable at http://localhost:1234`               | LM Studio off or on a wrong port            | LM Studio → Developer → Start Server, port 1234. (Or you're on Ollama / llama.cpp — set your model in [Configuration](#configuration) and ignore the warning.) |
-| `EACCES: permission denied, mkdir '/home/node/.local/state'`     | Stale image (pre-permission-fix)            | `konrad --update`                                                                         |
+| `EACCES: permission denied, mkdir '/home/node/.local/state'`     | Stale image (pre-permission-fix)            | `konrad update`                                                                         |
 | Agent can't find the file you mentioned                          | You ran `konrad` in the wrong directory     | The cwd is what gets mounted at `/workspace`. Always `cd` first.                          |
+| `refusing to run with your home directory as the workspace`      | You ran `konrad` straight from `$HOME`      | `cd` into a project directory first — konrad mounts the cwd as `/workspace`, and `$HOME` exposes everything (and fails to mount on SELinux / macOS). |
 | A command (e.g. `docling`) prints `Killed` with no error         | Container hit its RAM cap (out-of-memory)   | Raise it for the run: `KONRAD_MEMORY=8G konrad` (see [Resource limits](#resource-limits)). |
 | `merge-config: failed to parse …/konrad/user/opencode.jsonc`     | Syntax error in your user override          | `cat` it and check the JSONC syntax. Comments are fine. (Same applies to `org/opencode.jsonc`.) |
-| Want to wipe and start over                                      | —                                           | `konrad --reset` (prompts `[y/N]`), then `konrad --update`                                |
+| Want to wipe and start over                                      | —                                           | `konrad reset` (prompts `[y/N]`), then `konrad update`                                |
 
-If a problem isn't listed here, run `konrad -s` to poke around inside the container with the same mounts opencode would see.
+If a problem isn't listed here, run `konrad shell` to poke around inside the container with the same mounts opencode would see.
 
 ### Debugging opencode
 
-opencode writes a fresh, timestamped log on every launch; Konrad bind-mounts it to **`~/.local/state/konrad/log/`** (standard XDG state) and writes a `<timestamp>-session.txt` sidecar recording which host workspace was active.
+opencode writes a fresh, timestamped log on every launch; Konrad bind-mounts it to **`~/.local/state/konrad/log/`** (standard XDG state).
 
 ```sh
 ls -t ~/.local/state/konrad/log/                                  # newest first

@@ -16,7 +16,7 @@ metadata:
 > `~/.config/opencode/skills/<name>/SKILL.md` and is loaded by opencode's
 > `skill` tool. If the skill is meant to ship *with* konrad rather than
 > sit in a single workspace, it belongs under `image/opencode/skills/` in
-> the konrad repo and only takes effect after a `konrad-dev --rebuild`
+> the konrad repo and only takes effect after a `konrad-dev rebuild`
 > (everything under `image/` is baked at build time). Producer skills that
 > emit a visual deliverable should invoke the bundled `quality-assurance`
 > skill before reporting, the way the `pdf` and `spreadsheets` skills do.

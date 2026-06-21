@@ -24,11 +24,11 @@ primary consumer. Full design: [ARCHITECTURE.md](ARCHITECTURE.md).
 ```sh
 shellcheck bin/konrad image/entrypoint.sh scripts/*.sh        # lint — keep clean
 bash -n <script>                                              # parse check
-konrad-dev --rebuild && ./scripts/smoke-test.sh konrad:local  # build + smoke
-konrad-dev --shell                                            # poke around the image
+konrad-dev rebuild && ./scripts/smoke-test.sh konrad:local  # build + smoke
+konrad-dev shell                                            # poke around the image
 ```
 
-Anything under `image/` is baked and needs `konrad-dev --rebuild` before it takes
+Anything under `image/` is baked and needs `konrad-dev rebuild` before it takes
 effect (skills, agents, `environment.md`, Dockerfile, deps). `bin/konrad`,
 `scripts/`, and `.devcontainer/` are live — no rebuild. Dev loop and the
 `konrad`/`konrad-dev` split: [CONTRIBUTING.md](CONTRIBUTING.md).
@@ -69,7 +69,7 @@ rule or preference, add it here as a bullet — that's what this section is for.
 
 - Add an SPDX header to every **new or edited** source file: `# SPDX-FileCopyrightText: 2026 Jan-Luca Bauß` + `# SPDX-License-Identifier: AGPL-3.0-or-later` (vendored files keep their *upstream* header). The repo follows REUSE; `reuse lint` (in the dev container; CI-enforced on GitLab) must stay green. Canon: [CONTRIBUTING → licensing](CONTRIBUTING.md#what-youre-agreeing-to).
 - Keep `bin/konrad` (and `image/entrypoint.sh`, `scripts/*.sh`) executable: a `644` `bin/konrad` breaks `konrad-dev`, so `chmod +x` after any rewrite that drops the bit and verify with `ls -l`.
-- Validate smoke locally before pushing CI changes (`scripts/smoke-test.sh`, `image/Dockerfile`, `image/build-manifest.sh`): `konrad-dev --rebuild && ./scripts/smoke-test.sh konrad:local` beats a CI round-trip.
+- Validate smoke locally before pushing CI changes (`scripts/smoke-test.sh`, `image/Dockerfile`, `image/build-manifest.sh`): `konrad-dev rebuild && ./scripts/smoke-test.sh konrad:local` beats a CI round-trip.
 - Prefer `trash` over `rm` inside `/workspace` — it survives rebuilds and is recoverable (`trash-restore` / `trash-list`). `rm` hard-deletes; use it deliberately.
 - Keep markdown **markdownlint-green** (like `reuse`/shellcheck): run `npx --yes markdownlint-cli2` before pushing doc changes; CI gates it. Rules live in `.markdownlint.jsonc` (the shared ruleset — config-layer repos symlink it, so a rule change here propagates on their next submodule bump), scope/ignores in `.markdownlint-cli2.jsonc`. The VS Code extension (`DavidAnson.vscode-markdownlint`) flags issues live. Baked `image/**` docs are deliberately out of scope — they ride intentional image rebuilds, not a docs linter.
 
@@ -80,7 +80,7 @@ rule or preference, add it here as a bullet — that's what this section is for.
 
 ### Self-testing the runtime (from the dev container)
 
-- The `.devcontainer` mounts the host podman socket (`CONTAINER_HOST`), so `konrad-dev --rebuild` / `--shell` and workspace runs drive the host daemon directly. **Guard-rail: that's full host podman control (on macOS: root on the podman-machine VM) — no `--privileged`, no host-path mounts; `podman push` stays `ask`.** One-time prereq — Linux: `systemctl --user enable --now podman.socket`; macOS: the `dev.containers.dockerPath` shim wire-up in [CONTRIBUTING.md](CONTRIBUTING.md) (the daemon there is the VM's rootful one; `bin/konrad` swaps keep-id for explicit uid maps when `KONRAD_DAEMON_ROOTFUL=1`).
+- The `.devcontainer` mounts the host podman socket (`CONTAINER_HOST`), so `konrad-dev rebuild` / `konrad-dev shell` and workspace runs drive the host daemon directly. **Guard-rail: that's full host podman control (on macOS: root on the podman-machine VM) — no `--privileged`, no host-path mounts; `podman push` stays `ask`.** One-time prereq — Linux: `systemctl --user enable --now podman.socket`; macOS: the `dev.containers.dockerPath` shim wire-up in [CONTRIBUTING.md](CONTRIBUTING.md) (the daemon there is the VM's rootful one; `bin/konrad` swaps keep-id for explicit uid maps when `KONRAD_DAEMON_ROOTFUL=1`).
 - End-to-end runs go through `./scripts/selftest.sh` (smoke test + a real `konrad run` through `bin/konrad`, asserted). It isolates state via `--profile selftest` and degrades to a SKIP on the model stage when no model/credential is usable, so it's safe to run blind — a red result means the runtime broke, not that setup is missing. **The default model comes from your own `~/.config/konrad` config** (the self-test mounts that layer into the runtime container, so it composes `baked < org < user` like a normal run) — set it where you'd set it for normal konrad. Override per run with `./scripts/selftest.sh --model <slug>` or `KONRAD_SELFTEST_MODEL=…` (any provider, not OpenRouter-locked). The raw primitive it wraps is `konrad-dev --profile selftest run [--model <slug>] "<prompt>"`. To exercise the model stage, the shared `konrad-secrets` volume needs a provider credential (`konrad-dev` → `/connect`); on macOS that's the rootful daemon's own secrets volume.
 
 ### Engineering ethos

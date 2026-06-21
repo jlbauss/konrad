@@ -4,14 +4,14 @@
 # is instant.
 #
 # Usage (one-liner):
-#   curl -fsSL https://gitlab.git.nrw/jbauss2/konrad/-/raw/main/scripts/install-remote.sh | sh
+#   curl -fsSL https://gitlab.git.nrw/jbauss2/konrad/-/raw/main/scripts/install.sh | sh
 #
 # Knobs (env vars):
 #   KONRAD_INSTALL_DIR     target directory (default: $HOME/.local/bin)
-#   KONRAD_NO_PULL=1       skip the post-install `konrad --update` (CLI only)
+#   KONRAD_NO_PULL=1       skip the post-install `konrad update` (CLI only)
 #   KONRAD_QUIET_INSTALL=1 suppress play-by-play (fetching… / skip notices);
 #                          keep the one "installed …" confirmation. Set by
-#                          `konrad --update` since the caller already framed
+#                          `konrad update` since the caller already framed
 #                          the operation.
 #   KONRAD_REF=main        git ref on gitlab.git.nrw/jbauss2/konrad to fetch from
 #
@@ -32,7 +32,7 @@ say()  { printf 'konrad-install: %s\n' "$*"; }
 warn() { printf 'konrad-install: warning: %s\n' "$*" >&2; }
 die()  { printf 'konrad-install: %s\n' "$*" >&2; exit 1; }
 # chatter() is for play-by-play that's useful in a standalone `curl|sh` run
-# but redundant when re-invoked from `konrad --update` (the caller already
+# but redundant when re-invoked from `konrad update` (the caller already
 # said "refreshing CLI"). Honors KONRAD_QUIET_INSTALL=1.
 chatter() { [ "${KONRAD_QUIET_INSTALL:-0}" = "1" ] || say "$@"; }
 
@@ -129,7 +129,7 @@ esac
 # Mirror bin/konrad's detect_engine(): Podman everywhere, except Apple-Silicon
 # macOS with Apple's `container` CLI present, where that native engine is the
 # default (no podman-machine VM). KONRAD_ENGINE pins the choice. The pre-pull
-# below delegates to `konrad --pull-image`, which re-detects identically — so
+# below delegates to `konrad pull-image`, which re-detects identically — so
 # here we only steer a missing engine to the right install and skip the pre-pull
 # cleanly when the engine isn't up.
 ENGINE="${KONRAD_ENGINE:-}"
@@ -157,12 +157,12 @@ if ! command -v "$ENGINE" >/dev/null 2>&1; then
 fi
 
 # --- Pre-pull the image ------------------------------------------------------
-# The pull goes through the freshly-installed `konrad --pull-image` so the one
+# The pull goes through the freshly-installed `konrad pull-image` so the one
 # engine-aware pull implementation in bin/konrad is reused. KONRAD_NO_PULL=1 is
-# set by `konrad --update` when it re-runs this installer for the CLI refresh —
+# set by `konrad update` when it re-runs this installer for the CLI refresh —
 # the caller already pulled and printed --version, so both steps short-circuit.
 if [ "${KONRAD_NO_PULL:-0}" = "1" ]; then
-  chatter "skipping image pre-pull (KONRAD_NO_PULL=1). Run 'konrad --update' when ready."
+  chatter "skipping image pre-pull (KONRAD_NO_PULL=1). Run 'konrad update' when ready."
   exit 0
 fi
 
@@ -176,11 +176,11 @@ fi
 if ! engine_up; then
   warn "$ENGINE is installed but not reachable (not started? socket missing?)."
   say  "  Start it:  $engine_start"
-  say  "Skipping pre-pull. Run 'konrad --update' once $ENGINE is up."
+  say  "Skipping pre-pull. Run 'konrad update' once $ENGINE is up."
   exit 0
 fi
 
-if ! "$TARGET" --pull-image; then
+if ! "$TARGET" pull-image; then
   warn "image pre-pull failed; konrad will retry on first run."
 fi
 

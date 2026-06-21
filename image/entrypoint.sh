@@ -17,7 +17,6 @@ OPENCODE_CFG=/home/node/.config/opencode
 OPENCODE_DATA=/home/node/.local/share/opencode
 OPENCODE_LOG_DIR="$OPENCODE_DATA/log"             # bound to host XDG state from bin/konrad
 SECRETS=/home/node/.opencode-secrets
-WORKSPACE_AGENT=/workspace/.agent                 # the agent's working-state root
 
 ORG_CFG=/home/node/.config/konrad/org          # org layer  (bind-mounted from host, optional)
 USER_CFG=/home/node/.config/konrad/user        # user layer (bind-mounted from host, optional)
@@ -27,9 +26,21 @@ KONRAD_DEBUG="${KONRAD_DEBUG:-0}"
 KONRAD_HOST_WORKSPACE="${KONRAD_HOST_WORKSPACE:-(unknown — KONRAD_HOST_WORKSPACE not set)}"
 KONRAD_HOST_LOG_DIR="${KONRAD_HOST_LOG_DIR:-(unknown — KONRAD_HOST_LOG_DIR not set)}"
 
-say() { printf '[konrad container] %s\n' "$*" >&2; }
-warn() { printf '[konrad container] warning: %s\n' "$*" >&2; }
-fatal() { printf '[konrad container] FATAL: %s\n' "$*" >&2; exit 1; }
+# Output style — mirrors bin/konrad's helpers so a launch reads as one continuous
+# sequence: the host prints the bold "konrad" header, the container continues the
+# indented ✓/→ steps under it. Color is gated on an interactive stderr (a TTY)
+# with NO_COLOR unset, so `konrad run` / piped / proxy-log output stays plain.
+if [ -t 2 ] && [ -z "${NO_COLOR:-}" ]; then
+  _C_OK=$'\033[32m'; _C_GO=$'\033[36m'; _C_WARN=$'\033[33m'
+  _C_ERR=$'\033[31m'; _C_DIM=$'\033[2m'; _C_OFF=$'\033[0m'
+else
+  _C_OK=''; _C_GO=''; _C_WARN=''; _C_ERR=''; _C_DIM=''; _C_OFF=''
+fi
+step()  { printf '  %s✓%s  %s\n'        "$_C_OK"  "$_C_OFF" "$*" >&2; }
+go()    { printf '  %s→%s  %s\n'        "$_C_GO"  "$_C_OFF" "$*" >&2; }
+say()   { printf '%skonrad%s %s\n'      "$_C_DIM" "$_C_OFF" "$*" >&2; }
+warn()  { printf '%skonrad%s %swarning:%s %s\n' "$_C_DIM" "$_C_OFF" "$_C_WARN" "$_C_OFF" "$*" >&2; }
+fatal() { printf '%skonrad%s %serror:%s %s\n'   "$_C_DIM" "$_C_OFF" "$_C_ERR" "$_C_OFF" "$*" >&2; exit 1; }
 dbg() {
   [[ "$KONRAD_DEBUG" != "1" ]] && return 0
   printf '[konrad container debug %s] %s\n' "$(date +%H:%M:%S.%3N)" "$*" >&2
@@ -112,11 +123,12 @@ merge_inputs=("$KONRAD_BAKED/opencode-defaults.jsonc")
 [[ -f "$ORG_CFG/opencode.jsonc" ]]  && merge_inputs+=("$ORG_CFG/opencode.jsonc")
 [[ -f "$USER_CFG/opencode.jsonc" ]] && merge_inputs+=("$USER_CFG/opencode.jsonc")
 
-if (( ${#merge_inputs[@]} > 1 )); then
-  say "composing config: baked + $(( ${#merge_inputs[@]} - 1 )) overlay(s) (org/user)"
-else
-  say "composing config: baked defaults (no overrides)"
-fi
+# Name exactly which layers compose, so "baked + user" / "baked + org + user" /
+# "baked" reads at a glance — no ambiguous overlay count.
+config_layers="baked"
+[[ -f "$ORG_CFG/opencode.jsonc" ]]  && config_layers="$config_layers + org"
+[[ -f "$USER_CFG/opencode.jsonc" ]] && config_layers="$config_layers + user"
+step "config · $config_layers"
 node "$KONRAD_BAKED/merge-config.js" "${merge_inputs[@]}" > "$TARGET_JSONC"
 dbg "config composed at $TARGET_JSONC"
 
@@ -232,58 +244,30 @@ dbg "auth.json symlink ready"
 ln -sf "$SECRETS/mcp-auth.json" "$OPENCODE_DATA/mcp-auth.json"
 dbg "mcp-auth.json symlink ready"
 
-# ── 4. Workspace .agent/ bootstrap + auto-prune ──────────────────────────────
-# .agent/ belongs to the agent end-to-end after the 2026-05-20 state-isolation
-# change. Make the conventional subdirs upfront so skills don't have to
-# mkdir -p them, then prune ephemeral subdirs (quality-assurance/, scratch/)
-# of anything older than 7 days. Hands off task.md and artifacts/ — those
-# are user-committable working memory.
-if [[ -d /workspace ]]; then
-  mkdir -p "$WORKSPACE_AGENT/scratch" "$WORKSPACE_AGENT/artifacts" "$WORKSPACE_AGENT/quality-assurance"
-  find "$WORKSPACE_AGENT/quality-assurance" "$WORKSPACE_AGENT/scratch" \
-       -mindepth 1 -maxdepth 1 -mtime +7 -exec rm -rf {} + 2>/dev/null || true
-
-  # Orphan-detection: legacy .agent/opencode/ from a pre-2026-05-20 konrad
-  # is no longer bound to anything. Tell the user once; don't auto-delete
-  # (a pre-migration auth.json could still be in there).
-  if [[ -d /workspace/.agent/opencode ]]; then
-    warn "found orphan /workspace/.agent/opencode from a pre-2026-05-20 konrad"
-    warn "safe to 'rm -rf .agent/opencode/' once you've checked for a stray auth.json"
-  fi
-
-  # Orphan-detection: legacy .agent/qa/ from before the 2026-05-22 rename
-  # to .agent/quality-assurance/. Same one-shot warning shape.
-  if [[ -d /workspace/.agent/qa ]]; then
-    warn "found orphan /workspace/.agent/qa from before the quality-assurance rename"
-    warn "evidence (if any) lives at /workspace/.agent/quality-assurance/ now"
-    warn "safe to 'rm -rf .agent/qa/' once you've moved anything you want to keep"
-  fi
-fi
-dbg ".agent/ bootstrap + prune done"
-
-# ── 5. Session sidecar in the central log dir ────────────────────────────────
-# opencode names its own log file by its own timestamp, which we can't
-# predict from here. Write a sidecar file with our timestamp recording
-# the host workspace path; ls -lt in the central log dir pairs sidecars
-# with their opencode logs naturally.
-KONRAD_SESSION_TS="$(date -u +%Y-%m-%dT%H-%M-%SZ)"
-SESSION_SIDECAR="$OPENCODE_LOG_DIR/${KONRAD_SESSION_TS}-session.txt"
-{
-  printf 'konrad session\n'
-  printf 'workspace: %s\n' "$KONRAD_HOST_WORKSPACE"
-  printf 'started:   %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  printf 'image:     %s\n' "${HOSTNAME:-(unknown)}"
-} > "$SESSION_SIDECAR" 2>/dev/null || true
-dbg "session sidecar written to $SESSION_SIDECAR"
+# konrad no longer touches the workspace at startup: it neither creates the
+# .agent/ tree (the agent and the quality-assurance helper mkdir -p their own
+# dirs on demand) nor edits .gitignore nor writes a session sidecar (opencode's
+# own per-launch log is enough). The workspace bind is the agent's to shape.
 
 dbg "entrypoint done — about to exec: $*"
 
-# opencode writes a fresh, timestamped INFO-level log file on every
-# launch with per-line +Xms deltas (the structure that makes "what took
-# 2 seconds" easy to spot). The log dir is bind-mounted from the host's
-# XDG state dir, so logs accumulate centrally there — not in the workspace.
-say "opencode logs (host): $KONRAD_HOST_LOG_DIR"
-say "starting opencode…"
+# Final handoff line — match the message to what we actually exec. `$1`/`$2` are
+# the command: `opencode` (TUI) / `opencode run` / `opencode auth login` /
+# `opencode mcp auth`, `bash` for `shell`, or `konrad-proxy` for the (detached,
+# log-only) firewall sidecar. The host's bind-mounted log dir already collects
+# opencode's per-launch log; the path pointer is -v-only noise otherwise.
+dbg "opencode logs (host): $KONRAD_HOST_LOG_DIR"
+case "$1" in
+  opencode)
+    case "${2:-}" in
+      auth) go "connecting a provider" ;;
+      mcp)  go "authenticating MCP server" ;;
+      run)  go "opencode (run)" ;;
+      *)    go "opencode" ;;
+    esac
+    ;;
+  bash) go "shell" ;;
+esac
 
 # Raw HTTP trace — DELIBERATELY NOT tied to -v/KONRAD_DEBUG. Asking Bun to
 # print every fetch/http call to fd 2 (full request + response headers) buries
