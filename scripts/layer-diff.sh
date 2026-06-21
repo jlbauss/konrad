@@ -12,10 +12,10 @@
 # two remote manifests via `skopeo inspect` (manifest-only, no blob pull),
 # so this is cheap and touches no local image store.
 #
-#   scripts/layer-diff.sh 0.9.0                 # 0.9.0 -> latest
-#   scripts/layer-diff.sh 0.9.0 0.10.0          # explicit TO
-#   scripts/layer-diff.sh --arch arm64 0.9.0    # pick the platform
-#   scripts/layer-diff.sh ghcr.io/jlbauss/konrad:0.9.0 konrad:0.10.0
+#   scripts/layer-diff.sh 0.9                    # line :0.9 -> latest
+#   scripts/layer-diff.sh a1b3c0f 9f2e1d4        # explicit, immutable :<sha>
+#   scripts/layer-diff.sh --arch arm64 0.9       # pick the platform
+#   scripts/layer-diff.sh ghcr.io/jlbauss/konrad:0.9 konrad:latest
 #
 # A bare argument (no `/`) is resolved as a tag of the default repo; an
 # argument containing `/` is used verbatim as a full reference.

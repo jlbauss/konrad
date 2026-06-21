@@ -137,12 +137,12 @@ CI publishes each build to `ghcr.io/jlbauss/konrad` under several tags:
 
 | Tag | Mutable? | Meaning |
 |---|---|---|
-| `:0.X.Y-YYYY-MM-DD` | immutable | the rollback handle — code `0.X.Y` + packages as of that day |
-| `:0.X.Y` · `:0.X` · `:latest` | rolling | newest passing build for that patch / minor line / overall |
-| `:pr-<num>` | per-PR | reviewer test image; never touches `:latest` or a release tag |
-| `:<short-sha>` | immutable | per-commit, for bisecting |
+| `:0.X` | rolling | newest passing build on the minor line — the **pin-a-line** handle: get patches, stop at the next `X`. Post-1.0 becomes `:X` (major line). |
+| `:latest` | rolling | newest passing build overall — the **only tag the CLI reads** (`konrad --update` pulls this) |
+| `:<short-sha>` | **immutable** | the one per-build handle that never moves — maps 1:1 to a commit. Use it for rollback, bisecting, and `scripts/layer-diff.sh`. |
+| `:pr-<num>` | per-PR | reviewer test image; never touches `:latest` or a line tag |
 
-The separator before the date is a **hyphen**, not a dot, so the tag doesn't read as a four-segment version. Post-1.0 the same shape gains a `:X` major-line tag.
+There is deliberately **no version- or date-derived image tag**. `VERSION` drives the *CLI*, not image content — a CLI-only patch bumps `VERSION` without firing an image rebuild ([the `image/**` paths filter](.github/workflows/build-image.yml)) — so an image-side `:0.X.Y` would promise a precision the build can't keep, and a `:0.X.Y-DATE` tag isn't immutable (two builds the same day overwrite it). The honest immutable handle is `:<short-sha>`; `konrad --version` prints it as the image identity. To pin an exact image, pin the SHA.
 
 ### Git tags & releases
 

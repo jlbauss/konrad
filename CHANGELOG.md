@@ -10,12 +10,19 @@ All notable, user-facing changes to konrad. The format follows
 [semantic versioning](CONTRIBUTING.md#versioning) (pre-1.0: `0.X.Y`).
 
 Entries stay terse — the *why* lives in the git commit log and the
-[ARCHITECTURE.md](ARCHITECTURE.md), linked rather than restated. Each release
-publishes as `:0.X.Y`, `:0.X`, `:latest`, and an immutable
-`:0.X.Y-YYYY-MM-DD` daily rebuild (see the
-[versioning](CONTRIBUTING.md#versioning)).
+[ARCHITECTURE.md](ARCHITECTURE.md), linked rather than restated. Each image
+build publishes as `:0.X` (minor line), `:latest`, and an immutable
+`:<short-sha>` (see the [image tags](CONTRIBUTING.md#image-tags)).
 
 ## [Unreleased]
+
+### Changed
+
+- **Image tags reduced to `:0.X` / `:latest` / `:<short-sha>`.** Dropped the
+  `:0.X.Y` and `:0.X.Y-YYYY-MM-DD` tags — neither was reliably immutable or
+  reliably present (`VERSION` drives the CLI, not image content). `:<short-sha>`
+  is now the one immutable per-build handle, and `konrad --version` prints it as
+  the image identity. See [image tags](CONTRIBUTING.md#image-tags).
 
 ## [0.13.1] - 2026-06-19
 

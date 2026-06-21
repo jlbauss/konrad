@@ -1371,21 +1371,6 @@ EOF
   podman_run opencode mcp auth "$@"
 }
 
-# Compose the immutable dated tag (0.X.YYYY-MM-DD) from an image's version
-# and created labels. The dated tag is the registry's rollback handle; we
-# reconstruct it from labels so it's readable without a container run.
-# SOURCE_DATE_EPOCH=0 reproducible builds used to stamp 1970 into the
-# created label — guard against that (and against images predating the
-# label) by falling back to the bare version.
-image_dated_tag() {
-  local ver="$1" date="${2%%T*}"
-  if [[ "$ver" != "unknown" && "$date" == ????-??-?? && "$date" != "1970-01-01" ]]; then
-    printf '%s-%s' "$ver" "$date"
-  else
-    printf '%s' "$ver"
-  fi
-}
-
 do_version() {
   printf 'konrad %s\n' "$KONRAD_VERSION"
   printf '  CLI:    %s\n' "$KONRAD_VERSION"
@@ -1406,7 +1391,7 @@ do_version() {
     return 0
   fi
 
-  local digest image_ver image_rev image_created image_tag
+  local digest image_ver image_rev image_created
   # The image Id (digest) comes from podman's Go-template formatter; on
   # apple/container we skip it (JSON-only inspect, no stable digest path) and
   # show just the rev. Labels go through eng_image_label (best-effort on
@@ -1419,16 +1404,26 @@ do_version() {
   image_rev="$(eng_image_label "$IMAGE_NAME" org.opencontainers.image.revision)"
   [[ -z "$image_rev" ]] && image_rev="unknown"
   image_created="$(eng_image_label "$IMAGE_NAME" org.opencontainers.image.created)"
-  image_tag="$(image_dated_tag "$image_ver" "$image_created")"
 
+  # The headline is the immutable :<short-sha> tag — the one published handle
+  # that never moves and always re-pulls the exact same image. It's the
+  # revision label hung off the registry repo (REGISTRY_IMAGE minus its tag).
+  # A miss (dev/old image with no revision label) degrades to the rolling
+  # local name. The version/created/digest detail line is informational.
   local override_note=""
   [[ -n "${KONRAD_IMAGE:-}" ]] && override_note="  (KONRAD_IMAGE override)"
-  printf '  image:  %s   (%s)%s\n' "$image_tag" "$IMAGE_NAME" "$override_note"
-  if [[ -n "$digest" ]]; then
-    printf '          %s · rev %s\n' "${digest:0:19}" "$image_rev"
+  local image_pin
+  if [[ "$image_rev" != "unknown" ]]; then
+    image_pin="${REGISTRY_IMAGE%:*}:$image_rev"
   else
-    printf '          rev %s\n' "$image_rev"
+    image_pin="$IMAGE_NAME"
   fi
+  printf '  image:  %s   (%s)%s\n' "$image_pin" "$IMAGE_NAME" "$override_note"
+  local detail="version $image_ver"
+  [[ "${image_created%%T*}" == ????-??-?? && "${image_created%%T*}" != "1970-01-01" ]] \
+    && detail="$detail · built ${image_created%%T*}"
+  [[ -n "$digest" ]] && detail="$detail · ${digest:0:19}"
+  printf '          %s\n' "$detail"
   # No CLI-vs-image skew warning by design. CLI-only patches don't trigger
   # an image rebuild (the workflow's paths: filter excludes VERSION), so a
   # patch-line drift between CLI and image labels is normal and harmless —

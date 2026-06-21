@@ -30,17 +30,19 @@
 # multi-arch manifest list spanning linux/amd64 and linux/arm64). VERSION
 # pre-1.0 is `0.X.Y` (X = minor, Y = patch); the docs/design/versioning-
 # and-releases.md doc has the full rules.
-#   :<ver>-<date>      immutable; e.g. 0.2.1-2026-05-29 — the rollback handle.
-#                      Hyphen (not dot) so the tag doesn't read as four
-#                      version segments.
-#   :<ver>             rolling; latest passing build for that exact patch
-#                      version (0.X.Y)
-#   :<minor>           rolling; latest passing patch on the 0.X line.
+#   :<minor>           rolling; latest passing build on the 0.X line.
 #                      Derived from VER as ${VER%.*} (strips the trailing
-#                      .Y). Users on `:0.X` get patches automatically and
-#                      stop getting updates when X bumps.
-#   :latest            rolling alias for the newest passing build overall
-#   :<short-sha>       immutable; for bisecting
+#                      .Y). The pin-a-line handle: users on `:0.X` get
+#                      patches automatically and stop at the next X bump.
+#                      Post-1.0 the same shape becomes `:X` (major line).
+#   :latest            rolling alias for the newest passing build overall.
+#                      The only tag the CLI itself reads (konrad --update).
+#   :<short-sha>       immutable; the one per-build handle that never moves.
+#                      Maps 1:1 to a commit — rollback, bisect, layer-diff.
+#                      No version- or date-derived tag: VERSION drives the
+#                      CLI, not image content (a CLI-only patch bumps VERSION
+#                      without a rebuild), so an image-side :<ver> tag would
+#                      promise a precision the build can't keep.
 #
 # Architecture: amd64 + arm64. Each arch builds natively on its own
 # runner (ubuntu-latest / ubuntu-24.04-arm) in parallel, smokes natively
@@ -288,8 +290,7 @@ jobs:
   # manifest metadata only; no layer data moves.
   #
   # Tag list depends on the trigger:
-  #   - push to main / workflow_dispatch on main → :<ver>-<date>, :<ver>,
-  #                                                 :<minor>, :latest, :<sha>
+  #   - push to main / workflow_dispatch on main → :<minor>, :latest, :<sha>
   #                                                 (where <minor> = 0.X
   #                                                 derived from <ver>=0.X.Y)
   #   - pull_request from same repo   → :pr-<num> only (transient, replaced
@@ -332,7 +333,6 @@ jobs:
         run: |
           IMG=$(echo "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}" | tr '[:upper:]' '[:lower:]')
           VER=$(cat VERSION)
-          DATE=$(date -u +%Y-%m-%d)
           SHA=${GITHUB_SHA::7}
           AMD64="$IMG:ci-${{ github.run_id }}-amd64"
           ARM64="$IMG:ci-${{ github.run_id }}-arm64"
@@ -340,9 +340,9 @@ jobs:
             TAGS="pr-$PR_NUM"
           else
             # VER is 0.X.Y pre-1.0 (X.Y.Z post-1.0). MINOR strips the
-            # trailing .Y / .Z, leaving the floating tag for the patch line.
+            # trailing .Y / .Z, leaving the floating tag for the minor line.
             MINOR="${VER%.*}"
-            TAGS="$VER-$DATE $VER $MINOR latest $SHA"
+            TAGS="$MINOR latest $SHA"
           fi
           # imagetools create with two source manifests produces a multi-
           # arch manifest list — `podman pull` against the resulting tag

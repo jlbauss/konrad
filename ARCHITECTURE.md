@@ -130,7 +130,7 @@ Two **independent** gates, baked into the agent prompt ([image/opencode/agents/k
 - The GitLab `resolve-locks` bot re-resolves each upstream daily and opens an auto-merging MR **only when something moved** — so a rebuild fires only when there's genuinely something new. No scheduled cron rebuild. (The build-side of the low-maintenance ethos: freshness is a bot plus upstream registries, not hand-tended bumps.)
 - **Reproducible layers** — CI builds with `SOURCE_DATE_EPOCH=0` + `rewrite-timestamp=true`, so byte-identical content yields byte-identical layer digests; that's what lets users skip a re-download when nothing actually changed. Local `konrad-dev --rebuild` writes `konrad:local`, separate from the published `:latest`.
 - **CI runs on a GitHub mirror; the primary repo stays on `gitlab.git.nrw`** (one-way push mirror → GitHub Actions does build → smoke → publish to `ghcr.io/jlbauss/konrad`). Why: gitlab.git.nrw's shared runners can't run the privileged Podman build. The GitHub side is a CI execution surface only — no issues, no MRs. (Full contributor + release flow: [CONTRIBUTING.md](CONTRIBUTING.md).)
-- Every image carries `/etc/konrad/build-manifest.json` (dpkg / npm / pip versions + build metadata); `diff` two dated `:0.X.Y-<date>` images' manifests to bisect a regression to its upstream cause.
+- Every image carries `/etc/konrad/build-manifest.json` (dpkg / npm / pip versions + build metadata); `diff` two `:<short-sha>` images' manifests to bisect a regression to its upstream cause.
 
 ## Licensing
 
