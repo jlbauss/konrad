@@ -33,6 +33,17 @@ effect (skills, agents, `environment.md`, Dockerfile, deps). `bin/konrad`,
 `scripts/`, and `.devcontainer/` are live — no rebuild. Dev loop and the
 `konrad`/`konrad-dev` split: [CONTRIBUTING.md](CONTRIBUTING.md).
 
+A **first/uncached `konrad-dev rebuild` needs real RAM** on the *daemon* it
+builds against: the `python-models` stage pulls + processes ~1 GB of Docling
+weights through torch and is OOM-killed (exit 137, `Killed`) under ~2 GB. The
+build uses the daemon's full RAM — there is **no build `--memory` knob to raise**
+(it's a ceiling, not a floor), so the fix is more daemon memory, not a flag: on
+macOS `podman machine set --memory <MB>` (the build runs on the machine VM via
+the bound socket); the `.devcontainer` declares its own `hostRequirements` for
+orchestrated hosts. The model layer is byte-stable/commit-pinned, so a *warm*
+rebuild skips this stage entirely — it only bites the first build or after a
+cache wipe. On a too-small box, build in CI / on a bigger host instead.
+
 ## Quick facts
 
 - Config layering is `baked < org < user`, merged by [image/merge-config.js](image/merge-config.js): **objects merge, arrays replace.** So add model instructions by dropping a `*.md` into a layer's `instructions/` dir (or via `AGENTS.md`), never by overriding the `instructions` array. The baked `opencode.jsonc` declares one glob per layer's `instructions/` dir and opencode expands them itself (skips absent dirs, dedups, preserves order) — so the additive channel needs no entrypoint surgery and the array-replace rule stays universal. `org/AGENTS.md` is a back-compat literal in that baked glob list. Rationale: [ARCHITECTURE.md → Configuration & instructions](ARCHITECTURE.md#configuration--instructions).

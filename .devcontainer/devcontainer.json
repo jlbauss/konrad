@@ -25,6 +25,23 @@
   "runArgs": [
     "--userns=keep-id:uid=1000,gid=1000"
   ],
+  // Size the dev container generously. An *uncached* `konrad-dev rebuild`
+  // re-downloads and processes the Docling models (~1 GB of weights through
+  // torch) in the python-models build stage — that step is OOM-killed (exit
+  // 137) on a ~2 GB host, the floor most orchestrators hand out by default.
+  // These are MINIMUMS the orchestrator provisions against (honored by
+  // Codespaces and other spec-compliant hosts; advisory for a plain local
+  // VS Code + Podman/Docker run, which warns rather than fails). It also keeps
+  // konrad's own runtime cap — half the host RAM, floored at 2 GB — from
+  // swallowing the whole box on a small VM. NOTE: on macOS the build runs on
+  // the Podman *machine VM* via the bound socket, so that VM's memory
+  // (`podman machine set --memory <MB>`) is the real lever for the build, not
+  // this field — which sizes the dev container itself.
+  "hostRequirements": {
+    "cpus": 4,
+    "memory": "8gb",
+    "storage": "32gb"
+  },
   // Persist state across container rebuilds via named volumes:
   //   .claude         → Claude Code credentials, sessions, projects
   //   .vscode-server  → installed VS Code extensions + their state
