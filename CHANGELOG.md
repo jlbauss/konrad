@@ -16,6 +16,8 @@ build publishes as `:0.X` (minor line), `:latest`, and an immutable
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-06-23
+
 ### Added
 
 - **Additive instruction files per layer (`instructions/*.md`).** Drop any number
