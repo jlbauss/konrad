@@ -16,6 +16,8 @@ build publishes as `:0.X` (minor line), `:latest`, and an immutable
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-06-23
+
 ### Added
 
 - **Read-only `context/` mount.** Drop reference material (a mirrored wiki,
