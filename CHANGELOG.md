@@ -16,6 +16,8 @@ build publishes as `:0.X` (minor line), `:latest`, and an immutable
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-06-23
+
 ### Changed
 
 - **Coherent install / launch / `--version` output.** `scripts/install.sh` now
