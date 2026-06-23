@@ -16,6 +16,15 @@ build publishes as `:0.X` (minor line), `:latest`, and an immutable
 
 ## [Unreleased]
 
+### Added
+
+- **Read-only `context/` mount.** Drop reference material (a mirrored wiki,
+  internal docs) into `~/.config/konrad/context/<name>/` and Konrad bind-mounts
+  it read-only at `/context/<name>` so the agent can `grep` it with no network
+  and no stored secret. Not a config layer — see
+  [Reference material](README.md#reference-material-the-context-mount) and
+  [ARCHITECTURE](ARCHITECTURE.md#state-secrets--isolation).
+
 ## [0.14.1] - 2026-06-21
 
 ### Fixed

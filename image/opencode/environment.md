@@ -12,6 +12,7 @@ listed below are pre-installed — don't probe to check whether they exist.
 | `/opt/venv` | Python venv, active via `PATH`. Read-only; use `uv pip install --user` for session adds. |
 | `/home/node/.config/opencode/` | opencode runtime config (agents, skills, this file). |
 | `/home/node/.config/konrad/` | Optional user overlays bind-mounted from the host. |
+| `/context/<name>/` | Read-only reference material (org/user-supplied), when present. `rg`/`grep` it for relevant facts — no network needed. |
 | `/tmp` | Truly ephemeral; dies with the container. |
 
 To persist past container exit: `/workspace/.agent/artifacts/` (kept)

@@ -135,16 +135,17 @@ Layers 2 and 3 are symmetric — each is a directory with up to five optional pi
 ~/.config/konrad/
 ├── org/                Optional. Shipped by your organization (see "For organizations").
 │   └── …same five pieces as user/…
-└── user/               Your personal layer.
-    ├── opencode.jsonc  Deep-merged with the baked default (and any org layer) at start.
-    ├── agents/         Your own primary agents, layered in.
-    ├── skills/         Your own opencode skills, layered in.
-    ├── AGENTS.md       Personal model instructions, loaded on top of Konrad's base.
-    ├── fonts/          .ttf / .otf / .ttc dropped here load on top of the baked palette.
-    └── allowed_hosts   Extra egress-firewall hosts, one per line (see Egress firewall).
+├── user/               Your personal layer.
+│   ├── opencode.jsonc  Deep-merged with the baked default (and any org layer) at start.
+│   ├── agents/         Your own primary agents, layered in.
+│   ├── skills/         Your own opencode skills, layered in.
+│   ├── AGENTS.md       Personal model instructions, loaded on top of Konrad's base.
+│   ├── fonts/          .ttf / .otf / .ttc dropped here load on top of the baked palette.
+│   └── allowed_hosts   Extra egress-firewall hosts, one per line (see Egress firewall).
+└── context/            Optional. Read-only reference material (see "Reference material").
 ```
 
-(The first five are opencode config, deep-merged at start. `allowed_hosts` is the one Konrad-specific extra — it feeds the egress firewall, not opencode.)
+(The first five are opencode config, deep-merged at start. `allowed_hosts` is the one Konrad-specific extra — it feeds the egress firewall, not opencode. `context/` is separate again — not config, just files the agent reads; see [Reference material](#reference-material-the-context-mount).)
 
 The merge of `opencode.jsonc` is deep and ordered **baked < org < user** (last writer wins): **objects merge recursively, the later layer's keys win on conflict, new keys from any layer come through, arrays replace.** That last one matters — see [the AGENTS.md convention](#adding-your-own-model-instructions).
 
@@ -252,6 +253,12 @@ Konrad ships its base instructions via the `instructions` config key. **For your
 - `<workspace>/AGENTS.md` — per-project rules, loaded only in that workspace.
 
 Both are additive. Don't set `instructions` in your override unless you specifically want to **replace** Konrad's base — arrays don't merge.
+
+### Reference material (the `context/` mount)
+
+Drop reference material — a mirrored wiki, internal docs, lookup tables — into `~/.config/konrad/context/<name>/` and Konrad bind-mounts the whole `context/` directory **read-only** at `/context` inside the sandbox (so the example lands at `/context/<name>/`). The agent can then `grep`/`rg` it while it works, with **no network and no stored secret** — ideal for material too private or too large to paste into a prompt. The mount appears only when the directory exists; populate it by hand or point a sync script at it.
+
+This is _not_ a config layer — it takes no part in the `baked < org < user` merge; it's just files the agent reads. To make the agent actually _reach_ for a corpus, name it in your `AGENTS.md` ("ASG processes are documented in `/context/asg-wiki/`"), or ship a small skill that points at the mount for richer, triggered guidance. `konrad reset`/`uninstall` leave `context/` alone — it's your material.
 
 ### For organizations
 

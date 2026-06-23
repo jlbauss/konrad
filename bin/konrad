@@ -81,6 +81,10 @@ KONRAD_PROFILE=""
 KONRAD_CFG_DIR="${HOME}/.config/konrad"
 ORG_CFG_DIR="$KONRAD_CFG_DIR/org"
 USER_CFG_DIR="$KONRAD_CFG_DIR/user"
+# Read-only reference material — NOT a config layer (no opencode merge). A
+# sibling of org/user holding named subdirs the agent greps at /context/<name>;
+# see the context mount below and ARCHITECTURE → State, secrets & isolation.
+CONTEXT_CFG_DIR="$KONRAD_CFG_DIR/context"
 
 # Central log directory on the host (XDG state). Holds opencode's
 # structured log files plus a per-session sidecar that records the host
@@ -1052,6 +1056,13 @@ EOF
     # user with no org package (the common case) just gets the user mount.
     [[ -d "$ORG_CFG_DIR" ]]  && { ro_bind "$ORG_CFG_DIR"  /home/node/.config/konrad/org;  cfg_mounts+=("${RO_BIND[@]}"); }
     [[ -d "$USER_CFG_DIR" ]] && { ro_bind "$USER_CFG_DIR" /home/node/.config/konrad/user; cfg_mounts+=("${RO_BIND[@]}"); }
+    # Reference-material mount (org/user-supplied wiki, docs, …) at /context.
+    # AGENT-ONLY, so it lands in home_mounts, NOT cfg_mounts: it is not config,
+    # and the firewall proxy (which consumes cfg_mounts to derive the allow-list)
+    # has no business seeing it. One bind of the whole dir; consumers namespace
+    # by subdir (/context/<name>). Reads fall under the default external_directory
+    # allow, so no permission change. See ARCHITECTURE's mount table.
+    [[ -d "$CONTEXT_CFG_DIR" ]] && { ro_bind "$CONTEXT_CFG_DIR" /context; home_mounts+=("${RO_BIND[@]}"); }
   else
     # REMOTE daemon: mount the SAME config layers, but from the daemon-visible
     # host path (KONRAD_REMOTE_HOST_CONFIG); the -d guards stat the copy the dev
@@ -1061,6 +1072,9 @@ EOF
     if [[ -n "$host_cfg" ]]; then
       [[ -d "$ORG_CFG_DIR" ]]  && { ro_bind "$host_cfg/org"  /home/node/.config/konrad/org;  cfg_mounts+=("${RO_BIND[@]}"); }
       [[ -d "$USER_CFG_DIR" ]] && { ro_bind "$host_cfg/user" /home/node/.config/konrad/user; cfg_mounts+=("${RO_BIND[@]}"); }
+      # /context too (agent-only → home_mounts), for self-test parity. See the
+      # local branch above for the full rationale.
+      [[ -d "$CONTEXT_CFG_DIR" ]] && { ro_bind "$host_cfg/context" /context; home_mounts+=("${RO_BIND[@]}"); }
     fi
     # In remote-socket mode (dev-container self-test) the daemon resolves the
     # workspace bind against the HOST fs, which only knows paths under the guest
@@ -1793,7 +1807,7 @@ WARNING — $self uninstall will remove:
   - the image:         $target_image$cache_note
 
 This does NOT remove (your call):
-  - your config:    $KONRAD_CFG_DIR/   (org/ + user/ layers)
+  - your config:    $KONRAD_CFG_DIR/   (org/ + user/ layers, context/ material)
   - shared volumes: $SECRETS_VOLUME, $CACHE_VOLUME, $STATE_VOLUME
   - log dir:        $KONRAD_LOG_DIR/
 
