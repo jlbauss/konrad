@@ -86,16 +86,23 @@ if [[ "$(id -u)" == "0" ]]; then
   if [[ -n "${KONRAD_SEAL_GATEWAY:-}" ]]; then
     valid_ipv4 "$KONRAD_SEAL_GATEWAY" \
       || fatal "refusing to seal — KONRAD_SEAL_GATEWAY is not a valid IPv4 address: '$KONRAD_SEAL_GATEWAY'"
-    say "egress seal: blackholing host-gateway route $KONRAD_SEAL_GATEWAY (host reachable only via the proxy)"
+    dbg "egress seal: blackholing host-gateway route $KONRAD_SEAL_GATEWAY (host reachable only via the proxy)"
     ip route add blackhole "$KONRAD_SEAL_GATEWAY/32" \
       || fatal "could not install the egress seal route (is CAP_NET_ADMIN present?) — aborting rather than run with the host-gateway leak open"
+    # A phase step, not a general say() line, so it reads as part of the launch
+    # sequence (✓ firewall → ✓ egress seal → ✓ config) instead of interrupting
+    # it; the gateway IP is -v-only detail (above). Shown only on apple/container
+    # (Podman sets no KONRAD_SEAL_GATEWAY — its --internal net has no host route).
+    step "egress seal"
   fi
   if [[ -n "${KONRAD_HOST_ALIAS_IP:-}" ]]; then
     valid_ipv4 "$KONRAD_HOST_ALIAS_IP" \
       || fatal "KONRAD_HOST_ALIAS_IP is not a valid IPv4 address: '$KONRAD_HOST_ALIAS_IP'"
     printf '%s host.containers.internal\n' "$KONRAD_HOST_ALIAS_IP" >> /etc/hosts \
       || fatal "could not write the local-model host alias to /etc/hosts"
-    say "local-model host alias: host.containers.internal -> $KONRAD_HOST_ALIAS_IP"
+    # Pure plumbing in the (detached) proxy — its output never reaches the user's
+    # terminal anyway, so keep it to -v rather than a phase step.
+    dbg "local-model host alias: host.containers.internal -> $KONRAD_HOST_ALIAS_IP"
   fi
   # Clear so they never reach the workload's environment; the uid guard already
   # blocks re-entry, this just keeps the dropped process's env clean.

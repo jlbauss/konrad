@@ -103,7 +103,7 @@ Modifiers — pass them **before** the subcommand.
 | `--allow-host <host>`    | Add a host to the egress allow-list for this run (repeatable). Permanent entries go in `~/.config/konrad/user/allowed_hosts`. |
 | `--profile <name>`       | Use throwaway state + cache volumes suffixed with `<name>` (credentials stay shared). |
 | `-v`, `--verbose`        | Per-phase timestamps + verbose opencode logs. Useful for chasing slow startup. |
-| `--version`              | Print CLI version + image tag/digest/revision.                          |
+| `--version`              | Print CLI + image versions, plus the immutable pin (short-sha), local tag, and build date. |
 | `-h`, `--help`           | Show usage.                                                             |
 
 `konrad-dev` is the contributor binary — same surface, except the `rebuild` subcommand replaces `update`. See [CONTRIBUTING.md](CONTRIBUTING.md).

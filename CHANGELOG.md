@@ -16,6 +16,21 @@ build publishes as `:0.X` (minor line), `:latest`, and an immutable
 
 ## [Unreleased]
 
+### Changed
+
+- **Coherent install / launch / `--version` output.** `scripts/install.sh` now
+  uses the same styled output as the CLI (the dim `konrad` prefix, colored
+  `warning:`/`error:` tags, `✓`/`→` glyphs, `NO_COLOR`-aware), and delegates the
+  image pre-pull to `konrad pull-image` — so it starts the container engine the
+  same way a normal run does instead of warning and skipping.
+- **Compact `konrad --version`.** Now mirrors the startup banner — a
+  `cli X · image Y` headline (CLI and image versions kept distinct) plus one dim
+  line with the immutable pin (registry repo : short-sha), local tag, build
+  date, and engine.
+- **Quieter launch on Apple `container`.** The egress-seal step is now a clean
+  `✓ egress seal` phase line instead of a verbose `konrad egress seal: …`
+  message that interrupted the launch sequence (the gateway IP moved to `-v`).
+
 ## [0.15.0] - 2026-06-23
 
 ### Added

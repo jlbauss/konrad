@@ -1,4 +1,6 @@
 #!/usr/bin/env sh
+# SPDX-FileCopyrightText: 2026 Jan-Luca Bauß
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # konrad — frictionless installer. Drops the CLI on PATH (no clone needed)
 # and, by default, pre-pulls the container image so the next `konrad` run
 # is instant.
@@ -8,7 +10,9 @@
 #
 # Knobs (env vars):
 #   KONRAD_INSTALL_DIR     target directory (default: $HOME/.local/bin)
-#   KONRAD_NO_PULL=1       skip the post-install `konrad update` (CLI only)
+#   KONRAD_NO_PULL=1       install the CLI only — skip the image pre-pull.
+#                          (`konrad update` does NOT set this; it lets the
+#                          installer own the pull so there's one pull path.)
 #   KONRAD_QUIET_INSTALL=1 suppress play-by-play (fetching… / skip notices);
 #                          keep the one "installed …" confirmation. Set by
 #                          `konrad update` since the caller already framed
@@ -28,9 +32,26 @@ BASE_URL="${BASE_URL_DEFAULT}/${REF}"
 CLI_URL="${BASE_URL}/bin/konrad"
 VERSION_URL="${BASE_URL}/VERSION"
 
-say()  { printf 'konrad-install: %s\n' "$*"; }
-warn() { printf 'konrad-install: warning: %s\n' "$*" >&2; }
-die()  { printf 'konrad-install: %s\n' "$*" >&2; exit 1; }
+# Output style — mirrors bin/konrad's helpers (a dim `konrad` prefix; colored
+# warning/error tags; ✓/→ glyphs for the completed-step / handoff lines) so the
+# install reads as one continuous styled sequence with the CLI and the in-
+# container entrypoint. Color is gated on an interactive stderr with NO_COLOR
+# unset, so a piped `curl|sh` or the `konrad update` re-invocation stays plain.
+# POSIX sh has no $'\033' ANSI-C quoting, so the ESC byte comes from printf.
+if [ -t 2 ] && [ -z "${NO_COLOR:-}" ]; then
+  _ESC=$(printf '\033')
+  _C_OK="${_ESC}[32m"; _C_GO="${_ESC}[36m"; _C_WARN="${_ESC}[33m"
+  _C_ERR="${_ESC}[31m"; _C_DIM="${_ESC}[2m";  _C_OFF="${_ESC}[0m"
+else
+  _C_OK=''; _C_GO=''; _C_WARN=''; _C_ERR=''; _C_DIM=''; _C_OFF=''
+fi
+
+# All messages go to stderr; like the CLI, nothing here is "tool output".
+say()  { printf '%skonrad%s %s\n'              "$_C_DIM" "$_C_OFF" "$*" >&2; }
+warn() { printf '%skonrad%s %swarning:%s %s\n' "$_C_DIM" "$_C_OFF" "$_C_WARN" "$_C_OFF" "$*" >&2; }
+die()  { printf '%skonrad%s %serror:%s %s\n'   "$_C_DIM" "$_C_OFF" "$_C_ERR" "$_C_OFF" "$*" >&2; exit 1; }
+step() { printf '  %s✓%s  %s\n'                "$_C_OK"  "$_C_OFF" "$*" >&2; }
+go()   { printf '  %s→%s  %s\n'                "$_C_GO"  "$_C_OFF" "$*" >&2; }
 # chatter() is for play-by-play that's useful in a standalone `curl|sh` run
 # but redundant when re-invoked from `konrad update` (the caller already
 # said "refreshing CLI"). Honors KONRAD_QUIET_INSTALL=1.
@@ -111,79 +132,43 @@ fi
 install -m 0755 "$TMP.baked" "$TARGET" 2>/dev/null \
   || { cp "$TMP.baked" "$TARGET" && chmod 0755 "$TARGET"; } \
   || die "failed to install $TARGET"
-say "installed $TARGET (konrad $VER)"
+step "installed $TARGET (konrad $VER)"
 
 # --- PATH advice -------------------------------------------------------------
 case ":$PATH:" in
   *":$TARGET_DIR:"*) ;;
   *)
-    printf '\n'
+    printf '\n' >&2
     warn "$TARGET_DIR is not in your PATH."
     say  "  Add this to your shell config (~/.zshrc, ~/.bashrc, or ~/.config/fish/config.fish):"
     say  "    export PATH=\"$TARGET_DIR:\$PATH\""
-    printf '\n'
+    printf '\n' >&2
     ;;
 esac
 
-# --- Container engine preflight (warn-only) ---------------------------------
-# Mirror bin/konrad's detect_engine(): Podman everywhere, except Apple-Silicon
-# macOS with Apple's `container` CLI present, where that native engine is the
-# default (no podman-machine VM). KONRAD_ENGINE pins the choice. The pre-pull
-# below delegates to `konrad pull-image`, which re-detects identically — so
-# here we only steer a missing engine to the right install and skip the pre-pull
-# cleanly when the engine isn't up.
-ENGINE="${KONRAD_ENGINE:-}"
-if [ -z "$ENGINE" ]; then
-  if [ "$(uname -s)" = "Darwin" ] && [ "$(uname -m)" = "arm64" ] \
-     && command -v container >/dev/null 2>&1; then
-    ENGINE="container"
-  else
-    ENGINE="podman"
-  fi
-fi
-
-if ! command -v "$ENGINE" >/dev/null 2>&1; then
-  if [ "$ENGINE" = "container" ]; then
-    warn "Apple's 'container' is not installed. konrad needs a container engine at runtime."
-    say  "  Install from https://github.com/apple/container/releases, then: container system start"
-    say  "  (or 'brew install podman && podman machine init && podman machine start' to use Podman instead)"
-  else
-    warn "podman is not installed. konrad needs it at runtime."
-    say  "  macOS:  brew install podman && podman machine init && podman machine start"
-    say  "  Linux:  see https://podman.io/docs/installation"
-  fi
-  say  "Install it and re-run; the CLI is already in place."
-  exit 0
-fi
-
-# --- Pre-pull the image ------------------------------------------------------
-# The pull goes through the freshly-installed `konrad pull-image` so the one
-# engine-aware pull implementation in bin/konrad is reused. KONRAD_NO_PULL=1 is
-# set by `konrad update` when it re-runs this installer for the CLI refresh —
-# the caller already pulled and printed --version, so both steps short-circuit.
+# --- Pre-pull the image (delegated to the freshly-installed CLI) -------------
+# One source of truth, and the answer to "why doesn't the installer start the
+# engine like the CLI does": it now uses the CLI's path. `konrad pull-image`
+# already detects the engine, starts it when it can (podman machine / container
+# system start, via require_engine → eng_try_start — exactly what a normal run
+# does), and prints tailored guidance when it can't (engine missing or a Podman
+# VM not yet initialized). So the installer no longer duplicates engine
+# detection, install hints, or a warn-only "not running" branch — it asks the
+# CLI, which is what the user's first real run would do anyway.
+#
+# KONRAD_NO_PULL=1 installs the CLI only. `konrad update` does NOT set it (it
+# wants the installer to own the pull); it's a knob for a deliberately CLI-only
+# install. A failed/blocked pre-pull is non-fatal: the CLI is already in place
+# and will pull on first run, so we note it and exit 0.
 if [ "${KONRAD_NO_PULL:-0}" = "1" ]; then
   chatter "skipping image pre-pull (KONRAD_NO_PULL=1). Run 'konrad update' when ready."
   exit 0
 fi
 
-if [ "$ENGINE" = "container" ]; then
-  engine_up()    { container system status >/dev/null 2>&1; }
-  engine_start="container system start"
-else
-  engine_up()    { podman info >/dev/null 2>&1; }
-  engine_start="podman machine init && podman machine start"
-fi
-if ! engine_up; then
-  warn "$ENGINE is installed but not reachable (not started? socket missing?)."
-  say  "  Start it:  $engine_start"
-  say  "Skipping pre-pull. Run 'konrad update' once $ENGINE is up."
-  exit 0
-fi
-
 if ! "$TARGET" pull-image; then
-  warn "image pre-pull failed; konrad will retry on first run."
+  warn "image pre-pull didn't complete; konrad will pull it on first run."
 fi
 
-printf '\n'
+printf '\n' >&2
 "$TARGET" --version || true
-say "done. Run: konrad"
+go "done. Run: konrad"
