@@ -18,21 +18,38 @@
   // Points to the official opencode JSON schema.
   "$schema": "https://opencode.ai/config.json",
 
-  // Konrad's runtime environment manifest, loaded via the instructions
-  // key. The file describes the tool inventory, Python libraries, filesystem
-  // layout, and constraints the agent runs in — not behavior (behavior lives
-  // in the agent prompts under agents/). opencode also additively loads any
-  // AGENTS.md it discovers — both the user-level one
-  // (~/.config/opencode/AGENTS.md) and the project-level one (workspace
-  // root). Keeping Konrad's environment on the instructions key (rather than
-  // parking it as an AGENTS.md) gives us a clear "Konrad's domain vs user's
-  // domain" split: AGENTS.md is for user content.
-  // See README → Configuration → "Adding your own model instructions".
+  // System `instructions`, layered baked < org < user. Each entry is a glob
+  // over one layer's instructions/ dir; opencode expands them itself — skipping
+  // absent dirs/files, de-duplicating, preserving this order (see opencode's
+  // Instruction.systemPaths). So an org or user adds instructions by DROPPING a
+  // *.md into its instructions/ dir — no JSON to author, no array-replace
+  // footgun (only this baked layer declares the array; nobody else needs to
+  // touch it). An org's generated files (e.g. per-member identity) ride along
+  // for free by landing in org/instructions/.
   //
-  // environment.md lives alongside the agents/ and skills/ in opencode's
-  // config dir (not /etc/konrad/) so that edits to it don't invalidate the
-  // expensive model-download layer in the multi-stage Dockerfile build.
-  "instructions": ["/home/node/.config/opencode/environment.md"],
+  //   - environment.md is konrad's runtime-environment manifest (tool
+  //     inventory, Python libs, filesystem layout, constraints — NOT behavior,
+  //     which lives in agents/). It's the baked layer's instructions/ entry.
+  //     The entrypoint also writes the egress allow-list there at run time, so
+  //     the same baked glob picks it up.
+  //   - org/AGENTS.md is a back-compat literal for orgs predating the
+  //     instructions/ convention (a missing file is silently skipped). New orgs
+  //     should prefer org/instructions/*.md.
+  //
+  // opencode additionally auto-discovers any AGENTS.md — the user-level
+  // (~/.config/opencode/AGENTS.md) and project-level (workspace root) — which
+  // stays the user's own slot. See README → "Adding your own model
+  // instructions" and ARCHITECTURE → Configuration & instructions.
+  //
+  // environment.md lives under opencode/instructions/ (not /etc/konrad/) so
+  // that edits to it don't invalidate the expensive model-download layer in
+  // the multi-stage Dockerfile build.
+  "instructions": [
+    "/home/node/.config/opencode/instructions/*.md",
+    "/home/node/.config/konrad/org/instructions/*.md",
+    "/home/node/.config/konrad/org/AGENTS.md",
+    "/home/node/.config/konrad/user/instructions/*.md"
+  ],
 
   // Hide opencode Zen from the picker. Zen is opencode's hosted/paid
   // model gateway; konrad is local-first, so it's opt-in (a user who

@@ -163,7 +163,8 @@ konrad/
 │   ├── konrad-defaults/               # → /etc/konrad/ (not opencode-discoverable)
 │   │   └── opencode-defaults.jsonc    # Baked config defaults
 │   ├── opencode/                      # → ~/.config/opencode/ in the image
-│   │   ├── environment.md             # Runtime environment manifest (tools, libs, layout)
+│   │   ├── instructions/              # Baked layer's system-instructions dir
+│   │   │   └── environment.md         # Runtime environment manifest (tools, libs, layout)
 │   │   ├── agents/                    # Built-in primary agents (konrad, manual-transformer)
 │   │   └── skills/                    # Bundled skills (do-it-manually, spreadsheets, pdf, quality-assurance)
 │   └── fonts/konrad/                  # → /usr/local/share/fonts/konrad/ (seven OFL families)
@@ -217,7 +218,7 @@ Co-Authored-By: ...                               (when applicable)
 
 **README.md** — anything that changes how a user installs, runs, or thinks about konrad. A new subcommand or flag. A new external dependency (e.g. a tool the user has to install on the host).
 
-**CLAUDE.md** — this is the repo-level instructions file, loaded by Claude Code (and any other agent) working *on* konrad. Update when there's a new tool/file/directory the agent should know about, a new convention or constraint the agent should follow, or a structural change (config layering, state tiers, image stages). The runtime konrad agent's *environment manifest* lives separately at `image/opencode/environment.md` (baked into the image, loaded by opencode at runtime via the `instructions` config key); update that file when shipped tools, Python libraries, or the filesystem layout change.
+**CLAUDE.md** — this is the repo-level instructions file, loaded by Claude Code (and any other agent) working *on* konrad. Update when there's a new tool/file/directory the agent should know about, a new convention or constraint the agent should follow, or a structural change (config layering, state tiers, image stages). The runtime konrad agent's *environment manifest* lives separately at `image/opencode/instructions/environment.md` (baked into the image, loaded by opencode at runtime via the layered `instructions` globs — it's the baked layer's `instructions/` entry); update that file when shipped tools, Python libraries, or the filesystem layout change.
 
 Keep all three tight — every byte competes with task context inside the model's window.
 

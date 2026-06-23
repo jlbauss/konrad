@@ -16,6 +16,16 @@ build publishes as `:0.X` (minor line), `:latest`, and an immutable
 
 ## [Unreleased]
 
+### Added
+
+- **Additive instruction files per layer (`instructions/*.md`).** Drop any number
+  of `.md` files into a layer's `instructions/` dir (`~/.config/konrad/org/instructions/`,
+  `~/.config/konrad/user/instructions/`) and each is appended to the system
+  instructions — additively across `baked < org < user`, nothing dropped, no need
+  to touch the `instructions` array. opencode expands the layered globs itself
+  (absent dirs are skipped). `org/AGENTS.md` still works as a single-file
+  back-compat alias.
+
 ## [0.16.0] - 2026-06-23
 
 ### Changed

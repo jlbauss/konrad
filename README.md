@@ -129,16 +129,17 @@ Layer 3 — Your overrides     ~/.config/konrad/user/                (on the hos
 Layer 4 — Per-project        <workspace>/.opencode/opencode.json   (opencode-native)
 ```
 
-Layers 2 and 3 are symmetric — each is a directory with up to five optional pieces:
+Layers 2 and 3 are symmetric — each is a directory with up to six optional pieces:
 
 ```text
 ~/.config/konrad/
 ├── org/                Optional. Shipped by your organization (see "For organizations").
-│   └── …same five pieces as user/…
+│   └── …same pieces as user/…
 ├── user/               Your personal layer.
 │   ├── opencode.jsonc  Deep-merged with the baked default (and any org layer) at start.
 │   ├── agents/         Your own primary agents, layered in.
 │   ├── skills/         Your own opencode skills, layered in.
+│   ├── instructions/   Any *.md here loads on top of Konrad's base instructions.
 │   ├── AGENTS.md       Personal model instructions, loaded on top of Konrad's base.
 │   ├── fonts/          .ttf / .otf / .ttc dropped here load on top of the baked palette.
 │   └── allowed_hosts   Extra egress-firewall hosts, one per line (see Egress firewall).
@@ -247,12 +248,14 @@ To do it by hand instead, the declaration is just:
 
 ### Adding your own model instructions
 
-Konrad ships its base instructions via the `instructions` config key. **For your own additions, use `AGENTS.md`**, which opencode discovers automatically and loads _on top of_ the base:
+Two additive ways to add your own, both loaded _on top of_ Konrad's base — pick by where you want them to apply:
 
-- `~/.config/konrad/user/AGENTS.md` — your personal rules, loaded globally.
-- `<workspace>/AGENTS.md` — per-project rules, loaded only in that workspace.
+- **`AGENTS.md`** — opencode discovers these automatically:
+  - `~/.config/konrad/user/AGENTS.md` — your personal rules, loaded globally.
+  - `<workspace>/AGENTS.md` — per-project rules, loaded only in that workspace.
+- **`~/.config/konrad/user/instructions/*.md`** — drop any number of `.md` files here and each is appended to the system instructions. Same channel as Konrad's own base (the org layer has the matching `org/instructions/`); handy for splitting rules across several files or shipping a generated one.
 
-Both are additive. Don't set `instructions` in your override unless you specifically want to **replace** Konrad's base — arrays don't merge.
+All additive — nothing replaces Konrad's base. You don't need to (and shouldn't) set the `instructions` array in your `opencode.jsonc`: it's an array, so it would **replace** the layered defaults wholesale rather than add to them. Drop a file in `instructions/` instead.
 
 ### Reference material (the `context/` mount)
 
@@ -262,21 +265,22 @@ This is _not_ a config layer — it takes no part in the `baked < org < user` me
 
 ### For organizations
 
-If you run a fleet of Konrad installs, the **org layer** (`~/.config/konrad/org/`) lets you ship defaults every user inherits — extra model declarations, an internal provider endpoint, house skills or agents, and a corporate `AGENTS.md` — without forking the image or hand-editing each user's config. It holds the same five pieces as the user layer and merges **between** the baked defaults and each user's own overrides (`baked < org < user`), so a user can still stack their preferences on top.
+If you run a fleet of Konrad installs, the **org layer** (`~/.config/konrad/org/`) lets you ship defaults every user inherits — extra model declarations, an internal provider endpoint, house skills or agents, and house instructions — without forking the image or hand-editing each user's config. It holds the same pieces as the user layer and merges **between** the baked defaults and each user's own overrides (`baked < org < user`), so a user can still stack their preferences on top.
 
 ```text
 ~/.config/konrad/org/
 ├── opencode.jsonc      Org-wide config (providers, models, env). Merged under user/.
 ├── agents/             House agents.
 ├── skills/             House skills.
-├── AGENTS.md           Org instructions (loaded via the system instructions channel).
+├── instructions/       Any *.md here is appended to the system instructions.
+├── AGENTS.md           Org instructions (back-compat; prefer instructions/).
 └── fonts/              Corporate fonts.
 ```
 
 Two things worth knowing:
 
 - **Discovery is a well-known home-directory folder, not a system path or env var.** Ship your config as a package that drops a folder into each user's `~/.config/konrad/org/`; Konrad finds it with no root, no `podman machine` mount edits, and no per-user setup. (This is what makes it work on macOS, where the Podman VM only auto-shares `$HOME`.)
-- **`org/AGENTS.md` loads via the system `instructions` channel**, not as the discovered global `AGENTS.md` — that one stays the user's. Final instruction precedence is Konrad's `environment.md` → org → user `AGENTS.md` → project `AGENTS.md`, all additive.
+- **Org instructions ride the system `instructions` channel**, not the discovered global `AGENTS.md` — that one stays the user's. Drop any number of `.md` files into `org/instructions/` (a tool that derives per-member identity can generate one there too); each is appended additively. `org/AGENTS.md` still works as a single-file back-compat alias. Final instruction precedence is Konrad's `environment.md` → org → user `AGENTS.md` → project `AGENTS.md`, all additive.
 
 **This is a defaults mechanism, not policy enforcement.** The org folder is just files in the user's own home directory, so a determined user can edit them. "Add-only" describes the merge _precedence_ (the user stacks on top), not a permission lock. Locking config down would need read-only system locations or signing — a separate concern Konrad doesn't address today.
 

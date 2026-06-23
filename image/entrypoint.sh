@@ -139,35 +139,34 @@ step "config · $config_layers"
 node "$KONRAD_BAKED/merge-config.js" "${merge_inputs[@]}" > "$TARGET_JSONC"
 dbg "config composed at $TARGET_JSONC"
 
-# Org instructions ride the system `instructions` channel — the same channel
-# as the baked environment.md — appended AFTER the merge so the array-replace
-# rule can never silently drop them (a user override of `instructions` would
-# otherwise discard org content). The org file is referenced at its read-only
-# mount path. Precedence in opencode's instruction load order ends up:
-# environment.md → org → (user/project AGENTS.md, which opencode discovers on
-# its own). This is what makes org content "system-channel" rather than the
-# user-owned global AGENTS.md. jq is on PATH in the image (smoke-tested).
-if [[ -f "$ORG_CFG/AGENTS.md" ]]; then
-  tmp_jsonc="$(mktemp)"
-  jq --arg p "$ORG_CFG/AGENTS.md" '.instructions += [$p]' "$TARGET_JSONC" > "$tmp_jsonc" \
-    && mv "$tmp_jsonc" "$TARGET_JSONC"
-  dbg "org AGENTS.md appended to .instructions"
-fi
+# Layered model instructions need NO post-merge surgery here: the baked
+# opencode.jsonc declares one glob per layer's instructions/ dir (baked < org <
+# user) plus a back-compat literal for the org AGENTS.md, and opencode expands
+# them itself — skipping absent dirs/files, de-duplicating, preserving order
+# (see its Instruction.systemPaths: ~/ and absolute paths supported, missing
+# entries contribute nothing). So org/user add instructions by dropping a *.md
+# into their instructions/ dir — no jq, no array-replace footgun, no knowledge
+# of guest paths. The org AGENTS.md jq special-case this file used to carry is
+# retired into that baked glob list. See ARCHITECTURE → Configuration &
+# instructions.
 
 # ── 1b. Inline the egress allow-list into the agent's instructions ───────────
 # The model can't see the firewall's allow-list (the proxy is a separate
 # container with no shared writable surface — deliberate). So derive the SAME
 # list here, with the SAME compose-allowed-hosts.sh the proxy filters on, and
 # hand it to the model as a concrete list of reachable hosts — saving it from
-# spending turns on fetches the firewall will 403. Appended on the `instructions`
-# channel (a generated file path), exactly like the org AGENTS.md above.
-# Only when the firewall is actually on (HTTP_PROXY set by bin/konrad) — under
-# --no-firewall everything is reachable, so a list would mislead. Snapshot at
-# session start: a mid-session `/connect` updates the firewall (it live-reloads)
-# but NOT this list — the firewall stays the source of truth; this is only a
-# hint. jq + the compose script are baked and on PATH (smoke-tested).
+# spending turns on fetches the firewall will 403. We just WRITE the file into
+# the baked instructions/ dir; the baked `instructions` glob over that dir picks
+# it up like any other instruction file (no jq append needed). Only when the
+# firewall is actually on (HTTP_PROXY set by bin/konrad) — under --no-firewall
+# everything is reachable, so a list would mislead, and we leave the file
+# unwritten so the glob simply skips it. Snapshot at session start: a mid-session
+# `/connect` updates the firewall (it live-reloads) but NOT this list — the
+# firewall stays the source of truth; this is only a hint. The compose script is
+# baked and on PATH (smoke-tested). The config dir is ephemeral (fresh per
+# --rm container), so there's no stale file to clear on a firewall-off run.
 if [[ -n "${HTTP_PROXY:-}" ]]; then
-  ALLOWED_HOSTS_MD="$OPENCODE_CFG/konrad-allowed-hosts.md"
+  ALLOWED_HOSTS_MD="$OPENCODE_CFG/instructions/konrad-allowed-hosts.md"
   # shellcheck disable=SC2016  # backticks below are literal markdown, not subshells
   {
     printf '# Reachable hosts (egress allow-list)\n\n'
@@ -179,10 +178,7 @@ if [[ -n "${HTTP_PROXY:-}" ]]; then
     printf 'Reachable right now (snapshot at session start):\n\n'
     "$KONRAD_BAKED/compose-allowed-hosts.sh" 2>/dev/null | sed 's/^/- /'
   } > "$ALLOWED_HOSTS_MD"
-  tmp_jsonc="$(mktemp)"
-  jq --arg p "$ALLOWED_HOSTS_MD" '.instructions += [$p]' "$TARGET_JSONC" > "$tmp_jsonc" \
-    && mv "$tmp_jsonc" "$TARGET_JSONC"
-  dbg "egress allow-list inlined to .instructions ($ALLOWED_HOSTS_MD)"
+  dbg "egress allow-list written for the instructions glob ($ALLOWED_HOSTS_MD)"
 fi
 
 # ── 2. Layer in org- and user-shipped agents / skills / AGENTS.md ────────────

@@ -18,15 +18,16 @@ org-package/
 ├── install.sh        Drops org/ into ~/.config/konrad/org/. Adapt or replace.
 └── org/              The payload — exactly the tree that lands at ~/.config/konrad/org/.
     ├── opencode.jsonc   Org-wide config: an internal provider + a declared model.
-    ├── AGENTS.md        Org instructions (loaded via the system instructions channel).
+    ├── instructions/    Org instructions — every *.md here loads on the system channel.
+    │   └── house-rules.md
     └── skills/
         └── house-style/
             └── SKILL.md  A trivial example house skill.
 ```
 
-`org/` holds the same five optional pieces as a user's `~/.config/konrad/user/`
-layer (`opencode.jsonc`, `agents/`, `skills/`, `AGENTS.md`, `fonts/`); this
-example populates three of them. Drop in only what your org needs.
+`org/` holds the same optional pieces as a user's `~/.config/konrad/user/`
+layer (`opencode.jsonc`, `agents/`, `skills/`, `instructions/`, `AGENTS.md`,
+`fonts/`); this example populates three of them. Drop in only what your org needs.
 
 ## Try it
 
@@ -45,9 +46,11 @@ theirs.
   declare the models you've actually deployed, add any provider keys via
   opencode's `{env:VAR}` placeholders. This merges *under* each user's
   `user/opencode.jsonc`, so a user can still override or add on top.
-- **`org/AGENTS.md`** — your house rules. Loaded additively on the system
-  instructions channel (precedence: Konrad's `environment.md` → **org** → user
-  `AGENTS.md` → project `AGENTS.md`).
+- **`org/instructions/*.md`** — your house rules. Every `.md` here loads
+  additively on the system instructions channel (precedence: Konrad's
+  `environment.md` → **org** → user `AGENTS.md` → project `AGENTS.md`). Split
+  rules across files, or have a tool generate one. (`org/AGENTS.md` still works
+  as a single-file back-compat alias.)
 - **`org/skills/`**, **`org/agents/`**, **`org/fonts/`** — house skills, house
   agents, corporate fonts. Same layering: org sits between baked and user.
 

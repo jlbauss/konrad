@@ -1,9 +1,12 @@
 # ACME house rules (example org instructions)
 
-This file ships in the org layer at `~/.config/konrad/org/AGENTS.md`. konrad's
-entrypoint loads it via opencode's **system `instructions` channel** (appended
-after the config merge), so it applies fleet-wide and is additive — it never
-replaces konrad's baked instructions or the user's own `AGENTS.md`.
+This file ships in the org layer at `~/.config/konrad/org/instructions/house-rules.md`.
+konrad loads every `*.md` under a layer's `instructions/` dir onto opencode's
+**system `instructions` channel**, so it applies fleet-wide and is additive — it
+never replaces konrad's baked instructions or the user's own `AGENTS.md`. Add as
+many files here as you like (a tool that derives per-member identity can drop a
+generated one too). The legacy `org/AGENTS.md` single-file slot still works, but
+new orgs should prefer this dir.
 
 Replace everything below with your organization's actual conventions.
 

@@ -104,9 +104,10 @@ pass "manifest valid (konrad=$KONRAD_VER, built=$BUILD_DATE)"
 # Cross-referenced against image/Dockerfile's COPY block. Two distinct
 # trees: /etc/konrad/ (root-owned, used by the entrypoint) and
 # /home/node/.config/opencode/ (opencode-discoverable, where agents,
-# skills, and environment.md live — *not* /etc/konrad/environment.md;
-# the Dockerfile keeps it in the opencode-discoverable dir intentionally
-# so edits don't invalidate the npm layer).
+# skills, and instructions/environment.md live — *not*
+# /etc/konrad/environment.md; the Dockerfile keeps it in the
+# opencode-discoverable dir intentionally so edits don't invalidate the npm
+# layer).
 info "baked content"
 # Entrypoint + config-merge machinery
 in_image test -x /usr/local/bin/konrad-entrypoint \
@@ -125,9 +126,12 @@ in_image which ip >/dev/null \
   || fail "ip (iproute2) missing — apple/container egress seal can't install the blackhole route"
 in_image test -f /etc/konrad/opencode-defaults.jsonc \
   || fail "opencode-defaults.jsonc missing"
-# opencode-discoverable content
-in_image test -f /home/node/.config/opencode/environment.md \
-  || fail "environment.md missing"
+# opencode-discoverable content. environment.md is the baked layer's
+# instructions/ dir entry — composed onto the system `instructions` channel by
+# the entrypoint (the additive baked < org < user convention), not an explicit
+# opencode.jsonc key.
+in_image test -f /home/node/.config/opencode/instructions/environment.md \
+  || fail "instructions/environment.md missing"
 in_image test -f /home/node/.config/opencode/agents/konrad.md \
   || fail "konrad agent missing"
 for skill in do-it-manually pdf quality-assurance spreadsheets; do
@@ -185,6 +189,10 @@ cat > "$ORG_TMP/opencode.jsonc" <<'JSON'
 { "provider": { "acme": { "npm": "@ai-sdk/openai-compatible", "name": "ACME (org)", "models": { "m1": { "name": "M1" } } } } }
 JSON
 printf '# org rules\n' > "$ORG_TMP/AGENTS.md"
+# Additive instruction file (the instructions/ dir convention) — picked up by
+# the baked `instructions` glob over org/instructions/, no jq, no array entry.
+mkdir -p "$ORG_TMP/instructions"
+printf '# org house rules\n' > "$ORG_TMP/instructions/house-rules.md"
 mkdir -p "$ORG_TMP/skills/house-style"
 printf -- '---\nname: house-style\ndescription: example\n---\n# House\n' \
   > "$ORG_TMP/skills/house-style/SKILL.md"
@@ -192,6 +200,9 @@ printf -- '---\nname: house-style\ndescription: example\n---\n# House\n' \
 cat > "$USER_TMP/opencode.jsonc" <<'JSON'
 { "provider": { "acme": { "name": "ACME (user override)" } } }
 JSON
+# User-layer additive instruction file (same instructions/ dir convention).
+mkdir -p "$USER_TMP/instructions"
+printf '# user rules\n' > "$USER_TMP/instructions/my-rules.md"
 # mktemp -d makes dirs 0700. The smoke test doesn't use --userns=keep-id (it
 # must also run under docker in CI), so the container's `node` uid isn't the
 # owner of these host dirs and couldn't traverse 0700. Open them up so the
@@ -214,8 +225,19 @@ jq -e '.provider.acme.models.m1' "$cfg" >/dev/null
 jq -e '.provider.lmstudio' "$cfg" >/dev/null
 # USER precedence: user override of the name wins over org
 [ "$(jq -r '.provider.acme.name' "$cfg")" = "ACME (user override)" ]
-# org AGENTS.md appended to .instructions (the system channel)
+# Layered instruction globs are baked into .instructions (baked < org < user),
+# loaded natively by opencode — no entrypoint jq. The org AGENTS.md literal is
+# the back-compat entry for orgs predating the instructions/ convention.
+jq -e '.instructions | index("/home/node/.config/opencode/instructions/*.md")' "$cfg" >/dev/null
+jq -e '.instructions | index("/home/node/.config/konrad/org/instructions/*.md")' "$cfg" >/dev/null
+jq -e '.instructions | index("/home/node/.config/konrad/user/instructions/*.md")' "$cfg" >/dev/null
 jq -e '.instructions | index("/home/node/.config/konrad/org/AGENTS.md")' "$cfg" >/dev/null
+# The dropped instruction files are present at the mount paths those globs match
+# (so opencode's glob expansion will pick them up).
+test -f /home/node/.config/konrad/org/instructions/house-rules.md
+test -f /home/node/.config/konrad/user/instructions/my-rules.md
+# baked layer's instruction file (the runtime-environment manifest) is in place
+test -f /home/node/.config/opencode/instructions/environment.md
 # org skill copied into the opencode skills dir
 test -f /home/node/.config/opencode/skills/house-style/SKILL.md
 CONTAINER
