@@ -16,6 +16,8 @@ build publishes as `:0.X` (minor line), `:latest`, and an immutable
 
 ## [Unreleased]
 
+## [0.17.1] - 2026-06-24
+
 ### Fixed
 
 - **Modifier flags after a subcommand now error instead of being silently dropped.**
