@@ -1999,6 +1999,18 @@ EOF
 ACTION="run"
 RUN_ARGS=()
 
+# Subcommands that take no trailing args (shell / reset / uninstall / rebuild /
+# pull-image) used to `break` and silently drop anything after them — so
+# `konrad shell --no-firewall` ran the firewall anyway, the modifier vanishing
+# without a word (the grammar wants modifiers BEFORE the subcommand). Fail loudly
+# with the fix instead. Not for run / opencode / connect / mcp-auth — those
+# capture the rest of the line verbatim for opencode by design.
+reject_post_subcommand_args() {
+  local sub="$1"; shift
+  [[ $# -eq 0 ]] && return 0
+  die "$SELF $sub takes no arguments here (got: $*). Modifier flags must come BEFORE the subcommand — e.g. '$SELF --no-firewall $sub', not '$SELF $sub --no-firewall'."
+}
+
 # Grammar:  konrad [modifier flags] [<subcommand> [args…]]
 # The action *verbs* are subcommands, not flags: update / reset / uninstall /
 # shell (and konrad-dev's rebuild). Only genuine run modifiers stay flags
@@ -2012,7 +2024,7 @@ while [[ $# -gt 0 ]]; do
     opencode)   ACTION="opencode";    shift; RUN_ARGS=("$@"); break ;;
     connect)    ACTION="connect";     shift; RUN_ARGS=("$@"); break ;;
     mcp-auth)   ACTION="mcp-auth";    shift; RUN_ARGS=("$@"); break ;;
-    shell)      ACTION="shell";       shift; break ;;
+    shell)      ACTION="shell";       shift; reject_post_subcommand_args shell "$@";      break ;;
     update)
       shift
       case "${1:-}" in
@@ -2021,10 +2033,10 @@ while [[ $# -gt 0 ]]; do
         *)       die "update: unknown argument '$1' (only --check is accepted)" ;;
       esac
       break ;;
-    reset)      ACTION="reset";      shift; break ;;
-    uninstall)  ACTION="uninstall";  shift; break ;;
-    rebuild)    ACTION="rebuild";    shift; break ;;
-    pull-image) ACTION="pull-image"; shift; break ;;
+    reset)      ACTION="reset";      shift; reject_post_subcommand_args reset "$@";      break ;;
+    uninstall)  ACTION="uninstall";  shift; reject_post_subcommand_args uninstall "$@";  break ;;
+    rebuild)    ACTION="rebuild";    shift; reject_post_subcommand_args rebuild "$@";    break ;;
+    pull-image) ACTION="pull-image"; shift; reject_post_subcommand_args pull-image "$@"; break ;;
     --profile)
       [[ $# -ge 2 ]] || die "--profile requires a name (e.g. --profile selftest)"
       [[ "$2" =~ ^[A-Za-z0-9_-]+$ ]] \

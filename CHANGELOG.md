@@ -16,6 +16,12 @@ build publishes as `:0.X` (minor line), `:latest`, and an immutable
 
 ## [Unreleased]
 
+### Fixed
+
+- **Modifier flags after a subcommand now error instead of being silently dropped.**
+  `konrad shell --no-firewall` used to run the firewall anyway — the flag vanished;
+  konrad now fails with a hint to put modifier flags before the subcommand.
+
 ## [0.17.0] - 2026-06-23
 
 ### Added
