@@ -16,6 +16,14 @@ build publishes as `:0.X` (minor line), `:latest`, and an immutable
 
 ## [Unreleased]
 
+### Fixed
+
+- **The agent can ask you questions again.** opencode's `question` tool (the
+  multiple-choice picker konrad's instructions tell it to use for decisions and
+  clarifications) is opt-in and was never enabled, so the agent hit "tool not
+  available" and fell back to prose. The baseline now allows it (`todowrite`
+  pinned alongside for good measure).
+
 ## [0.17.1] - 2026-06-24
 
 ### Fixed

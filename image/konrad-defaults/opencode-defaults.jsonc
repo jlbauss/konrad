@@ -145,7 +145,18 @@
       "kubectl *": "deny"
     },
     "webfetch": "allow",
-    "websearch": "allow"
+    "websearch": "allow",
+    // `question` is opencode's human-in-the-loop tool (multiple-choice picker
+    // with a free-text fallback). It is OPT-IN: opencode only registers it when
+    // a `permission.question` key is present — without this line it never
+    // appears in the agent's toolset, so konrad.md's "ask via the question
+    // tool" instructions fail at runtime ("tool not available"). Subagents have
+    // no user in their loop, so manual-transformer.md sets `question: deny`.
+    "question": "allow",
+    // `todowrite` is on by default (unlike `question`), but pin it explicitly so
+    // the in-session planning channel konrad.md leans on can never be turned off
+    // out from under the agent by a future opencode default change.
+    "todowrite": "allow"
   },
 
   // Primary agent on startup. Defined in agents/konrad.md.
