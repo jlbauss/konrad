@@ -16,6 +16,8 @@ build publishes as `:0.X` (minor line), `:latest`, and an immutable
 
 ## [Unreleased]
 
+## [0.17.2] - 2026-06-25
+
 ### Fixed
 
 - **The agent can ask you questions again.** opencode's `question` tool (the
