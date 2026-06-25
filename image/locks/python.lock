@@ -2,13 +2,13 @@ accelerate==1.14.0
 annotated-doc==0.0.4
 annotated-types==0.7.0
 antlr4-python3-runtime==4.9.3
-anyio==4.14.0
+anyio==4.14.1
 attrs==26.1.0
 beautifulsoup4==4.15.0
 certifi==2026.6.17
 cffi==2.0.0
 charset-normalizer==3.4.7
-click==8.4.1
+click==8.4.2
 colorlog==6.10.1
 cryptography==49.0.0
 defusedxml==0.7.1
@@ -16,7 +16,7 @@ dill==0.4.1
 docling-core==2.84.0
 docling-ibm-models==3.13.3
 docling-parse==7.0.0
-docling-slim==2.106.0
+docling-slim==2.107.0
 et-xmlfile==2.0.0
 faker==40.23.0
 filelock==3.29.4
