@@ -16,10 +16,10 @@ dill==0.4.1
 doclang==0.7.0
 docling-core==2.85.0
 docling-ibm-models==3.13.3
-docling-parse==7.2.0
-docling-slim==2.107.0
+docling-parse==7.4.0
+docling-slim==2.108.0
 et-xmlfile==2.0.0
-faker==40.27.0
+faker==40.28.1
 filelock==3.29.4
 filetype==1.2.0
 flatbuffers==25.12.19
@@ -56,7 +56,7 @@ pandas==3.0.3
 pdf2image==1.17.0
 pdfminer-six==20260107
 pdfplumber==0.11.10
-pillow==12.2.0
+pillow==12.3.0
 pillow-heif==1.4.0
 pluggy==1.6.0
 polyfactory==3.3.0
