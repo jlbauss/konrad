@@ -13,14 +13,14 @@ colorlog==6.10.1
 cryptography==49.0.0
 defusedxml==0.7.1
 dill==0.4.1
-doclang==0.7.1
-docling-core==2.85.0
+doclang==0.7.2
+docling-core==2.86.0
 docling-ibm-models==3.13.3
-docling-parse==7.4.0
-docling-slim==2.108.0
+docling-parse==7.5.0
+docling-slim==2.109.0
 et-xmlfile==2.0.0
 faker==40.28.1
-filelock==3.29.4
+filelock==3.29.5
 filetype==1.2.0
 flatbuffers==25.12.19
 fsspec==2026.6.0
@@ -28,7 +28,7 @@ h11==0.16.0
 hf-xet==1.5.1
 httpcore==1.0.9
 httpx==0.28.1
-huggingface-hub==1.21.0
+huggingface-hub==1.22.0
 idna==3.18
 jinja2==3.1.6
 jsonlines==4.0.0
@@ -98,7 +98,7 @@ tokenizers==0.22.2
 torch==2.12.1+cpu
 torchvision==0.27.1+cpu
 tqdm==4.68.3
-transformers==5.12.1
+transformers==5.13.0
 tree-sitter==0.26.0
 tree-sitter-c==0.24.2
 tree-sitter-javascript==0.25.0

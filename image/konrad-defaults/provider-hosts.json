@@ -108,6 +108,7 @@
   "submodel": "llm.submodel.ai",
   "synthetic": "api.synthetic.new",
   "tencent-coding-plan": "api.lkeap.cloud.tencent.com",
+  "tencent-token-plan": "api.lkeap.cloud.tencent.com",
   "tencent-tokenhub": "tokenhub.tencentmaas.com",
   "the-grid-ai": "api.thegrid.ai",
   "tinfoil": "inference.tinfoil.sh",
