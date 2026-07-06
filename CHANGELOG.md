@@ -16,6 +16,27 @@ build publishes as `:0.X` (minor line), `:latest`, and an immutable
 
 ## [Unreleased]
 
+### Added
+
+- **`konrad org` — git-native org-layer subscriptions.** `org add <git-url>`
+  clones an organization's config repo to `~/.config/konrad/org/<name>/`;
+  `org sync` (riding every `konrad update`) keeps it fresh as a managed mirror;
+  `org list` / `org remove` round out the lifecycle. A layer may ship a
+  `hooks/post-sync` konrad runs host-side after add + every sync (subscribing
+  is trusting). Several layers compose in alphabetical name order. `git` is a
+  new soft dependency, needed only by these verbs. See
+  [README → For organizations](README.md#for-organizations).
+
+### Changed
+
+- **BREAKING: `~/.config/konrad/org/` is now a container of named layers**
+  (`org/<name>/`), not a layer itself — a flat pre-0.18 `org/` no longer loads
+  (konrad warns at launch). Migrate:
+  `cd ~/.config/konrad && mv org myorg && mkdir org && mv myorg org/` — or
+  resubscribe with `konrad org add <your org repo>`.
+  [`examples/org-package/`](examples/org-package/) is now a git-native example
+  repo (its `install.sh` is gone).
+
 ## [0.17.2] - 2026-06-25
 
 ### Fixed
