@@ -8,10 +8,10 @@ allowed-tools: "Read"
 # House Style (example org skill)
 
 This is a trivial placeholder skill that ships in the **org layer** at
-`~/.config/konrad/org/skills/house-style/`. konrad's entrypoint copies org
-skills into opencode's skill directory **between** the baked skills and the
-user's own (`baked < org < user`), so an org can ship house skills its whole
-fleet sees without forking the image.
+`~/.config/konrad/org/<name>/skills/house-style/`. konrad's entrypoint copies
+each org layer's skills into opencode's skill directory **between** the baked
+skills and the user's own (`baked < org < user`), so an org can ship house
+skills its whole fleet sees without forking the image.
 
 It exists to demonstrate the mechanism. When adapting the org package, replace
 this with a real house skill — or delete the `skills/` directory entirely if

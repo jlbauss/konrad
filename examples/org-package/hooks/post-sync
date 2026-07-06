@@ -1,0 +1,30 @@
+#!/usr/bin/env sh
+# SPDX-FileCopyrightText: 2026 Jan-Luca Bauß
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Example post-sync hook. konrad runs this HOST-SIDE — cwd is this layer's
+# checkout (~/.config/konrad/org/<name>/), no special env — after the layer is
+# cloned (`konrad org add`) and after every successful sync (`konrad update` /
+# `konrad org sync`). Subscribing to a layer is the decision to trust its code:
+# this is the one place org code runs outside konrad's sandbox, so keep it
+# small, readable, and idempotent (it runs on every sync, changed or not).
+#
+# Typical jobs — the ~10% an org can't express as plain config:
+#   - mirror a reference corpus (wiki export, internal docs) into
+#     ~/.config/konrad/context/<name>/ for the agent to grep at /context/<name>
+#   - derive per-member identity from the org's own auth (glab/gh api) and
+#     write it as an instructions/ file INSIDE this layer
+#
+# This example does a safe, visible no-op variant of the corpus-mirror job:
+# it stamps a marker file into context/ so you can watch the mechanism work.
+# Replace it with your real logic (rsync, git clone --depth 1, an API call, …)
+# or delete hooks/ entirely if your org needs none.
+set -eu
+
+KONRAD_HOME="${KONRAD_CFG_DIR:-$HOME/.config/konrad}"
+CORPUS_DIR="$KONRAD_HOME/context/acme-example"
+
+mkdir -p "$CORPUS_DIR"
+printf 'synced %s from %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(pwd)" \
+  > "$CORPUS_DIR/last-sync.txt"
+echo "post-sync: example corpus marker refreshed at $CORPUS_DIR"

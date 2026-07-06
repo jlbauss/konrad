@@ -1,10 +1,11 @@
 // Example org-layer opencode config.
 //
-// This file lands at ~/.config/konrad/org/opencode.jsonc and is merged
-// BETWEEN konrad's baked defaults and each user's ~/.config/konrad/user/
-// override (precedence: baked < org < user). Objects merge recursively,
-// arrays replace, later layers win — so anything here is a default a user
-// can still override or add to.
+// This file lands at ~/.config/konrad/org/<name>/opencode.jsonc (via
+// `konrad org add <this repo's URL>`) and is merged BETWEEN konrad's baked
+// defaults and each user's ~/.config/konrad/user/ override (precedence:
+// baked < org₁ < … < user, org layers in alphabetical name order). Objects
+// merge recursively, arrays replace, later layers win — so anything here is
+// a default a user can still override or add to.
 //
 // Adapt the provider endpoint and model list to your organization.
 {
