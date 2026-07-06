@@ -146,6 +146,13 @@ case ":$PATH:" in
     ;;
 esac
 
+# --- Soft dependencies --------------------------------------------------------
+# git is feature-scoped: only `konrad org` (org-layer subscriptions) needs it;
+# core konrad runs fine without. Warn, never fail.
+if ! command -v git >/dev/null 2>&1; then
+  warn "git is not installed — 'konrad org' (org-layer subscriptions) needs it; everything else works without."
+fi
+
 # --- Pre-pull the image (delegated to the freshly-installed CLI) -------------
 # One source of truth, and the answer to "why doesn't the installer start the
 # engine like the CLI does": it now uses the CLI's path. `konrad pull-image`

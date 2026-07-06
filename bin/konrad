@@ -70,12 +70,15 @@ KONRAD_STORE_HOME="${XDG_STATE_HOME:-$HOME/.local/state}/konrad/store"
 # model. Empty (no --profile) → the unsuffixed volumes above, unchanged.
 KONRAD_PROFILE=""
 
-# Where konrad keeps host-side config. Two symmetric sublayers live under it:
-#   org/   — an organization's shipped defaults (dropped in by a provisioning
-#            package; see docs/examples/org-package/). Merged ABOVE the baked
-#            image defaults but BELOW the user's own layer.
+# Where konrad keeps host-side config. Two sublayers live under it:
+#   org/   — a container of NAMED org layers (org/<name>/), each holding the
+#            same pieces as user/. Subscribed layers are konrad-owned git
+#            checkouts (`konrad org add <git-url>`, re-synced on every update —
+#            see the org verbs below); a plain directory is a valid manual
+#            layer that simply never syncs. Merged ABOVE the baked image
+#            defaults but BELOW the user's own layer, alphabetically by name.
 #   user/  — the individual user's overrides.
-# Merge precedence is baked < org < user (last writer wins). Pre-org-layer
+# Merge precedence is baked < org₁ < … < user (last writer wins). Pre-org-layer
 # konrad kept the user layer flat at $KONRAD_CFG_DIR/*; migrate_flat_config()
 # relocates it into user/ on first run of this version.
 KONRAD_CFG_DIR="${HOME}/.config/konrad"
@@ -1242,6 +1245,7 @@ launch_preflight() {
   require_engine; dbg "engine OK"
   require_image;  dbg "image OK"
   prune_log_dir
+  warn_old_org_layout   # pre-0.18 flat org/ files would otherwise vanish silently
 }
 
 do_run() {
@@ -1450,6 +1454,214 @@ EOF
   podman_run opencode mcp auth "$@"
 }
 
+# --- Org-layer subscriptions (konrad org) ------------------------------------
+# ~/.config/konrad/org/ is a container of named layer dirs (org/<name>/), each
+# holding the same optional pieces as user/; the entrypoint merges them
+# baked < org₁ < … < user, alphabetically by dir name (pick precedence with a
+# numeric prefix: 10-, 20-, …). A git-backed layer is a MANAGED MIRROR konrad
+# keeps fresh — fetch + hard-reset to the tracked upstream branch, so local
+# edits to tracked files are clobbered by design (the user's override channel
+# is the user/ layer); a plain directory is a valid manual layer that simply
+# never syncs. Sync failures warn and keep the last-good checkout — for a
+# defaults mechanism, availability beats freshness. git is a feature-scoped
+# soft dependency: only these verbs (and the update-time sync) need it.
+# All verbs are pure host-side — no engine, no image. See README → For
+# organizations.
+
+require_git() {
+  command -v git >/dev/null 2>&1 \
+    || die "'$SELF org' needs git on the host (core konrad runs fine without it). Install git and re-run."
+}
+
+# Pre-0.18 the org layer was one flat dir (org/opencode.jsonc, org/AGENTS.md,
+# …). Since org/ became a container of named layers, those top-level files no
+# longer compose — warn with the migration one-liner instead of silently
+# ignoring them. Detection sticks to the unambiguous FILE pieces (a directory
+# at the top level is a layer now, so instructions/ etc. can't be told apart).
+warn_old_org_layout() {
+  local piece
+  # A .git directly under org/ means someone cloned a repo INTO org/ itself —
+  # its subdirs would compose as bogus layers. Same fix as the flat layout.
+  if [[ -d "$ORG_CFG_DIR/.git" ]]; then
+    warn "org/ itself is a git checkout — it must hold named layers (org/<name>/). Migrate: cd ~/.config/konrad && mv org myorg && mkdir org && mv myorg org/  (or re-add with: $SELF org add <url>)"
+    return 0
+  fi
+  for piece in opencode.jsonc AGENTS.md allowed_hosts; do
+    if [[ -f "$ORG_CFG_DIR/$piece" ]]; then
+      warn "pre-0.18 org layout detected ($ORG_CFG_DIR/$piece) — org/ now holds named layers and these files no longer load. Migrate: cd ~/.config/konrad && mv org myorg && mkdir org && mv myorg org/"
+      return 0
+    fi
+  done
+  return 0
+}
+
+# Run a layer's post-sync hook, when it ships one. Host-side ON PURPOSE — the
+# one place org code runs outside the sandbox (a wiki mirror into context/, or
+# per-member identity derivation, need the host): subscribing to a layer IS
+# the decision to trust its code, documented as the boundary in the README.
+# cwd = the layer dir; no special env (the hook derives paths from the
+# well-known ~/.config/konrad/ home, same principle as layer discovery);
+# stdout/stderr stream to the user; the hook owns its own idempotency — it
+# runs on every sync, changed or not, since e.g. a mirrored wiki moves even
+# when the layer itself didn't.
+org_run_hook() {
+  local dir="$1"
+  [[ -x "$dir/hooks/post-sync" ]] || return 0
+  info "org '$(basename "$dir")': running post-sync hook"
+  (cd "$dir" && ./hooks/post-sync) \
+    || warn "org '$(basename "$dir")': post-sync hook failed (exit $?)"
+  return 0
+}
+
+# Sync one layer dir; always returns 0 (a failed sync must never break the
+# caller — konrad update finishes regardless). Skips manual (non-git) layers
+# silently and upstream-less checkouts with a note: a detached HEAD (e.g. a
+# tag checkout) is the PIN mechanism, not an error.
+org_sync_layer() {
+  local dir="$1" name upstream
+  name="$(basename "$dir")"
+  [[ -d "$dir/.git" ]] || return 0
+  if ! command -v git >/dev/null 2>&1; then
+    warn "org '$name' is a git checkout but git is not installed — skipping sync."
+    return 0
+  fi
+  if ! upstream="$(git -C "$dir" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null)"; then
+    info "org '$name': no upstream branch (pinned checkout?) — not synced."
+    return 0
+  fi
+  # Managed mirror: reset --hard, deliberately no clean -xdf — untracked files
+  # (e.g. state a hook keeps beside itself) survive; tracked edits don't.
+  if git -C "$dir" fetch --quiet && git -C "$dir" reset --hard --quiet "$upstream"; then
+    info "org '$name': synced to $upstream ($(git -C "$dir" rev-parse --short HEAD))"
+    org_run_hook "$dir"
+  else
+    warn "org '$name': sync failed (network? credentials?) — keeping the last-good checkout."
+  fi
+  return 0
+}
+
+# Sync every layer under org/. Best-effort by construction (each layer's sync
+# is); also the hook do_update rides so subscriptions stay fresh for free.
+org_sync_all() {
+  local dir
+  [[ -d "$ORG_CFG_DIR" ]] || return 0
+  for dir in "$ORG_CFG_DIR"/*/; do
+    [[ -d "$dir" ]] || continue   # unmatched glob stays literal
+    org_sync_layer "${dir%/}"
+  done
+  return 0
+}
+
+do_org_add() {
+  local url="" name="" branch=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --name)   [[ $# -ge 2 ]] || die "org add: --name requires a value";   name="$2";   shift 2 ;;
+      --branch) [[ $# -ge 2 ]] || die "org add: --branch requires a value"; branch="$2"; shift 2 ;;
+      -*)       die "org add: unknown flag '$1' (usage: $SELF org add <git-url> [--name <n>] [--branch <b>])" ;;
+      *)
+        [[ -z "$url" ]] || die "org add: unexpected argument '$1' (exactly one <git-url>)"
+        url="$1"; shift ;;
+    esac
+  done
+  [[ -n "$url" ]] || die "usage: $SELF org add <git-url> [--name <name>] [--branch <branch>]"
+  require_git
+  warn_old_org_layout
+  # Default name: the repo basename minus .git — the same name git clone picks.
+  if [[ -z "$name" ]]; then
+    name="$(basename "$url")"
+    name="${name%.git}"
+  fi
+  [[ "$name" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] \
+    || die "invalid layer name '$name' (letters, digits, '.', '-', '_'; no leading '.'). Pick one with --name."
+  local dest="$ORG_CFG_DIR/$name"
+  [[ -e "$dest" ]] && die "org layer '$name' already exists at $dest — '$SELF org sync $name' to refresh it, or pick another --name."
+  mkdir -p "$ORG_CFG_DIR"
+  local -a clone_args=()
+  [[ -n "$branch" ]] && clone_args=(-b "$branch")
+  info "subscribing to $url as org layer '$name'…"
+  # git cleans up its own target dir on a failed clone, so no partial layer
+  # is left behind. No shallow flags: org config repos are small, and a full
+  # single-history clone avoids shallow-fetch edge cases on force-pushes.
+  git clone ${clone_args[@]+"${clone_args[@]}"} -- "$url" "$dest" \
+    || die "git clone failed — nothing was added."
+  org_run_hook "$dest"
+  info "org layer '$name' added — it merges between konrad's baked defaults and your user layer, and re-syncs on every 'konrad update' (or '$SELF org sync')."
+}
+
+do_org_list() {
+  warn_old_org_layout
+  local dir name url branch found=0
+  if [[ -d "$ORG_CFG_DIR" ]]; then
+    for dir in "$ORG_CFG_DIR"/*/; do
+      [[ -d "$dir" ]] || continue
+      found=1
+      name="$(basename "$dir")"
+      if [[ ! -d "$dir/.git" ]]; then
+        printf '%s  (manual layer — not synced)\n' "$name"
+      elif ! command -v git >/dev/null 2>&1; then
+        printf '%s  (git checkout — install git to sync)\n' "$name"
+      else
+        # No state file by design: URL + branch live in the checkout's own
+        # .git, so this reads what sync will actually use.
+        url="$(git -C "$dir" config --get remote.origin.url 2>/dev/null || printf '?')"
+        branch="$(git -C "$dir" rev-parse --abbrev-ref HEAD 2>/dev/null || printf '?')"
+        [[ "$branch" == "HEAD" ]] && branch="pinned (detached HEAD)"
+        printf '%s  %s (%s)\n' "$name" "$url" "$branch"
+      fi
+    done
+  fi
+  if (( ! found )); then
+    info "no org layers. Subscribe with: $SELF org add <git-url>"
+  fi
+  return 0
+}
+
+do_org_sync() {
+  local name="${1:-}"
+  warn_old_org_layout
+  if [[ -z "$name" ]]; then
+    org_sync_all
+    return 0
+  fi
+  local dir="$ORG_CFG_DIR/$name"
+  [[ -d "$dir" ]] || die "no org layer named '$name' (see: $SELF org list)."
+  [[ -d "$dir/.git" ]] || die "org layer '$name' is a manual layer (no .git) — nothing to sync."
+  require_git
+  org_sync_layer "$dir"
+}
+
+do_org_remove() {
+  local name="${1:-}"
+  [[ -n "$name" ]] || die "usage: $SELF org remove <name>  (see: $SELF org list)"
+  local dir="$ORG_CFG_DIR/$name"
+  [[ -d "$dir" ]] || die "no org layer named '$name' (see: $SELF org list)."
+  # Prompted like reset: it deletes real (if re-cloneable) state. What it does
+  # NOT do: undo hook side effects (a context/ mirror, generated identity
+  # files) — konrad can't know them; the layer's docs own that.
+  printf 'konrad: remove org layer %s? Its post-sync hook side effects (e.g. a context/ mirror) are NOT undone. [y/N]: ' "$name" >&2
+  local confirmation=""
+  read -r confirmation || true
+  case "$confirmation" in
+    y|Y|yes|YES) ;;
+    *) info "aborted; nothing was removed."; exit 0 ;;
+  esac
+  rm -rf "$dir"
+  info "org layer '$name' removed."
+}
+
+do_org() {
+  local verb="${1:-list}"
+  [[ $# -gt 0 ]] && shift
+  case "$verb" in
+    add)    do_org_add "$@" ;;
+    list)   reject_post_subcommand_args "org list" "$@"; do_org_list ;;
+    sync)   [[ $# -le 1 ]] || die "org sync takes at most one <name> (got: $*)"; do_org_sync "${1:-}" ;;
+    remove) [[ $# -eq 1 ]] || die "usage: $SELF org remove <name>  (see: $SELF org list)"; do_org_remove "$1" ;;
+    *)      die "unknown org subcommand '$verb' (usage: $SELF org [add <git-url> [--name <n>] [--branch <b>] | list | sync [<name>] | remove <name>])" ;;
+  esac
+}
+
 do_version() {
   # Compact, mirroring the startup banner (brand()): a `cli X · image Y`
   # headline — CLI and image are DISTINCT versions (a CLI-only patch ships
@@ -1603,6 +1815,12 @@ do_update() {
   if is_dev; then
     die "konrad-dev doesn't update. To rebuild the dev image: konrad-dev rebuild. To refresh the stable konrad CLI next to it on PATH: konrad update. To update this script: git pull inside the checkout the symlink points at."
   fi
+
+  # Org-layer subscriptions ride the update: re-sync every git-backed layer
+  # first, so one 'konrad update' keeps CLI, image, AND org defaults fresh —
+  # no org-side updater needed. Best-effort: a failed sync warns and the
+  # update carries on with the last-good checkout.
+  org_sync_all
 
   # A symlink install tracks a checkout — refresh the CLI with `git pull` in that
   # clone, NOT the remote installer (which would clobber the symlink with a
@@ -1920,6 +2138,25 @@ Subcommands:
                         token is stored on the konrad-secrets volume and reused
                         on every run:
                           $self mcp-auth wiki
+  $self org add <git-url> [--name <n>] [--branch <b>]
+                        Subscribe to an org config layer: clones the repo to
+                        ~/.config/konrad/org/<name>/ and re-syncs it on every
+                        'konrad update' (name defaults to the repo basename,
+                        branch to the remote default). The layer merges between
+                        konrad's baked defaults and your user layer. Subscribing
+                        runs the layer's optional hooks/post-sync ON YOUR
+                        MACHINE, on add and on every sync — add only repos you
+                        trust.
+  $self org list        List org layers (bare '$self org' works too).
+  $self org sync [<name>]
+                        Re-sync all (or one) subscribed org layers now: fetch +
+                        hard-reset to the tracked branch — local edits inside a
+                        layer are clobbered (your override channel is the user/
+                        layer) — then run its post-sync hook. A failed sync
+                        warns and keeps the last-good checkout.
+  $self org remove <name>
+                        Delete an org layer (prompts [y/N]). Hook side effects
+                        (e.g. a context/ mirror) are not undone.
 
 Maintenance subcommands:
 $refresh_cmd
@@ -1977,8 +2214,9 @@ Files in ~/.config/konrad/user/ (all optional — your personal layer):
   AGENTS.md             Personal instructions, loaded on top of base.
   fonts/                .ttf / .otf / .ttc dropped here are loaded into
                         fontconfig on top of konrad's baked palette.
-An organization can ship the same five things in ~/.config/konrad/org/;
-they merge under your user layer (precedence: baked < org < user). See
+An organization ships the same pieces as a git repo you subscribe to with
+'$self org add <git-url>' (→ ~/.config/konrad/org/<name>/, kept fresh by
+'konrad update'); layers merge under yours (baked < org < user). See
 README → Configuration → "For organizations".
 
 Occasional maintenance (one-liners, not built into the CLI):
@@ -2024,6 +2262,7 @@ while [[ $# -gt 0 ]]; do
     opencode)   ACTION="opencode";    shift; RUN_ARGS=("$@"); break ;;
     connect)    ACTION="connect";     shift; RUN_ARGS=("$@"); break ;;
     mcp-auth)   ACTION="mcp-auth";    shift; RUN_ARGS=("$@"); break ;;
+    org)        ACTION="org";         shift; RUN_ARGS=("$@"); break ;;
     shell)      ACTION="shell";       shift; reject_post_subcommand_args shell "$@";      break ;;
     update)
       shift
@@ -2078,6 +2317,7 @@ case "$ACTION" in
   opencode)      do_opencode ${RUN_ARGS[@]+"${RUN_ARGS[@]}"} ;;
   connect)       do_connect ${RUN_ARGS[@]+"${RUN_ARGS[@]}"} ;;
   mcp-auth)      do_mcp_auth ${RUN_ARGS[@]+"${RUN_ARGS[@]}"} ;;
+  org)           do_org ${RUN_ARGS[@]+"${RUN_ARGS[@]}"} ;;
   version)       do_version       ;;
   update)        do_update        ;;
   check-updates) do_check_updates ;;
