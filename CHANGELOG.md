@@ -16,6 +16,8 @@ build publishes as `:0.X` (minor line), `:latest`, and an immutable
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-07-06
+
 ### Added
 
 - **`konrad org` — git-native org-layer subscriptions.** `org add <git-url>`
