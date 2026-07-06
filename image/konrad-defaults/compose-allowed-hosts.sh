@@ -23,7 +23,7 @@
 set -euo pipefail
 
 KONRAD_BAKED=/etc/konrad
-ORG_CFG=/home/node/.config/konrad/org             # bind-mounted RO (optional)
+ORG_CFG=/home/node/.config/konrad/org              # container of org layers, RO (optional)
 USER_CFG=/home/node/.config/konrad/user            # bind-mounted RO (optional)
 PROVIDER_MAP="$KONRAD_BAKED/provider-hosts.json"   # baked provider-id → host map
 AUTH_JSON=/home/node/.opencode-secrets/auth.json   # konrad-secrets volume, RO (ids only)
@@ -52,11 +52,15 @@ else
   warn "$PROVIDER_MAP missing; built-in providers won't be auto-allowed"
 fi
 
-# ── Provider endpoints from the merged baked<org<user config ──────────────────
-# Same left-fold as konrad-entrypoint, so the list tracks the user's REAL
-# providers. We only need hosts, so a merge failure is non-fatal.
+# ── Provider endpoints from the merged baked<org…<user config ─────────────────
+# Same left-fold as konrad-entrypoint — EVERY org/<name>/ layer, in the same
+# sorted glob order — so the list tracks the user's REAL providers; a missed
+# layer would silently block that org's internal provider. We only need hosts,
+# so a merge failure is non-fatal.
 merge_inputs=("$KONRAD_BAKED/opencode-defaults.jsonc")
-[[ -f "$ORG_CFG/opencode.jsonc" ]]  && merge_inputs+=("$ORG_CFG/opencode.jsonc")
+for f in "$ORG_CFG"/*/opencode.jsonc; do
+  [[ -f "$f" ]] && merge_inputs+=("$f")
+done
 [[ -f "$USER_CFG/opencode.jsonc" ]] && merge_inputs+=("$USER_CFG/opencode.jsonc")
 
 # Extract the host from a scheme://host[:port][/path] baseURL.
@@ -84,8 +88,8 @@ else
   warn "config merge failed; list = floor + map(auth.json) + runtime hosts"
 fi
 
-# ── Persistent allow-list files (org + user; one host per line, # comments) ───
-for f in "$ORG_CFG/allowed_hosts" "$USER_CFG/allowed_hosts"; do
+# ── Persistent allow-list files (each org layer + user; one host per line) ────
+for f in "$ORG_CFG"/*/allowed_hosts "$USER_CFG/allowed_hosts"; do
   [[ -f "$f" ]] || continue
   while IFS= read -r line; do
     line="${line%%#*}"

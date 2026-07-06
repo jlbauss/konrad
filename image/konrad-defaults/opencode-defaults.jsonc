@@ -19,22 +19,24 @@
   "$schema": "https://opencode.ai/config.json",
 
   // System `instructions`, layered baked < org < user. Each entry is a glob
-  // over one layer's instructions/ dir; opencode expands them itself — skipping
+  // over one FIXED instructions/ dir; opencode expands them itself — skipping
   // absent dirs/files, de-duplicating, preserving this order (see opencode's
-  // Instruction.systemPaths). So an org or user adds instructions by DROPPING a
-  // *.md into its instructions/ dir — no JSON to author, no array-replace
-  // footgun (only this baked layer declares the array; nobody else needs to
-  // touch it). An org's generated files (e.g. per-member identity) ride along
-  // for free by landing in org/instructions/.
+  // Instruction.systemPaths). So a layer adds instructions by DROPPING a *.md
+  // into its instructions/ dir — no JSON to author, no array-replace footgun
+  // (only this baked layer declares the array; nobody else needs to touch it).
   //
   //   - environment.md is konrad's runtime-environment manifest (tool
   //     inventory, Python libs, filesystem layout, constraints — NOT behavior,
   //     which lives in agents/). It's the baked layer's instructions/ entry.
   //     The entrypoint also writes the egress allow-list there at run time, so
   //     the same baked glob picks it up.
-  //   - org/AGENTS.md is a back-compat literal for orgs predating the
-  //     instructions/ convention (a missing file is silently skipped). New orgs
-  //     should prefer org/instructions/*.md.
+  //   - ORG layers (~/.config/konrad/org/<name>/) get NO entry of their own:
+  //     opencode globs only the basename component of an entry (the dirname is
+  //     a literal), so `org/*/instructions/*.md` could never match. The
+  //     entrypoint copies each layer's instructions/*.md (and back-compat
+  //     AGENTS.md) into the baked instructions/ dir as org-<name>-<file>,
+  //     where the FIRST glob below finds them — same mechanism as the
+  //     generated allow-list file.
   //
   // opencode additionally auto-discovers any AGENTS.md — the user-level
   // (~/.config/opencode/AGENTS.md) and project-level (workspace root) — which
@@ -46,8 +48,6 @@
   // the multi-stage Dockerfile build.
   "instructions": [
     "/home/node/.config/opencode/instructions/*.md",
-    "/home/node/.config/konrad/org/instructions/*.md",
-    "/home/node/.config/konrad/org/AGENTS.md",
     "/home/node/.config/konrad/user/instructions/*.md"
   ],
 

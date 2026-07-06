@@ -116,39 +116,55 @@ dbg "entrypoint start"
 mkdir -p "$OPENCODE_CFG" "$OPENCODE_DATA" "$OPENCODE_LOG_DIR" "$SECRETS"
 dbg "mkdir done"
 
-# ── 1. Compose opencode.jsonc (baked defaults + optional org + user layers) ──
-# Up to three layers, left-folded so each later layer wins on conflicts:
-#   1. /etc/konrad/opencode-defaults.jsonc          (baked into image)
-#   2. ~/.config/konrad/org/opencode.jsonc          (org layer, optional)
-#   3. ~/.config/konrad/user/opencode.jsonc         (user layer, optional)
-# merge-config.js always runs (even with no overlays) so the output is the
-# same comment-stripped JSON opencode reads on the merge path — no special
-# raw-cp branch to keep in sync.
+# ── 1. Compose opencode.jsonc (baked defaults + org layers + user layer) ─────
+# Left-folded so each later layer wins on conflicts:
+#   1. /etc/konrad/opencode-defaults.jsonc             (baked into image)
+#   2. ~/.config/konrad/org/<name>/opencode.jsonc      (0..n org layers)
+#   3. ~/.config/konrad/user/opencode.jsonc            (user layer, optional)
+# org/ is a container of NAMED layers (subscribed git checkouts or manual
+# dirs — bin/konrad's `org` verbs own their lifecycle host-side); they fold in
+# alphabetical dir-name order (the glob expands sorted), so an org controls
+# precedence with a numeric prefix (10-, 20-, …). merge-config.js always runs
+# (even with no overlays) so the output is the same comment-stripped JSON
+# opencode reads on the merge path — no special raw-cp branch to keep in sync.
 TARGET_JSONC="$OPENCODE_CFG/opencode.jsonc"
 
+# Enumerate the org layers once; every per-layer consumer below (config merge,
+# agents/skills/instructions overlays, fonts) walks this same sorted list so
+# precedence can't drift between channels.
+org_layers=()
+for d in "$ORG_CFG"/*/; do
+  [[ -d "$d" ]] && org_layers+=("${d%/}")
+done
+
 merge_inputs=("$KONRAD_BAKED/opencode-defaults.jsonc")
-[[ -f "$ORG_CFG/opencode.jsonc" ]]  && merge_inputs+=("$ORG_CFG/opencode.jsonc")
+org_names=""
+for layer in ${org_layers[@]+"${org_layers[@]}"}; do
+  org_names="${org_names:+$org_names,}$(basename "$layer")"
+  [[ -f "$layer/opencode.jsonc" ]] && merge_inputs+=("$layer/opencode.jsonc")
+done
 [[ -f "$USER_CFG/opencode.jsonc" ]] && merge_inputs+=("$USER_CFG/opencode.jsonc")
 
-# Name exactly which layers compose, so "baked + user" / "baked + org + user" /
-# "baked" reads at a glance — no ambiguous overlay count.
+# Name exactly which layers compose, so "baked + org(acme) + user" reads at a
+# glance — no ambiguous overlay count.
 config_layers="baked"
-[[ -f "$ORG_CFG/opencode.jsonc" ]]  && config_layers="$config_layers + org"
+[[ -n "$org_names" ]] && config_layers="$config_layers + org($org_names)"
 [[ -f "$USER_CFG/opencode.jsonc" ]] && config_layers="$config_layers + user"
 step "config · $config_layers"
 node "$KONRAD_BAKED/merge-config.js" "${merge_inputs[@]}" > "$TARGET_JSONC"
 dbg "config composed at $TARGET_JSONC"
 
-# Layered model instructions need NO post-merge surgery here: the baked
-# opencode.jsonc declares one glob per layer's instructions/ dir (baked < org <
-# user) plus a back-compat literal for the org AGENTS.md, and opencode expands
-# them itself — skipping absent dirs/files, de-duplicating, preserving order
-# (see its Instruction.systemPaths: ~/ and absolute paths supported, missing
-# entries contribute nothing). So org/user add instructions by dropping a *.md
-# into their instructions/ dir — no jq, no array-replace footgun, no knowledge
-# of guest paths. The org AGENTS.md jq special-case this file used to carry is
-# retired into that baked glob list. See ARCHITECTURE → Configuration &
-# instructions.
+# Layered model instructions need NO post-merge config surgery here: the baked
+# opencode.jsonc declares one glob for the baked instructions/ dir and one for
+# the user's, and opencode expands them itself — skipping absent dirs/files,
+# de-duplicating, preserving order (see its Instruction.systemPaths: ~/ and
+# absolute paths supported, missing entries contribute nothing). Org layers
+# can't get their own glob (opencode only globs the basename component, so
+# `org/*/instructions/*.md` would never match); their files are COPIED into
+# the baked instructions/ dir in §2, where the first glob picks them up. So
+# every layer still adds instructions by dropping a *.md into its
+# instructions/ dir — no jq, no array-replace footgun. See ARCHITECTURE →
+# Configuration & instructions.
 
 # ── 1b. Inline the egress allow-list into the agent's instructions ───────────
 # The model can't see the firewall's allow-list (the proxy is a separate
@@ -186,36 +202,53 @@ fi
 # org) files on name collision (e.g. a user-shipped `agents/konrad.md` replaces
 # ours). That's intentional: the "I want to run my own konrad agent" escape
 # hatch. Layer order matches the config merge — baked (already in $OPENCODE_CFG)
-# < org < user — so we cp org's tree first, then user's on top.
-for layer in "$ORG_CFG" "$USER_CFG"; do
+# < org₁ < … < user — so we cp each org tree in sorted order, then user's on top.
+for layer in ${org_layers[@]+"${org_layers[@]}"} "$USER_CFG"; do
   [[ -d "$layer/agents" ]] && cp -r "$layer/agents/." "$OPENCODE_CFG/agents/"
   [[ -d "$layer/skills" ]] && cp -r "$layer/skills/." "$OPENCODE_CFG/skills/"
 done
 
+# Org instructions ride the BAKED instructions/ dir, not their own glob:
+# opencode expands an instructions entry by globbing only the basename (the
+# dirname is used literally as the glob cwd — see Instruction.systemPaths), so
+# a baked `org/*/instructions/*.md` entry can never match. Instead each layer's
+# *.md (and its back-compat AGENTS.md) is copied here under an org-<layer>-
+# prefix, where the existing baked glob finds it — the same pattern as the
+# generated allowed-hosts file (§1b), and uniform with the agents/skills
+# overlay above. The user layer keeps its own baked glob (no copy needed —
+# its path carries no wildcard).
+for layer in ${org_layers[@]+"${org_layers[@]}"}; do
+  lname="$(basename "$layer")"
+  if [[ -d "$layer/instructions" ]]; then
+    for f in "$layer/instructions/"*.md; do
+      [[ -f "$f" ]] && cp "$f" "$OPENCODE_CFG/instructions/org-$lname-$(basename "$f")"
+    done
+  fi
+  [[ -f "$layer/AGENTS.md" ]] && cp "$layer/AGENTS.md" "$OPENCODE_CFG/instructions/org-$lname-AGENTS.md"
+done
+
 # The user's global AGENTS.md lands where opencode auto-discovers it
-# (~/.config/opencode/AGENTS.md). The ORG AGENTS.md deliberately does NOT go
-# here — it rides the `instructions` channel (§1 above) so the discovered
-# global AGENTS.md stays the user's alone. See docs/design/org-config-layer.md.
+# (~/.config/opencode/AGENTS.md). An ORG layer's AGENTS.md deliberately does
+# NOT go here — it rides the `instructions` channel (the copy loop above) so
+# the discovered global AGENTS.md stays the user's alone. See ARCHITECTURE →
+# Configuration & instructions.
 if [[ -f "$USER_CFG/AGENTS.md" ]]; then
   cp "$USER_CFG/AGENTS.md" "$OPENCODE_CFG/AGENTS.md"
 fi
 dbg "org + user content layered in"
 
-# ── 2b. Font overlays (org + user) ───────────────────────────────────────────
-# Anything dropped into the org/ or user/ fonts dir on the host shows up under
-# the matching mount here (bind-mounted by bin/konrad). Symlink each into
+# ── 2b. Font overlays (org layers + user) ────────────────────────────────────
+# Anything dropped into a layer's fonts/ dir on the host shows up under the
+# matching mount here (bind-mounted by bin/konrad). Symlink each into
 # ~/.local/share/fonts/, which fontconfig watches by default, and refresh the
 # cache once at the end. Symlinks rather than copies so adding a font on the
 # host is picked up on the next launch without an extra step. Each layer gets
-# its own link name (konrad-org / konrad-user); fontconfig sees both.
+# its own link name (konrad-org-<name> / konrad-user); fontconfig sees all.
 FONTS_BASE=/home/node/.local/share/fonts
 mkdir -p "$FONTS_BASE"
 FONTS_CHANGED=0
-for pair in "org:$ORG_CFG/fonts" "user:$USER_CFG/fonts"; do
-  label="${pair%%:*}"
-  src="${pair#*:}"
-  link="$FONTS_BASE/konrad-$label"
-  count=0
+link_layer_fonts() {  # $1 = link name, $2 = layer fonts dir
+  local link="$FONTS_BASE/$1" src="$2" count=0
   [[ -d "$src" ]] && count=$(find "$src" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null | wc -l)
   if (( count > 0 )); then
     ln -sfn "$src" "$link"
@@ -225,7 +258,12 @@ for pair in "org:$ORG_CFG/fonts" "user:$USER_CFG/fonts"; do
     # No overlay for this layer — remove a stale symlink from a previous run.
     [[ -L "$link" ]] && rm "$link"
   fi
+  return 0
+}
+for layer in ${org_layers[@]+"${org_layers[@]}"}; do
+  link_layer_fonts "konrad-org-$(basename "$layer")" "$layer/fonts"
 done
+link_layer_fonts "konrad-user" "$USER_CFG/fonts"
 if (( FONTS_CHANGED )); then
   fc-cache -f "$FONTS_BASE" >/dev/null 2>&1 || true
 fi
