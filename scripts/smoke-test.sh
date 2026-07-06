@@ -184,18 +184,27 @@ ORG_TMP="$(mktemp -d)"
 USER_TMP="$(mktemp -d)"
 cleanup_org() { rm -rf "$ORG_TMP" "$USER_TMP"; }
 trap cleanup_org EXIT
-# Org layer: an internal provider + declared model, an AGENTS.md, and a skill.
-cat > "$ORG_TMP/opencode.jsonc" <<'JSON'
-{ "provider": { "acme": { "npm": "@ai-sdk/openai-compatible", "name": "ACME (org)", "models": { "m1": { "name": "M1" } } } } }
+# org/ is a CONTAINER of named layers (org/<name>/), folded alphabetically
+# between baked and user. Two layers here so the org₁ < org₂ order is asserted,
+# not assumed. Layer 10-acme: an internal provider (with a baseURL, so the
+# firewall derivation below must surface its host), an AGENTS.md, an
+# instructions/ file, a skill, and an allowed_hosts file.
+mkdir -p "$ORG_TMP/10-acme/instructions" "$ORG_TMP/10-acme/skills/house-style" "$ORG_TMP/20-beta"
+cat > "$ORG_TMP/10-acme/opencode.jsonc" <<'JSON'
+{ "env": { "ORG_MARKER": "acme" },
+  "provider": { "acme": { "npm": "@ai-sdk/openai-compatible", "name": "ACME (org)",
+                          "options": { "baseURL": "https://llm.acme.example/v1" },
+                          "models": { "m1": { "name": "M1" } } } } }
 JSON
-printf '# org rules\n' > "$ORG_TMP/AGENTS.md"
-# Additive instruction file (the instructions/ dir convention) — picked up by
-# the baked `instructions` glob over org/instructions/, no jq, no array entry.
-mkdir -p "$ORG_TMP/instructions"
-printf '# org house rules\n' > "$ORG_TMP/instructions/house-rules.md"
-mkdir -p "$ORG_TMP/skills/house-style"
+printf '# org rules\n' > "$ORG_TMP/10-acme/AGENTS.md"
+printf '# org house rules\n' > "$ORG_TMP/10-acme/instructions/house-rules.md"
 printf -- '---\nname: house-style\ndescription: example\n---\n# House\n' \
-  > "$ORG_TMP/skills/house-style/SKILL.md"
+  > "$ORG_TMP/10-acme/skills/house-style/SKILL.md"
+printf 'wiki.acme.example\n' > "$ORG_TMP/10-acme/allowed_hosts"
+# Layer 20-beta: overrides the marker — alphabetically later must win.
+cat > "$ORG_TMP/20-beta/opencode.jsonc" <<'JSON'
+{ "env": { "ORG_MARKER": "beta" } }
+JSON
 # User layer: override the org provider's display name — the user must win.
 cat > "$USER_TMP/opencode.jsonc" <<'JSON'
 { "provider": { "acme": { "name": "ACME (user override)" } } }
@@ -223,25 +232,35 @@ cfg=/home/node/.config/opencode/opencode.jsonc
 jq -e '.provider.acme.models.m1' "$cfg" >/dev/null
 # baked default survived the merge (proves the fold, not a clobber)
 jq -e '.provider.lmstudio' "$cfg" >/dev/null
-# USER precedence: user override of the name wins over org
+# ORG-vs-ORG precedence: the alphabetically later layer (20-beta) wins
+[ "$(jq -r '.env.ORG_MARKER' "$cfg")" = "beta" ]
+# USER precedence: user override of the name wins over every org layer
 [ "$(jq -r '.provider.acme.name' "$cfg")" = "ACME (user override)" ]
-# Layered instruction globs are baked into .instructions (baked < org < user),
-# loaded natively by opencode — no entrypoint jq. The org AGENTS.md literal is
-# the back-compat entry for orgs predating the instructions/ convention.
+# The baked .instructions array holds exactly the baked + user globs; org
+# layers get no entry (opencode globs only the basename component, so an
+# org/*/… glob could never match — their files are COPIED instead, below).
 jq -e '.instructions | index("/home/node/.config/opencode/instructions/*.md")' "$cfg" >/dev/null
-jq -e '.instructions | index("/home/node/.config/konrad/org/instructions/*.md")' "$cfg" >/dev/null
 jq -e '.instructions | index("/home/node/.config/konrad/user/instructions/*.md")' "$cfg" >/dev/null
-jq -e '.instructions | index("/home/node/.config/konrad/org/AGENTS.md")' "$cfg" >/dev/null
-# The dropped instruction files are present at the mount paths those globs match
-# (so opencode's glob expansion will pick them up).
-test -f /home/node/.config/konrad/org/instructions/house-rules.md
+jq -e '.instructions | index("/home/node/.config/konrad/org/instructions/*.md") | not' "$cfg" >/dev/null
+# Org instruction files (and back-compat AGENTS.md) copied into the baked
+# instructions/ dir under the org-<layer>- prefix, where the baked glob
+# picks them up.
+test -f /home/node/.config/opencode/instructions/org-10-acme-house-rules.md
+test -f /home/node/.config/opencode/instructions/org-10-acme-AGENTS.md
+# The user's instruction file is matched in place by its own glob.
 test -f /home/node/.config/konrad/user/instructions/my-rules.md
 # baked layer's instruction file (the runtime-environment manifest) is in place
 test -f /home/node/.config/opencode/instructions/environment.md
 # org skill copied into the opencode skills dir
 test -f /home/node/.config/opencode/skills/house-style/SKILL.md
+# Firewall derivation enumerates EVERY org layer: the provider baseURL host
+# and the layer's allowed_hosts entry must both surface (a missed layer would
+# silently block that org's internal provider at the proxy).
+/etc/konrad/compose-allowed-hosts.sh > /tmp/allowed-hosts
+grep -qx 'llm.acme.example'  /tmp/allowed-hosts
+grep -qx 'wiki.acme.example' /tmp/allowed-hosts
 CONTAINER
-pass "org layer merges under user precedence; instructions append; skill loads"
+pass "org layers merge in order under user precedence; instructions copy; skill loads; firewall sees every layer"
 fi
 
 
