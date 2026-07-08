@@ -17,12 +17,10 @@ _Raw ideas land here. Promote into the appropriate tier after a refinement pass.
 
 _Gates the beta declaration — a genuinely usable product for the organization._
 
-- **Distribution & operations**
-  - [ ] `M` **Auto-update.** Keep the latest image at hand — possibly via a background refresh. Org layers already ride `konrad update` (the `konrad org` subscription sync, shipped 0.18.0), so once a background refresh lands they stay fresh for free — no org-side updater.
 - **Security & sandboxing**
   - [ ] `L` **Security audit.** End-to-end review before declaring beta: container isolation, provider-credential handling, MCP tool surface, filesystem-access boundaries...
     - is the container hardened enough against common threats (e.g. via pids-limit?)
-  - [ ] `?` **Investigate: `egress firewall: could not create internal network` on Apple `container`.** Seen 2026-06-23 on macOS (`konrad` 0.17.0): every firewall-on launch failed at net creation (each after a Ctrl-C of an apparently-hung `container network create --internal`); `--no-firewall` launches worked. The machine also held 8 orphaned `konrad-fw-net-<pid>` nets + a running orphan `konrad-fw-proxy-8405`, and a `container system stop && start` was what cleared it at the time. **Pool-exhaustion theory falsified (2026-06-24):** 41 deliberately-leaked `konrad-fw-net-*` orphans created cleanly (subnets through `192.168.106.0/24`) and the unfixed `konrad` then launched fine with all 41 present — so orphan accumulation neither exhausts the vmnet pool nor causes the wedge. Leading hypothesis now: a transient `container-apiserver` state (hence the stop/start fix), not anything konrad does. Next time it recurs, **capture a live repro** — `container system logs`, daemon state, and whether a bare `container network create --internal foo` hangs _without_ konrad in the loop — before changing code. (A startup-reaper + interrupt-teardown fix was built and reverted as speculative once the theory was falsified; don't rebuild it without a repro.) The orphaned-leftover cleanup is still mildly worth doing, but as the on-demand `reset`/`uninstall` sweep under the Tier-2 dev-container item — not an automatic per-launch reaper.
+- README Rework. E.g. cleaning up install path.
 
 ## Tier 2 — beta → 1.0
 
@@ -34,6 +32,8 @@ _Work after the public beta. Mostly speculative or aspirational._
   - [ ] `L` **PPTX / presentation skill.** Technical slide authoring.
   - [ ] `M` **`.eml` email skill.** Read and compose `.eml` messages — parse headers / body / attachments and build new messages. Python's stdlib `email` covers most of it; the skill is the scaffold + conventions.
 - [ ] `M` **Windows support (via WSL2).** Validate and document the WSL2 path (Podman inside WSL2). Today it's untested and at-your-own-discretion (README Status); the goal is a tested, documented Windows story.
+- **Distribution & operations**
+  - [ ] `M` **Auto-update.** Keep the latest image at hand — possibly via a background refresh. Org layers already ride `konrad update` (the `konrad org` subscription sync, shipped 0.18.0), so once a background refresh lands they stay fresh for free — no org-side updater.
 - **Dev Container (second consumption path)**
   - [ ] `XL` **`konrad init-devcontainer`.** Scaffold a `.devcontainer/` into the _user's_ project, so they drive Konrad from VS Code instead of the terminal. Ships as a new subcommand → minor `VERSION` bump + README "Dev Container" section + CHANGELOG; deletes on ship. Not Konrad's own `.devcontainer/` (that configures working _on_ Konrad).
     - **Decided shape:** the published Konrad image _is_ the dev container, sealed on an `--internal` Podman network with the same egress-firewall sidecar the CLI uses — not image-as-toolbox (can't host the firewall — the proxy needs its own netns) and not a socket-mounting re-run of the host CLI (drags in the remote-daemon apparatus for no gain). Used exactly like the CLI (pure agent, no in-container dev work), so it needs no dev egress and the firewall floor stays as tight as the CLI's.
