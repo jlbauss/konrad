@@ -16,6 +16,26 @@ build publishes as `:0.X` (minor line), `:latest`, and an immutable
 
 ## [Unreleased]
 
+### Changed
+
+- **Default resource ceilings lowered to leave headroom for a co-resident local
+  model.** The auto-scaled RAM cap is now clamped to at most `8G` (was up to half
+  the host, `32G`) and the CPU cap to at most `8` cores (was all-but-two,
+  uncapped), so konrad no longer claims most of a big workstation that is also
+  serving a local model. `docling` fits comfortably in both; raise them with
+  `KONRAD_MEMORY` / `KONRAD_CPUS` for heavy OCR. Only affects machines above
+  ~`16G` / ~10 cores — smaller hosts are unchanged.
+
+### Security
+
+- **Container hardening on the Podman path.** The agent and proxy containers now
+  run with every Linux capability dropped (`--cap-drop=ALL`),
+  `--security-opt=no-new-privileges`, and a task-count cap (`--pids-limit`,
+  default `1024`, override via `KONRAD_PIDS_LIMIT`) that bounds a fork bomb below
+  the host's PID max. Apple's `container` already bounds these at its per-container
+  VM boundary. Closes the beta container-hardening items from the
+  [security audit](SECURITY-AUDIT.md).
+
 ## [0.18.2] - 2026-07-09
 
 ### Fixed

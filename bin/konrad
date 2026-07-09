@@ -184,9 +184,12 @@ KONRAD_ALLOW_HOST="${KONRAD_ALLOW_HOST:-}"
 
 # Resource limits for the agent container (RAM + CPU). Left empty here on purpose:
 # when unset, podman_run derives a proportional default from the host's own totals
-# (half the RAM, clamped to [2G, 32G]; all cores but two reserved for the host, min
-# 2 — see default_memory / default_cpus), so a small laptop and a big workstation
-# each get a ceiling that fits. The cap does double duty across both engines: Apple's `container` defaults
+# (half the RAM, clamped to [2G, 8G]; all cores but two reserved for the host,
+# clamped to [2, 8] — see default_memory / default_cpus), so a small laptop and a
+# big workstation each get a ceiling that fits. Both ceilings are deliberately
+# modest rather than an unbounded grab: on a big box konrad keeps headroom for a
+# co-resident local model instead of claiming most of the RAM/cores (docling fits
+# comfortably; raise either cap for heavy OCR). The cap does double duty across both engines: Apple's `container` defaults
 # to a tiny 1G VM — too small for the bundled docling models, which OOM-kill
 # mid-run — so the default lifts that floor, while on otherwise-uncapped Podman it
 # bounds runaway/fork-bomb usage. Both CLIs accept --memory/--cpus with the same
@@ -197,6 +200,14 @@ KONRAD_ALLOW_HOST="${KONRAD_ALLOW_HOST:-}"
 # docling/torch actually use the granted cores instead of self-throttling to 4.
 KONRAD_MEMORY="${KONRAD_MEMORY:-}"
 KONRAD_CPUS="${KONRAD_CPUS:-}"
+
+# Task (process+thread) ceiling for the container's pids cgroup — bounds a
+# runaway/fork-bomb inside the agent so it can't exhaust the host's PID space.
+# The default leaves ample headroom for docling/torch thread pools (each counts
+# against the pids cgroup) while still capping far below any host's PID max; 0
+# disables the cap. Podman-only (see the hardening block in podman_run): on
+# apple/container the per-container VM already bounds this at its own kernel.
+KONRAD_PIDS_LIMIT="${KONRAD_PIDS_LIMIT:-1024}"
 
 # Container engine. Konrad runs on Podman everywhere, with one exception: on
 # Apple-Silicon macOS where Apple's `container` CLI (apple/container, macOS 26+)
@@ -794,11 +805,12 @@ fw_proxy_url() {
 }
 
 # Create the networks and start the proxy sidecar. Reads globals the caller
-# (podman_run) exports — KR_USERNS_FLAGS and KR_CFG_MOUNTS — because the proxy
-# needs the same userns mapping and the same org/user config mounts as the agent
-# (it derives the provider allow-list from the merged config). The proxy's own
-# read-only secrets mount it builds here via ro_bind. Sets the FW_* globals and
-# the EXIT trap so a partial setup is always cleaned up.
+# (podman_run) exports — KR_USERNS_FLAGS, KR_CFG_MOUNTS and KR_HARDEN_FLAGS —
+# because the proxy needs the same userns mapping, the same org/user config
+# mounts (it derives the provider allow-list from the merged config), and the
+# same capability/pids hardening as the agent. The proxy's own read-only secrets
+# mount it builds here via ro_bind. Sets the FW_* globals and the EXIT trap so a
+# partial setup is always cleaned up.
 fw_setup() {
   FW_NET_INTERNAL="konrad-fw-net-$$"
   FW_PROXY_NAME="konrad-fw-proxy-$$"
@@ -878,6 +890,7 @@ fw_setup() {
 
   "$KONRAD_ENGINE" run -d --rm --name "$FW_PROXY_NAME" --init \
     "${fw_net_args[@]}" \
+    ${KR_HARDEN_FLAGS[@]+"${KR_HARDEN_FLAGS[@]}"} \
     ${fw_alias_flags[@]+"${fw_alias_flags[@]}"} \
     ${KR_USERNS_FLAGS[@]+"${KR_USERNS_FLAGS[@]}"} \
     ${KR_CFG_MOUNTS[@]+"${KR_CFG_MOUNTS[@]}"} \
@@ -934,15 +947,18 @@ host_cpu_count() {
   return 0
 }
 
-# Default memory cap: half the host RAM, clamped to [2G, 32G] and never above the
-# host total. Emitted as <n>G when a whole GiB, else <n>M. Falls back to 4G.
+# Default memory cap: half the host RAM, clamped to [2G, 8G] and never above the
+# host total. The 8G ceiling keeps konrad from crowding a co-resident local model
+# (or other host work) on a big machine — docling fits comfortably; raise it with
+# KONRAD_MEMORY for heavy OCR. Emitted as <n>G when a whole GiB, else <n>M. Falls
+# back to 4G.
 default_memory() {
   local total half
   total="$(host_mem_mib)"
   if [[ ! "$total" =~ ^[0-9]+$ ]] || (( total <= 0 )); then printf '4G'; return 0; fi
   half=$(( total / 2 ))
   if (( half < 2048 ));  then half=2048;  fi
-  if (( half > 32768 )); then half=32768; fi
+  if (( half > 8192 )); then half=8192; fi
   if (( half > total )); then half="$total"; fi
   if (( half % 1024 == 0 )); then printf '%sG' "$(( half / 1024 ))"; else printf '%sM' "$half"; fi
   return 0
@@ -950,12 +966,22 @@ default_memory() {
 
 # Default CPU cap: all cores but two reserved for the host, min 2, never above the
 # host count. Falls back to 4.
+# Default CPU cap: all host cores but two (reserved for the host), clamped to
+# [2, 8] and never above the host total. The 8-core ceiling mirrors the 8G RAM
+# ceiling in default_memory: docling/torch thread scaling is memory-bandwidth-
+# bound and flattens well before 8 threads, so capping there costs konrad little
+# throughput while leaving a big machine its cores for a co-resident local model
+# (--cpus is a time-shared quota, so an idle konrad never actually withholds
+# them — the ceiling just bounds konrad's simultaneous-burst share). Only bites
+# above ~10 cores; a laptop already lands at total-2 ≤ 8. Raise with KONRAD_CPUS
+# for heavy docling on a big host with no local model. Falls back to 4.
 default_cpus() {
   local total cap
   total="$(host_cpu_count)"
   if [[ ! "$total" =~ ^[0-9]+$ ]] || (( total <= 0 )); then printf '4'; return 0; fi
   cap=$(( total - 2 ))
   if (( cap < 2 ));     then cap=2;        fi
+  if (( cap > 8 ));     then cap=8;        fi
   if (( cap > total )); then cap="$total"; fi
   printf '%s' "$cap"
   return 0
@@ -1132,6 +1158,22 @@ EOF
   # the firewall-off path (no internal net, no proxy — egress is unrestricted by
   # design there, so there is nothing to bypass).
   local -a net_flags=() proxy_env=() seal_flags=()
+
+  # Container hardening for the shared-kernel Podman path: drop every Linux
+  # capability, block privilege escalation via setuid/file-caps, and cap the
+  # task count (see KONRAD_PIDS_LIMIT up top). The agent needs no capabilities
+  # on Podman — it runs as node with no privileged step (the only cap use,
+  # CAP_NET_ADMIN for the seal, is apple/container-only and added via seal_flags).
+  # Gated to Podman: apple/container runs each container in its own lightweight
+  # VM, so these kernel-level limits are already bounded by the VM boundary there
+  # (and its CLI doesn't take these flags). Set as a global (bash 3.2 has no array
+  # passing) so fw_setup applies the same hardening to the proxy sidecar.
+  KR_HARDEN_FLAGS=()
+  if [[ "$KONRAD_ENGINE" == "podman" ]]; then
+    KR_HARDEN_FLAGS=(--cap-drop=ALL --security-opt=no-new-privileges)
+    [[ "$KONRAD_PIDS_LIMIT" != 0 ]] && KR_HARDEN_FLAGS+=(--pids-limit "$KONRAD_PIDS_LIMIT")
+  fi
+
   if firewall_on; then
     KR_USERNS_FLAGS=(${userns_flags[@]+"${userns_flags[@]}"})
     KR_CFG_MOUNTS=(${cfg_mounts[@]+"${cfg_mounts[@]}"})
@@ -1205,6 +1247,7 @@ EOF
     ${net_flags[@]+"${net_flags[@]}"}
     ${publish_flags[@]+"${publish_flags[@]}"}
     ${res_flags[@]+"${res_flags[@]}"}
+    ${KR_HARDEN_FLAGS[@]+"${KR_HARDEN_FLAGS[@]}"}
     ${omp_flags[@]+"${omp_flags[@]}"}
     ${proxy_env[@]+"${proxy_env[@]}"}
     -e "KONRAD_DEBUG=${KONRAD_DEBUG}"
@@ -2201,6 +2244,7 @@ bounds runaway use and lifts Apple container's tight 1G default that OOM-kills d
   KONRAD_MEMORY=8G $self             Pin the RAM cap (heavy docling / OCR).
   KONRAD_MEMORY=0 $self              Drop the RAM cap (Podman's old unbounded run).
   KONRAD_CPUS=8 $self                Pin the CPU-core cap (also docling/torch's thread budget).
+  KONRAD_PIDS_LIMIT=4096 $self       Raise the task/thread cap (Podman; 0 disables). Default 1024.
 
 Files the agent may write in your workspace (konrad does NOT create or
 gitignore these — they appear only if the agent actually uses them):

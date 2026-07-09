@@ -38,6 +38,7 @@ What ships in the box:
 - **Pre-1.0: expect churn, but versioned.** Konrad uses [semantic versioning](CONTRIBUTING.md#versioning) — pre-1.0 that's `0.X.Y` (`X`/minor = new functionality or any user-visible change, `Y`/patch = fixes). The leading `0.` means config shapes, flags, and image internals can still change without a migration path; no stability promise until 1.0.
 - **No automated test suite.** Validation is manual (shellcheck + a smoke build). Regressions can slip through; the baked build manifest is the safety net, not a test suite.
 - **Local-model UX is still rough.** Tool-call parsing, context overflow, and model switching have known edges — the "works flawlessly on local models" shakedown is still a roadmap item. You must also hand-declare each loaded model (no auto-discovery yet).
+- **The egress firewall is the containment boundary — not a secret read-gate.** Your provider credential lives on-disk in the `konrad-secrets` volume, and a prompt-injected agent can read it or copy it into `/workspace`; what stops it _leaving the box_ is the default-deny [egress firewall](#egress-firewall), not a read restriction. So `--no-firewall` (or opening `--allow-host` to a host you don't trust) removes that containment for the run — use it only when you trust the agent and the task.
 
 ## Who it's for
 
@@ -192,7 +193,7 @@ It's **on by default**. Turn it off for a run with `konrad --no-firewall`. When 
 
 ### Resource limits
 
-Each run caps the agent container's RAM and CPU, on both engines, at a ceiling **auto-scaled to your machine** — half the host RAM (clamped to `2`–`32 GB`) and all but two of the cores (at least `2`). This bounds a runaway or fork-bombing agent, and — on Apple's `container`, whose per-container default is a tight 1 GB — it lifts a ceiling small enough to get the bundled `docling` models OOM-killed mid-run. The CPU cap doubles as the container's thread budget (`OMP_NUM_THREADS`), so `docling` PDF extraction actually uses your cores instead of self-throttling to 4 threads. `konrad --help` prints the values computed for your host.
+Each run caps the agent container's RAM and CPU, on both engines, at a ceiling **auto-scaled to your machine** — half the host RAM (clamped to `2`–`8 GB`) and all but two of the cores (clamped to `2`–`8`). This bounds a runaway or fork-bombing agent and keeps konrad from crowding a co-resident local model on a big machine (`docling` fits comfortably in both ceilings; raise them for heavy OCR), and — on Apple's `container`, whose per-container default is a tight 1 GB — it lifts a ceiling small enough to get the bundled `docling` models OOM-killed mid-run. The CPU cap doubles as the container's thread budget (`OMP_NUM_THREADS`), so `docling` PDF extraction actually uses your cores instead of self-throttling to 4 threads. `konrad --help` prints the values computed for your host.
 
 Pin explicit values (or opt out) per run with environment variables:
 
@@ -200,7 +201,10 @@ Pin explicit values (or opt out) per run with environment variables:
 KONRAD_MEMORY=8G konrad        # pin the RAM cap (heavy docling / OCR on large scans)
 KONRAD_CPUS=8 konrad           # pin the CPU-core cap (also docling/torch's thread count)
 KONRAD_MEMORY=0 konrad         # no RAM cap (Podman's previous unbounded behaviour)
+KONRAD_PIDS_LIMIT=4096 konrad  # raise the task/thread cap (Podman; 0 disables, default 1024)
 ```
+
+On Podman, the container is further hardened at the kernel: it starts with **every Linux capability dropped**, `no-new-privileges` set (no privilege escalation via setuid binaries), and a **task-count cap** (`--pids-limit`, default `1024`) so a fork bomb can't exhaust the host's PID space. Raise the last with `KONRAD_PIDS_LIMIT` if a heavy `docling`/OCR run ever exhausts its thread budget. On Apple's `container` these are already bounded by its per-container VM boundary.
 
 ### Quick start: edit your override
 

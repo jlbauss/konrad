@@ -44,9 +44,9 @@ before beta vs. defer is in [ROADMAP.md](ROADMAP.md).
 
 | # | Severity | Area | Finding | Disposition |
 |---|---|---|---|---|
-| 1 | Medium | Container hardening | No `--pids-limit` → fork-bomb PID exhaustion not directly bounded | Beta |
-| 2 | Medium | Container hardening | No `--cap-drop=ALL` → agent runs with the engine's default capability set | Beta |
-| 3 | Low–Med | Container hardening | No `--security-opt=no-new-privileges` | Beta |
+| 1 | Medium | Container hardening | No `--pids-limit` → fork-bomb PID exhaustion not directly bounded | **Resolved** (Podman) |
+| 2 | Medium | Container hardening | No `--cap-drop=ALL` → agent runs with the engine's default capability set | **Resolved** (Podman) |
+| 3 | Low–Med | Container hardening | No `--security-opt=no-new-privileges` | **Resolved** (Podman) |
 | 4 | Low | Supply chain | CI actions on major-version tags (all first-party); majors had gone stale | Accepted posture; staleness fixed |
 | 5 | Info | Egress | DNS resolution as a potential proxy-bypass exfil channel — **probed closed on both engines** | Resolved |
 | 6 | Low | Config integrity | `merge-config.js` `deepMerge` is prototype-pollution-prone (confirmed) | Post-beta |
@@ -70,6 +70,11 @@ the flag, so no `eng_*` wrapper is needed.
 then a bounded fork loop must hit the ceiling and fail to spawn past the limit
 rather than degrade the host — a pass proves the flag, not the absence of a bomb.
 
+**Resolved:** `--pids-limit` (default `1024`, `KONRAD_PIDS_LIMIT` overrides, `0`
+disables) is added to the agent and proxy on the Podman path. Gated to Podman:
+apple/container bounds task count at its per-container VM boundary and its CLI
+does not take the flag. `konrad --help` and README document the knob.
+
 ### 2. No `--cap-drop=ALL` (Medium) · 3. No `no-new-privileges` (Low–Med)
 
 The run command ([bin/konrad:1200-1222](bin/konrad#L1200-L1222)) drops no
@@ -83,6 +88,14 @@ on the apple seal path. Add `--security-opt=no-new-privileges`. The agent
 (uid 1000, no privileged binaries) and tinyproxy (binds >1024) should need no
 caps — **verify against smoke + selftest**, since a missing cap surfaces at
 runtime, not build.
+
+**Resolved:** both containers now run with `--cap-drop=ALL` and
+`--security-opt=no-new-privileges` on the Podman path (a shared
+`KR_HARDEN_FLAGS`). No cap is added back: the seal's `NET_ADMIN` is
+apple/container-only, and that engine — where the seal runs — is excluded from
+this block (its per-container VM already bounds capabilities/pids, and the seal
+still adds `NET_ADMIN` via `seal_flags`). The Podman agent runs as node with no
+privileged step, so all caps drop cleanly.
 
 ### 4. CI action pinning + staleness (Low — supply chain)
 
