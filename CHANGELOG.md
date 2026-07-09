@@ -16,6 +16,8 @@ build publishes as `:0.X` (minor line), `:latest`, and an immutable
 
 ## [Unreleased]
 
+## [0.18.2] - 2026-07-09
+
 ### Fixed
 
 - **Org/user `opencode.json` layers are no longer firewall-blocked.** The egress
