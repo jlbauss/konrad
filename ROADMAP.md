@@ -17,14 +17,24 @@ _Raw ideas land here. Promote into the appropriate tier after a refinement pass.
 
 _Gates the beta declaration — a genuinely usable product for the organization._
 
-- **Security & sandboxing**
-  - [ ] `L` **Security audit.** End-to-end review before declaring beta: container isolation, provider-credential handling, MCP tool surface, filesystem-access boundaries...
-    - is the container hardened enough against common threats (e.g. via pids-limit?)
+- **Security & sandboxing** — end-to-end audit **performed 2026-07-09** (findings + rationale in [SECURITY-AUDIT.md](SECURITY-AUDIT.md)); the beta-gating items it surfaced:
+  - [ ] `S` **Container hardening flags.** Add `--pids-limit` (bounds fork-bomb PID exhaustion — the flagged concern), `--cap-drop=ALL` (add back `NET_ADMIN` only on the apple/container seal), and `--security-opt=no-new-privileges` to the agent + proxy run in [bin/konrad](bin/konrad); verify against smoke + selftest. (Audit #1–3.)
+  - CI action pinning (Audit #4): first-party major-version tags are an **accepted posture** (SHA-pin only third-party actions added later; blast radius is already least-privilege + smoke-gated). A version check found the majors had gone stale, so they were **bumped to current** ([build-image.yml](.github/workflows/build-image.yml): checkout v7, build-push v7, login v4, setup-buildx v4; dropped the now-obsolete Node-24 workaround). [ ] `S` validate the bump via a CI round-trip on the mirror (PR or non-`main` `workflow_dispatch`) before declaring beta.
+  - DNS egress channel (Audit #5): **probed closed on both engines** 2026-07-09 (apple/container seal blackholes the resolver gateway; Podman's aardvark doesn't forward off the `--internal` net) — no beta action. A `selftest` regression assertion is the only follow-on, folded into the Automated test suite item (Tier 2).
+  - [ ] `S` **Document the credential residual** in the README Status section: `--no-firewall` removes exfil containment, and an on-disk copy to `/workspace` is never blocked. (Audit #9.)
 - README Rework. E.g. cleaning up install path.
 
 ## Tier 2 — beta → 1.0
 
 _Work after the public beta. Mostly speculative or aspirational._
+
+- **Security & sandboxing (post-beta hardening)** — deferred findings from the [2026-07-09 audit](SECURITY-AUDIT.md); none blocks beta.
+  - [ ] `S` **`merge-config.js` prototype-pollution guard.** Skip `__proto__`/`constructor`/`prototype` in `deepMerge`; add a fixture. Confirmed but low-impact (short-lived process, own-keys-only output, trusted layers). Fold into the merge-config unit-test coverage in the Automated test suite item below. (Audit #6.)
+  - [ ] `S` **Proxy bind + allow-list input hardening.** Bind tinyproxy to the internal-net interface instead of `0.0.0.0` (matters only on apple/container's shared `default` net); validate `allowed_hosts`/`--allow-host` entries against `^[A-Za-z0-9.*-]+$` before they become filter regex. (Audit #7, #8.)
+  - [ ] `M` **Read-only root filesystem / writable-path minimization.** Run the agent with `--read-only` + explicit tmpfs/writable mounts for the paths opencode needs. Referenced as roadmap in ARCHITECTURE → State, secrets & isolation.
+  - [ ] `S` **`SECURITY.md` — vulnerability-reporting policy.** Separate from the audit record; expected for a public beta.
+  - [ ] `M` **Image signing + installer integrity.** cosign/sigstore signatures on the published image and a checksum/signature check in `install.sh` (the `curl | sh` path trusts TLS alone today).
+  - [ ] `S` **Renovate on GitLab for CI action versions.** Auto-bump the workflow's action pins (and optionally convert them to SHA-pins) via auto-merging MRs — the same "bot re-resolves, auto-merge" pattern as `resolve-locks`, so major-version tags can't silently go stale again. Closes the maintenance side of Audit #4 without hand-tended bumps. (Depends on Renovate being wired to the GitLab primary, since the mirror is one-way.)
 
 - **Document-authoring skills** — round out the doc-surface lineup (PDF / XLSX / DOCX / slides / mail / markdown / HTML).
   - [ ] `L` **PDF GENERATE — beyond the stub.** A minimal [generate.md](image/opencode/skills/pdf/generate.md) ships (bare single-page reportlab output — no design, content trees, or themed templates). Open: structured content trees that flow across pages (`reportlab.platypus`), HTML-to-PDF for richer layouts (Playwright / WeasyPrint), themed/branded output. Likely path: adapt minimax-pdf's CREATE / REFORMAT pipelines (reportlab body + Playwright cover, MIT). Pairs with the Design-skill aesthetic layer.
