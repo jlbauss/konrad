@@ -16,6 +16,8 @@ build publishes as `:0.X` (minor line), `:latest`, and an immutable
 
 ## [Unreleased]
 
+## [0.18.1] - 2026-07-09
+
 ### Fixed
 
 - **Org/user config layers may be named `opencode.json` or `opencode.jsonc`.** The
