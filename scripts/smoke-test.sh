@@ -188,9 +188,13 @@ trap cleanup_org EXIT
 # between baked and user. Two layers here so the org₁ < org₂ order is asserted,
 # not assumed. Layer 10-acme: an internal provider (with a baseURL, so the
 # firewall derivation below must surface its host), an AGENTS.md, an
-# instructions/ file, a skill, and an allowed_hosts file.
+# instructions/ file, a skill, and an allowed_hosts file. It deliberately uses
+# opencode.JSON (not .jsonc) — with 20-beta/user on .jsonc — so both extensions
+# are exercised across the compose AND the firewall derivation (a layer whose
+# config is opencode.json was silently dropped from the allow-list before the
+# fix that made every config-file consumer accept either extension).
 mkdir -p "$ORG_TMP/10-acme/instructions" "$ORG_TMP/10-acme/skills/house-style" "$ORG_TMP/20-beta"
-cat > "$ORG_TMP/10-acme/opencode.jsonc" <<'JSON'
+cat > "$ORG_TMP/10-acme/opencode.json" <<'JSON'
 { "env": { "ORG_MARKER": "acme" },
   "provider": { "acme": { "npm": "@ai-sdk/openai-compatible", "name": "ACME (org)",
                           "options": { "baseURL": "https://llm.acme.example/v1" },

@@ -54,14 +54,32 @@ fi
 
 # ── Provider endpoints from the merged baked<org…<user config ─────────────────
 # Same left-fold as konrad-entrypoint — EVERY org/<name>/ layer, in the same
-# sorted glob order — so the list tracks the user's REAL providers; a missed
-# layer would silently block that org's internal provider. We only need hosts,
-# so a merge failure is non-fatal.
+# sorted glob order, each layer's config named opencode.jsonc OR opencode.json
+# (layer_config_file, mirroring the entrypoint) — so the list tracks the user's
+# REAL providers; a missed layer (or an ignored extension) would silently block
+# that org's internal provider. We only need hosts, so a merge failure is
+# non-fatal.
+#
+# The entrypoint owns the "both extensions present" warning (it composes the
+# authoritative config); this stays quiet to avoid double-warning on every
+# launch, but picks the SAME file (.jsonc wins) so the derived allow-list can't
+# diverge from the merged config the agent actually runs with.
+layer_config_file() {
+  local dir="$1"
+  if [[ -f "$dir/opencode.jsonc" ]]; then
+    printf '%s' "$dir/opencode.jsonc"
+  elif [[ -f "$dir/opencode.json" ]]; then
+    printf '%s' "$dir/opencode.json"
+  fi
+}
+
 merge_inputs=("$KONRAD_BAKED/opencode-defaults.jsonc")
-for f in "$ORG_CFG"/*/opencode.jsonc; do
-  [[ -f "$f" ]] && merge_inputs+=("$f")
+for d in "$ORG_CFG"/*/; do
+  cfg="$(layer_config_file "$d")"
+  [[ -n "$cfg" ]] && merge_inputs+=("$cfg")
 done
-[[ -f "$USER_CFG/opencode.jsonc" ]] && merge_inputs+=("$USER_CFG/opencode.jsonc")
+user_cfg="$(layer_config_file "$USER_CFG")"
+[[ -n "$user_cfg" ]] && merge_inputs+=("$user_cfg")
 
 # Extract the host from a scheme://host[:port][/path] baseURL.
 host_of() { sed -E 's#^[a-zA-Z][a-zA-Z0-9+.-]*://([^/:]+).*#\1#'; }

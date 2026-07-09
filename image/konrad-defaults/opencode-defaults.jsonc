@@ -8,11 +8,13 @@
 // left-folds up to three layers and writes the result to
 // /home/node/.config/opencode/opencode.jsonc, which opencode then reads as its
 // global config:
-//   1. this file                              (baked into the image)
-//   2. ~/.config/konrad/org/opencode.jsonc    (org layer, optional)
-//   3. ~/.config/konrad/user/opencode.jsonc   (user layer, optional)
+//   1. this file                                    (baked into the image)
+//   2. ~/.config/konrad/org/<name>/opencode.json{,c} (0..n org layers)
+//   3. ~/.config/konrad/user/opencode.json{,c}       (user layer, optional)
 //
-// Later layers win on conflicting keys (precedence: baked < org < user); new
+// Each org/user layer may use either extension (opencode.jsonc or opencode.json;
+// .jsonc wins if both are present). Later layers win on conflicting keys
+// (precedence: baked < org₁ < … < user); new
 // keys from any layer come through; arrays replace. See README → Configuration.
 {
   // Points to the official opencode JSON schema.

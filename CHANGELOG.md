@@ -16,6 +16,17 @@ build publishes as `:0.X` (minor line), `:latest`, and an immutable
 
 ## [Unreleased]
 
+### Fixed
+
+- **Org/user `opencode.json` layers are no longer firewall-blocked.** The egress
+  allow-list derivation ([compose-allowed-hosts.sh](image/konrad-defaults/compose-allowed-hosts.sh))
+  globbed only each layer's `opencode.jsonc`, so a layer whose config was named
+  `opencode.json` (accepted everywhere else since 0.18.1) had its declared
+  provider `baseURL` host silently dropped from the allow-list — the provider
+  worked as a model but the proxy default-denied it. The derivation now accepts
+  either extension, matching the config compose; the smoke test exercises a
+  mixed-extension layer set so it can't regress.
+
 ## [0.18.1] - 2026-07-09
 
 ### Fixed
