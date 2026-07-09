@@ -76,14 +76,6 @@ env:
   # github.repository is "owner/repo" — lowercased to satisfy ghcr.io's
   # requirement that image paths be lowercase.
   IMAGE_NAME: ${{ github.repository }}
-  # Force JavaScript actions to run on Node 24 instead of the deprecated
-  # Node 20 runtime. checkout@v5 and build-push-action@v6 already ship
-  # Node 24; setup-buildx-action@v3 and login-action@v3 still ship
-  # Node 20 (no v4 yet). This env var silences their deprecation warning
-  # and runs them on Node 24 too — GitHub will flip this default in
-  # June 2026 anyway. Remove this line once the docker org ships Node 24
-  # versions of setup-buildx and login.
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
   # ---------------------------------------------------------------------------
@@ -115,7 +107,7 @@ jobs:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Compute build metadata
         id: metadata
@@ -162,16 +154,16 @@ jobs:
           echo "base: $BASE_IMAGE"
           echo "uv:   $UV_IMAGE"
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
 
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push (transient tag, ${{ matrix.arch }})
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: image/
           platforms: ${{ matrix.platform }}
@@ -261,9 +253,9 @@ jobs:
       contents: read
       packages: read
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -316,11 +308,11 @@ jobs:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
 
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
