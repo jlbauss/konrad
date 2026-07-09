@@ -122,7 +122,7 @@ input, not a build-arg.)
 "bot re-resolves, auto-merge" pattern as `resolve-locks`, so staleness can't
 silently recur without hand-maintenance.
 
-### 5. DNS as a proxy-bypass exfil channel (Info — probed closed on both engines)
+### 5. DNS as a proxy-bypass exfil channel (Info — probed closed on both engines, incl. native Linux)
 
 The forward-proxy design contains HTTP(S) egress well, but a prompt-injected
 agent has `bash: allow` and the image ships `dnsutils`
@@ -138,17 +138,19 @@ tinyproxy. **Probed on both engines, 2026-07-09 — closed on both.**
   internal-net gateway (where the resolver lives) is unreachable because the
   **egress seal blackholes it**. The seal closes the DNS channel as a side
   effect.
-- **Podman** (`KONRAD_ENGINE=podman`, the podman-machine netavark/aardvark
-  stack): same control (`403`); `dig +short google.com`, the canary lookup, and
-  `getent hosts` all returned **empty** — aardvark resolves container names but
-  does not forward external queries off the `--internal` net. Nothing egressed.
+- **Podman:** same control (`403`); `dig +short google.com`, the canary lookup,
+  and `getent hosts` all returned **empty** — aardvark resolves container names
+  but does not forward external queries off the `--internal` net. Confirmed on
+  **both** the macOS podman-machine VM **and a native Linux + Podman host**
+  (2026-07-09) — nothing egressed on either.
 
-**Residual (not blocking):** the Podman probe ran inside the macOS
-podman-machine VM (representative Linux netavark/aardvark, not bare metal). A
-`selftest` assertion on Linux CI — control fails, external `dig` returns empty —
-would guard against a future regression. Re-run the probe on a native Linux host
-to fully close it. Mitigation if a future stack ever forwards: scope the
-container resolver to the proxy host, or block outbound 53.
+**Fully verified; residual is only a regression guard.** Under `--no-firewall`
+the agent has unrestricted egress by design (DNS and HTTP alike) — the
+documented bypass (see #9), not a finding. The only follow-on is a `selftest`
+assertion on Linux CI (firewall on → control `curl` fails *and* an external
+`dig` returns empty) to catch a future netavark/resolver change; folded into the
+Automated test suite item in the ROADMAP. Mitigation if a future stack ever
+forwards: scope the container resolver to the proxy host, or block outbound 53.
 
 ### 6. `merge-config.js` prototype pollution (Low — confirmed)
 
