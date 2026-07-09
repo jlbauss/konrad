@@ -16,6 +16,8 @@ build publishes as `:0.X` (minor line), `:latest`, and an immutable
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-07-09
+
 ### Changed
 
 - **Default resource ceilings lowered to leave headroom for a co-resident local
