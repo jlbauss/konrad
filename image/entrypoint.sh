@@ -119,8 +119,10 @@ dbg "mkdir done"
 # ── 1. Compose opencode.jsonc (baked defaults + org layers + user layer) ─────
 # Left-folded so each later layer wins on conflicts:
 #   1. /etc/konrad/opencode-defaults.jsonc             (baked into image)
-#   2. ~/.config/konrad/org/<name>/opencode.jsonc      (0..n org layers)
-#   3. ~/.config/konrad/user/opencode.jsonc            (user layer, optional)
+#   2. ~/.config/konrad/org/<name>/opencode.json{,c}   (0..n org layers)
+#   3. ~/.config/konrad/user/opencode.json{,c}         (user layer, optional)
+# Each org/user layer may use either extension (opencode.jsonc or opencode.json);
+# see layer_config_file below.
 # org/ is a container of NAMED layers (subscribed git checkouts or manual
 # dirs — bin/konrad's `org` verbs own their lifecycle host-side); they fold in
 # alphabetical dir-name order (the glob expands sorted), so an org controls
@@ -137,19 +139,37 @@ for d in "$ORG_CFG"/*/; do
   [[ -d "$d" ]] && org_layers+=("${d%/}")
 done
 
+# A layer's opencode config may be named opencode.jsonc OR opencode.json —
+# opencode accepts both, and merge-config.js parses either (JSON is valid JSONC),
+# so konrad shouldn't force the .jsonc extension on org/user layers. Echo the file
+# to compose (prefer .jsonc when both exist, warning rather than silently dropping
+# one); empty when the layer carries neither.
+layer_config_file() {
+  local dir="$1"
+  if [[ -f "$dir/opencode.jsonc" ]]; then
+    [[ -f "$dir/opencode.json" ]] \
+      && warn "both opencode.jsonc and opencode.json in $dir — composing opencode.jsonc, ignoring opencode.json"
+    printf '%s' "$dir/opencode.jsonc"
+  elif [[ -f "$dir/opencode.json" ]]; then
+    printf '%s' "$dir/opencode.json"
+  fi
+}
+
 merge_inputs=("$KONRAD_BAKED/opencode-defaults.jsonc")
 org_names=""
 for layer in ${org_layers[@]+"${org_layers[@]}"}; do
   org_names="${org_names:+$org_names,}$(basename "$layer")"
-  [[ -f "$layer/opencode.jsonc" ]] && merge_inputs+=("$layer/opencode.jsonc")
+  layer_cfg="$(layer_config_file "$layer")"
+  [[ -n "$layer_cfg" ]] && merge_inputs+=("$layer_cfg")
 done
-[[ -f "$USER_CFG/opencode.jsonc" ]] && merge_inputs+=("$USER_CFG/opencode.jsonc")
+user_cfg="$(layer_config_file "$USER_CFG")"
+[[ -n "$user_cfg" ]] && merge_inputs+=("$user_cfg")
 
 # Name exactly which layers compose, so "baked + org(acme) + user" reads at a
 # glance — no ambiguous overlay count.
 config_layers="baked"
 [[ -n "$org_names" ]] && config_layers="$config_layers + org($org_names)"
-[[ -f "$USER_CFG/opencode.jsonc" ]] && config_layers="$config_layers + user"
+[[ -n "$user_cfg" ]] && config_layers="$config_layers + user"
 step "config · $config_layers"
 node "$KONRAD_BAKED/merge-config.js" "${merge_inputs[@]}" > "$TARGET_JSONC"
 dbg "config composed at $TARGET_JSONC"

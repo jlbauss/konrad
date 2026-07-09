@@ -1338,11 +1338,13 @@ do_connect() {
 # `-p <non-catalog-id>`), so the key step is a guided hand-off, not a drive.
 #
 # Whether the provider is already declared (e.g. shipped by an org layer) is read
-# straight from the host-side org/user config — baked carries no custom providers,
-# so those two layers are the whole story. jq can't parse JSONC, so a layer that
-# carries comments is treated as "unknown" and we fall back to one y/N — never an
-# unsafe // strip (that would maul a https:// URL). In practice the layers are
-# plain JSON (Konrad writes them that way), so the question simply doesn't appear.
+# straight from the host-side config — baked carries no custom providers, so the
+# org NAMED layers (org/<name>/opencode.jsonc — org/ is a container of named
+# layers since 0.18, walked in the same sorted order the entrypoint composes) plus
+# the user layer are the whole story. jq can't parse JSONC, so a layer that carries
+# comments is treated as "unknown" and we fall back to one y/N — never an unsafe //
+# strip (that would maul a https:// URL). Plain-JSON layers (what Konrad writes)
+# auto-detect; a commented org layer (common for git-subscribed ones) keeps the y/N.
 do_connect_custom() {
   local id="$1" baseurl model block userfile merged ans declared="" unknown=0 f
 
@@ -1355,8 +1357,12 @@ do_connect_custom() {
   [[ "$id" =~ ^[A-Za-z0-9_-]+$ ]] \
     || die "invalid provider id '$id' (allowed: letters, digits, '-', '_')."
 
-  # Auto-detect: is $id declared in a config layer we can read?
-  for f in "$ORG_CFG_DIR/opencode.jsonc" "$USER_CFG_DIR/opencode.jsonc"; do
+  # Auto-detect: is $id declared in a config layer we can read? org/ holds named
+  # layers (org/<name>/), so glob them all, then the user layer; a layer may use
+  # either opencode.jsonc or opencode.json (like the entrypoint compose). An
+  # unmatched glob stays literal and is skipped by the -f guard.
+  for f in "$ORG_CFG_DIR"/*/opencode.jsonc "$ORG_CFG_DIR"/*/opencode.json \
+           "$USER_CFG_DIR/opencode.jsonc" "$USER_CFG_DIR/opencode.json"; do
     [[ -f "$f" ]] || continue
     if jq -e --arg id "$id" '(.provider // {}) | has($id)' "$f" >/dev/null 2>&1; then
       declared=yes; break

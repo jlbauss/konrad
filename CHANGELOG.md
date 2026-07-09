@@ -16,6 +16,19 @@ build publishes as `:0.X` (minor line), `:latest`, and an immutable
 
 ## [Unreleased]
 
+### Fixed
+
+- **Org/user config layers may be named `opencode.json` or `opencode.jsonc`.** The
+  startup compose (and `konrad connect --custom`) only loaded `opencode.jsonc`,
+  silently ignoring a layer's `opencode.json` — even though opencode accepts both
+  and konrad's merge parses either. Each layer now takes either extension (`.jsonc`
+  wins if both exist, with a warning).
+- **`konrad connect --custom` detects providers declared in named org layers.** It
+  scanned a flat `org/opencode.jsonc`, which no longer exists since 0.18 made
+  `org/` a container of named layers (`org/<name>/`); it now globs them like the
+  compose does, so an org-shipped custom provider is recognised instead of
+  prompting to re-declare it.
+
 ## [0.18.0] - 2026-07-06
 
 ### Added
