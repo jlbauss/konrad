@@ -16,7 +16,7 @@ dill==0.4.1
 doclang==0.7.2
 docling-core==2.86.0
 docling-ibm-models==3.13.3
-docling-parse==7.7.0
+docling-parse==7.8.0
 docling-slim==2.111.0
 et-xmlfile==2.0.0
 faker==40.28.1
@@ -78,7 +78,7 @@ python-pptx==1.0.2
 pyyaml==6.0.3
 rapidocr==3.9.1
 referencing==0.37.0
-regex==2026.6.28
+regex==2026.7.10
 reportlab==5.0.0
 requests==2.34.2
 rich==15.0.0
@@ -108,5 +108,5 @@ typer==0.24.2
 typing-extensions==4.16.0
 typing-inspection==0.4.2
 urllib3==2.7.0
-websockets==16.0
+websockets==16.1
 xlsxwriter==3.2.9
