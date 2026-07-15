@@ -23,8 +23,11 @@ build publishes as `:0.X` (minor line), `:latest`, and an immutable
   eight bundled skills are documented (`image-editing`, `frontend-design`,
   `grill-me`, and `write-a-skill` were missing); stale content corrected — the
   `-v` HTTP-trace claim (opt-in via `KONRAD_TRACE_FETCH=1` since 0.5.0), a dead
-  LM Studio troubleshooting row, and the pre-0.18 org-instructions path. Closes
-  the ROADMAP's last Tier 1 (road-to-beta) item.
+  LM Studio troubleshooting row, and the pre-0.18 org-instructions path. Later
+  sections slimmed to user essentials — deep design detail now lives only in
+  [ARCHITECTURE.md](ARCHITECTURE.md), org-layer mechanics in ARCHITECTURE and
+  [`examples/org-package/`](examples/org-package/). Closes the ROADMAP's last
+  Tier 1 (road-to-beta) item.
 
 ## [0.19.0] - 2026-07-09
 

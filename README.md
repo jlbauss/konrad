@@ -108,10 +108,7 @@ The action verbs are subcommands; `konrad` with no subcommand launches the TUI.
 | `shell`                | Open a bash shell in the container instead of the TUI.                  |
 | `connect [args…]`      | Authenticate a provider (`opencode auth login`) — agent-free, firewall off. `connect --custom [id]` declares a self-hosted endpoint. |
 | `mcp-auth <server>`    | Authenticate a remote MCP server's OAuth; the browser callback is forwarded into the sandbox. |
-| `org add <git-url>`    | Subscribe to an organization's config layer (clones it to `~/.config/konrad/org/<name>/`; `--name`/`--branch` override the defaults). See [For organizations](#for-organizations). |
-| `org` / `org list`     | List subscribed org layers (name, URL, tracked branch). |
-| `org sync [<name>]`    | Re-sync all (or one) subscribed layers now — also happens on every `update`. |
-| `org remove <name>`    | Delete an org layer. Prompts `[y/N]`. |
+| `org add` / `list` / `sync` / `remove` | Manage org config-layer subscriptions — see [For organizations](#for-organizations). |
 | `update`               | Refresh the CLI itself, pull the latest image from `ghcr.io/jlbauss/konrad:latest`, and re-sync subscribed org layers. `update --check` compares without pulling. |
 | `reset`                | Wipe shared volumes + log dir. Prompts `[y/N]`; affects all workspaces. |
 | `uninstall`            | Remove the CLI binary + the image. Prompts `[y/N]`. Leaves user config, shared volumes, and log dir alone. |
@@ -172,8 +169,6 @@ Each org layer and your user layer are symmetric — a directory with up to six 
 
 The merge of `opencode.jsonc` is deep and ordered **baked < org₁ < … < user** (org layers in alphabetical name order; last writer wins): **objects merge recursively, the later layer's keys win on conflict, new keys from any layer come through, arrays replace.** That last one matters — see [the AGENTS.md convention](#adding-your-own-model-instructions).
 
-> **Upgrading from an early-alpha install?** The config layout changed twice during the alpha. Pre-0.4 kept your config flat at `~/.config/konrad/{opencode.jsonc,agents,…}` — move those into a `user/` subdir: `mkdir -p ~/.config/konrad/user && mv ~/.config/konrad/{opencode.jsonc,agents,skills,AGENTS.md,fonts} ~/.config/konrad/user/ 2>/dev/null`. Pre-0.18, `org/` _was_ a layer; it's now a container of named layers (Konrad warns at launch) — move it into a subdir (`cd ~/.config/konrad && mv org myorg && mkdir org && mv myorg org/`) or, better, resubscribe git-natively with `konrad org add <your org's repo URL>`.
-
 ### Set up a model provider
 
 **The standard way is `/connect`.** Launch `konrad`, run `/connect` in the TUI, pick your provider (OpenRouter, Anthropic, OpenAI, Gemini, …) and paste a key — or do the browser login. opencode stores the credential in the `konrad-secrets` volume (`auth.json`), never in your config or host environment; it lists that provider's models in the picker (from the bundled [models.dev](https://models.dev) catalog — nothing to declare); and the egress firewall allows the provider automatically, live-reloading mid-session. No file editing.
@@ -189,29 +184,17 @@ opencode Zen — the upstream's paid hosted gateway — is **disabled by default
 
 ### Egress firewall
 
-The agent runs on an isolated container network with **no direct route to the internet**. A sidecar — the same Konrad image launched as a filtering proxy — is the only thing with egress, and it forwards traffic only to an allow-list, refusing everything else (default-deny). This shrinks the blast radius if the agent is prompt-injected: it can't quietly POST your workspace or credentials to an arbitrary host.
+The agent runs on an isolated container network with **no direct route to the internet** — a filtering proxy sidecar is the only way out, and it forwards traffic only to an allow-list, refusing everything else (default-deny). This shrinks the blast radius if the agent is prompt-injected: it can't quietly ship your workspace or credentials to an arbitrary host. The boundary covers your own machine too — host services are reachable only through the proxy, which is exactly how a **local model** at `host.containers.internal` stays reachable while nothing else on the host is.
 
-The allow-list is assembled at launch from:
+The allow-list maintains itself: it's derived from your model providers — declared in config and connected via `/connect` alike, live-reloading when you connect mid-session — plus `registry.npmjs.org` (opencode fetches some provider SDKs on demand). Extend it with hosts listed in `~/.config/konrad/user/allowed_hosts` (one per line; org layers have the same file) or `--allow-host <host>` for a single run. PyPI and the open web are deliberately blocked by default — add what your task needs; when the agent reports a host is blocked, that's the firewall doing its job.
 
-- **your model providers**, derived automatically — both the ones you **declare** in `opencode.jsonc` (local `host.containers.internal` and any remote API host alike) and the built-in ones you **connect** with `/connect` (OpenRouter, Anthropic, OpenAI, …). Built-in providers carry no URL in your config, so Konrad resolves them to a host via a baked map generated from [models.dev](https://models.dev). Connecting a provider mid-session just works — the firewall live-reloads within a couple of seconds, no restart needed;
-- **`registry.npmjs.org`**, where opencode fetches a provider's SDK adapter on demand (the OpenAI-compatible adapter that backs the local engines is already bundled; Anthropic/Google-style SDKs are pulled on first use);
-- **your own additions** — list hosts (one per line, `#` comments) in `~/.config/konrad/user/allowed_hosts` (or the org layer's), or pass `--allow-host <host>` for a single run.
-
-> One edge: an **OAuth** login (e.g. Claude Pro/Max) does its handshake _before_ the credential is saved, so that first connect can't be auto-allowed mid-session. The clean path is **`konrad connect`** — it authenticates with the firewall off (safe: no agent is running), so no `--allow-host` is needed. (Doing it inside a normal session instead? Pass `--allow-host <provider-host>` once, or `--no-firewall`.) API-key providers have no such step.
->
-> The boundary covers **your own machine too**, on both engines. Rootless Podman has no route from the sandbox to the host. Apple's `container` is different under the hood — its isolated network is "host-only", so its gateway sits on your Mac — so Konrad explicitly **seals** that route: the agent starts with just enough privilege to blackhole the gateway, then drops it, leaving the agent unable to reach host services directly. The only way to your machine, on either engine, is the same proxy + allow-list everything else goes through — which is exactly how a **local model** at `host.containers.internal` stays reachable while nothing else on the host is.
-
-Deliberately **not** in the default set: `models.dev` (the external model catalog — opencode bundles a snapshot and Konrad bakes the provider-host map from it, so the live site isn't needed at runtime), PyPI (`pip install` — the image already ships a full venv; `--allow-host pypi.org files.pythonhosted.org` when you genuinely need to extend it), and the open web. Add what your task needs.
-
-It's **on by default**. Turn it off for a run with `konrad --no-firewall`. When the agent reports a host is blocked, that's the firewall doing its job — add the host if you trust it. (Why a proxy and not a raw IP block: remote providers sit behind rotating cloud IPs, so the allow-list is by _hostname_. Full design in [ARCHITECTURE.md](ARCHITECTURE.md#state-secrets--isolation).)
+It's **on by default**; `konrad --no-firewall` turns it off for a run. Full design (why a hostname proxy, how the derivation works, the per-engine plumbing): [ARCHITECTURE.md](ARCHITECTURE.md#egress-firewall).
 
 **The firewall is the containment boundary — not a secret read-gate.** Your provider credential lives on-disk in the `konrad-secrets` volume, and a prompt-injected agent can read it or copy it into `/workspace`; what stops it _leaving the box_ is this default-deny firewall, not a read restriction. So `--no-firewall` (or opening `--allow-host` to a host you don't trust) removes that containment for the run — use it only when you trust the agent and the task.
 
 ### Resource limits
 
-Each run caps the agent container's RAM and CPU, on both engines, at a ceiling **auto-scaled to your machine** — half the host RAM (clamped to `2`–`8 GB`) and all but two of the cores (clamped to `2`–`8`). This bounds a runaway or fork-bombing agent and keeps konrad from crowding a co-resident local model on a big machine (`docling` fits comfortably in both ceilings; raise them for heavy OCR), and — on Apple's `container`, whose per-container default is a tight 1 GB — it lifts a ceiling small enough to get the bundled `docling` models OOM-killed mid-run. The CPU cap doubles as the container's thread budget (`OMP_NUM_THREADS`), so `docling` PDF extraction actually uses your cores instead of self-throttling to 4 threads. `konrad --help` prints the values computed for your host.
-
-Pin explicit values (or opt out) per run with environment variables:
+Each run caps the agent container's RAM and CPU at a ceiling **auto-scaled to your machine** (up to `8 GB` / `8` cores) — bounding a runaway agent and leaving headroom for a co-resident local model. `konrad --help` prints the values computed for your host. Pin explicit values (or opt out with `0`) per run:
 
 ```sh
 KONRAD_MEMORY=8G konrad        # pin the RAM cap (heavy docling / OCR on large scans)
@@ -220,7 +203,7 @@ KONRAD_MEMORY=0 konrad         # no RAM cap (Podman's previous unbounded behavio
 KONRAD_PIDS_LIMIT=4096 konrad  # raise the task/thread cap (Podman; 0 disables, default 1024)
 ```
 
-On Podman, the container is further hardened at the kernel: it starts with **every Linux capability dropped**, `no-new-privileges` set (no privilege escalation via setuid binaries), and a **task-count cap** (`--pids-limit`, default `1024`) so a fork bomb can't exhaust the host's PID space. Raise the last with `KONRAD_PIDS_LIMIT` if a heavy `docling`/OCR run ever exhausts its thread budget. On Apple's `container` these are already bounded by its per-container VM boundary.
+Rationale and the further kernel hardening on the Podman path (capabilities dropped, `no-new-privileges`, task-count cap): [ARCHITECTURE.md → State, secrets & isolation](ARCHITECTURE.md#state-secrets--isolation).
 
 ### Edit your override
 
@@ -256,76 +239,35 @@ For a **catalog provider** (OpenRouter, Anthropic, OpenAI, …) you don't need a
 
 All three local engines are pre-wired at their default ports (LM Studio `:1234`, Ollama `:11434`, llama.cpp `:8080`); you only declare the model.
 
-**Add a custom / self-hosted endpoint** (any OpenAI-compatible URL not in the models.dev catalog). The first-class way is **`konrad connect --custom`** — it prompts for the id, base URL, and a model, writes the declaration into your user layer for you, then walks you through the key step (no `--allow-host`, the firewall is off for auth). If your org layer already declares the provider, run the same command and it skips straight to the key.
-
-To do it by hand instead, the declaration is just:
-
-```jsonc
-{
-  "provider": {
-    "my-endpoint": {
-      "npm": "@ai-sdk/openai-compatible",
-      "options": { "baseURL": "https://llm.internal.example/v1", "apiKey": "{env:MY_KEY}" },
-      "models": { "my-model": { "name": "My Model" } }
-    }
-  },
-  "model": "my-endpoint/my-model"
-}
-```
-
-> A _catalog_ provider's key can also be pinned in config via `{env:KEY}` instead of `/connect`, if you'd rather keep setup in one file — but `/connect` is recommended: the key stays out of your config and host environment.
+**Add a custom / self-hosted endpoint** (any OpenAI-compatible URL not in the models.dev catalog): run **`konrad connect --custom`** — it prompts for the id, base URL, and a model, writes the declaration into your user layer for you, then walks you through the key step. If your org layer already declares the provider, the same command skips straight to the key.
 
 ### Adding your own model instructions
 
-Two additive ways to add your own, both loaded _on top of_ Konrad's base — pick by where you want them to apply:
+Two additive ways, both loaded _on top of_ Konrad's base:
 
-- **`AGENTS.md`** — opencode discovers these automatically:
-  - `~/.config/konrad/user/AGENTS.md` — your personal rules, loaded globally.
-  - `<workspace>/AGENTS.md` — per-project rules, loaded only in that workspace.
-- **`~/.config/konrad/user/instructions/*.md`** — drop any number of `.md` files here and each is appended to the system instructions. Same channel as Konrad's own base (each org layer has the matching `org/<name>/instructions/`); handy for splitting rules across several files or shipping a generated one.
+- **`AGENTS.md`** — auto-discovered: `~/.config/konrad/user/AGENTS.md` (your rules, global) or `<workspace>/AGENTS.md` (per-project).
+- **`~/.config/konrad/user/instructions/*.md`** — every `.md` here is appended to the system instructions (org layers have the same `instructions/` slot).
 
-All additive — nothing replaces Konrad's base. You don't need to (and shouldn't) set the `instructions` array in your `opencode.jsonc`: it's an array, so it would **replace** the layered defaults wholesale rather than add to them. Drop a file in `instructions/` instead.
+Don't set the `instructions` array in your `opencode.jsonc` — arrays **replace** on merge, so it would wipe the layered defaults instead of adding to them. Drop a file in `instructions/` instead.
 
 ### Reference material (the `context/` mount)
 
-Drop reference material — a mirrored wiki, internal docs, lookup tables — into `~/.config/konrad/context/<name>/` and Konrad bind-mounts the whole `context/` directory **read-only** at `/context` inside the sandbox (so the example lands at `/context/<name>/`). The agent can then `grep`/`rg` it while it works, with **no network and no stored secret** — ideal for material too private or too large to paste into a prompt. The mount appears only when the directory exists; populate it by hand or point a sync script at it.
-
-This is _not_ a config layer — it takes no part in the `baked < org < user` merge; it's just files the agent reads. To make the agent actually _reach_ for a corpus, name it in your `AGENTS.md` ("ASG processes are documented in `/context/asg-wiki/`"), or ship a small skill that points at the mount for richer, triggered guidance. `konrad reset`/`uninstall` leave `context/` alone — it's your material.
+Drop reference material — a mirrored wiki, internal docs, lookup tables — into `~/.config/konrad/context/<name>/` and Konrad bind-mounts `context/` **read-only** at `/context` inside the sandbox: the agent can `grep` it while it works, with no network and no stored secret. It's not a config layer, just files the agent reads; the mount appears only when the directory exists, and `konrad reset`/`uninstall` leave it alone. To make the agent actually _reach_ for a corpus, name it in your `AGENTS.md` ("ASG processes are documented in `/context/asg-wiki/`").
 
 ### For organizations
 
-If you run a fleet of Konrad installs, an **org layer** lets you ship defaults every user inherits — extra model declarations, an internal provider endpoint, house skills or agents, and house instructions — without forking the image or hand-editing each user's config. An org layer is simply **a git repository whose tree is the layer**; each member subscribes once:
+If you run a fleet of Konrad installs, an **org layer** lets you ship defaults every user inherits — model declarations, an internal provider endpoint, house skills and instructions — without forking the image or hand-editing each user's config. An org layer is simply **a git repository whose tree is the layer** (the same pieces as `user/`, merging between the baked defaults and each user's own overrides); each member subscribes once:
 
 ```sh
 konrad org add https://git.example.com/acme/konrad-org
 ```
 
-That clones the repo to `~/.config/konrad/org/<name>/` (name from the repo basename, tracked branch from the remote default; `--name` / `--branch` override). From then on **every `konrad update` re-syncs it** — shipping a change to the fleet is just `git push`. Each layer holds the same pieces as the user layer and merges **between** the baked defaults and each user's own overrides (`baked < org < user`), so a user can still stack their preferences on top:
+Every `konrad update` re-syncs it (fetch + hard reset — **local edits inside the layer are clobbered**; personal overrides belong in `user/`, which always merges on top), so shipping a change to the fleet is just `git push`. Two things to know before subscribing:
 
-```text
-~/.config/konrad/org/<name>/
-├── opencode.jsonc      Org-wide config (providers, models, env). Merged under user/.
-├── agents/             House agents.
-├── skills/             House skills.
-├── instructions/       Any *.md here is appended to the system instructions.
-├── AGENTS.md           Org instructions (back-compat; prefer instructions/).
-├── fonts/              Corporate fonts.
-├── allowed_hosts       Extra egress-firewall hosts, one per line.
-└── hooks/post-sync     Optional host-side hook — see the trust note below.
-```
+- **Subscribing is trusting.** A layer may ship a `hooks/post-sync` script that Konrad runs _on your machine_ after every sync (the escape hatch for jobs plain config can't express, like mirroring a wiki into `context/`). Only subscribe to repos you trust, exactly as with any `curl | sh` internal tooling.
+- **It's a defaults mechanism, not policy enforcement.** The layer is files in the user's own home directory — users can stack overrides on top or unsubscribe.
 
-Worth knowing:
-
-- **A subscribed layer is a managed mirror.** `konrad org sync` (and every `update`) does a fetch + hard reset to the tracked branch, so local edits inside the layer are clobbered — a user's own channel stays the `user/` layer, which always merges on top. A failed sync warns and keeps the last-good checkout. Checking out a tag pins the layer (no upstream branch → sync skips it). `konrad org list` shows what's subscribed; there's no state file — the checkout's own `.git` records URL and branch.
-- **Private repos need no Konrad-side auth.** Syncing runs your host `git`, so whatever already works for you — a forge CLI login (`gh auth login` / `glab auth login`, which also installs a git credential helper) or SSH — just applies. Konrad ships zero auth code.
-- **`hooks/post-sync` runs org code on the member's machine — subscribing is trusting.** If the layer ships an executable `hooks/post-sync`, Konrad runs it after `org add` and after every successful sync (cwd = the layer dir, output streamed). It's the escape hatch for the few jobs plain config can't express: mirroring a wiki into `~/.config/konrad/context/` (see [Reference material](#reference-material-the-context-mount)), deriving per-member identity from your forge CLI. Because it rides the branch, it self-updates with the rest of the layer. There is no sandbox and no prompt around it — **only subscribe to repos you trust**, exactly as with any `curl | sh` internal tooling.
-- **Multiple layers compose.** Every `org/<name>/` merges, in alphabetical name order (control precedence with a numeric prefix: `10-core`, `20-team`), each still below the user layer. A plain non-git directory is a valid manual layer too — it just never syncs.
-- **Discovery is a well-known home-directory folder, not a system path or env var.** Konrad finds the layers with no root, no `podman machine` mount edits, and no per-user setup. (This is what makes it work on macOS, where the Podman VM only auto-shares `$HOME`.)
-- **Org instructions ride the system `instructions` channel**, not the discovered global `AGENTS.md` — that one stays the user's. Drop any number of `.md` files into the layer's `instructions/` (the post-sync hook can generate one too); each is appended additively. A layer-root `AGENTS.md` still works as a single-file back-compat alias. Final instruction precedence is Konrad's `environment.md` → org → user `AGENTS.md` → project `AGENTS.md`, all additive.
-
-**This is a defaults mechanism, not policy enforcement.** The org layers are just files in the user's own home directory, so a determined user can edit them (until the next sync) or unsubscribe. "Add-only" describes the merge _precedence_ (the user stacks on top), not a permission lock. Locking config down would need read-only system locations or signing — a separate concern Konrad doesn't address today.
-
-A ready-to-publish starter repo — sample config, instructions, a house skill, and an example `hooks/post-sync` — lives in [`examples/org-package/`](examples/org-package/). Design rationale (why git-native mirrors, why a `$HOME` folder, why the host-side hook, why defaults-not-enforcement) is in [ARCHITECTURE.md → Configuration & instructions](ARCHITECTURE.md#configuration--instructions).
+A ready-to-publish starter repo — sample config, instructions, a house skill, an example hook — lives in [`examples/org-package/`](examples/org-package/). The full mechanics (multiple layers and precedence, tag pinning, private repos via your host `git`, the instructions channel) and the design rationale are in [ARCHITECTURE.md → Configuration & instructions](ARCHITECTURE.md#configuration--instructions).
 
 ### Environment variables (advanced)
 
@@ -379,26 +321,11 @@ ls -t ~/.local/state/konrad/log/                                  # newest first
 tail -f ~/.local/state/konrad/log/$(ls -t ~/.local/state/konrad/log/*.log | head -1)
 ```
 
-For deeper digging, pass `-v` / `--verbose` (or export `KONRAD_DEBUG=1`): per-phase timestamps plus a pointer to the log file. For a raw trace of every HTTP call, additionally export `KONRAD_TRACE_FETCH=1` (it enables Bun's verbose fetch logging, written to the same log). If startup is slow, the usual suspects and the env vars that disable each (set them via the merged config's `env` key):
-
-| Knob                                     | What it disables                                              |
-| ---------------------------------------- | ------------------------------------------------------------- |
-| `OPENCODE_DISABLE_AUTOUPDATE=1`          | the npm registry check on every launch                        |
-| `OPENCODE_DISABLE_MODELS_FETCH=1`        | the models.dev catalog fetch (we're local-first; safe to off) |
-| `OPENCODE_DISABLE_LSP_DOWNLOAD=1`        | auto-install of language servers on first use                 |
-| `OPENCODE_DISABLE_CLAUDE_CODE_SKILLS=1`  | scanning `.claude/skills/` (none in our container)            |
-| `--pure` (CLI flag)                      | external plugins entirely — useful for bisecting plugin cost  |
+For deeper digging, pass `-v` / `--verbose`: per-phase timestamps plus a pointer to the log file. `KONRAD_TRACE_FETCH=1` additionally traces every HTTP call into the same log.
 
 ## Internals
 
-How Konrad is built and why — for the curious and for contributors:
-
-- **Pinning & build cache** → [ARCHITECTURE.md → Build & reproducibility](ARCHITECTURE.md#build--reproducibility)
-- **Versioning & release tags** → [CONTRIBUTING.md → Versioning](CONTRIBUTING.md#versioning)
-- **State & isolation** → [ARCHITECTURE.md → State, secrets & isolation](ARCHITECTURE.md#state-secrets--isolation)
-- **Planning contract (`task.md` + `todowrite`)** → [ARCHITECTURE.md → The planning contract](ARCHITECTURE.md#the-planning-contract)
-- **Design decisions** → [ARCHITECTURE.md](ARCHITECTURE.md)
-- **Repo layout, dev loop, contributing** → [CONTRIBUTING.md](CONTRIBUTING.md)
+How Konrad is built and why — the design and its rationale live in [ARCHITECTURE.md](ARCHITECTURE.md); repo layout, dev loop, versioning, and how to contribute in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License and attribution
 
