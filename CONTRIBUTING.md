@@ -136,7 +136,7 @@ The `VERSION` file at the repo root drives all image tagging. **Bump it in the s
 
 Pre-1.0 rules (where we are today): `VERSION` holds `0.X.Y`. Bump **`Y` (patch)** for a bug fix with no surface change; bump **`X` (minor)** for new functionality or any user-visible change, resetting `Y` to 0. Doc-only, CI-only, and ROADMAP-only changes don't bump.
 
-Post-1.0, `VERSION` holds full semver `X.Y.Z`: **MAJOR** for a breaking change to the user-facing surface (config schema needing migration, a removed/renamed flag or bundled skill, a base-image major bump), **MINOR** for additive (new skill/flag/config slot/env var), **PATCH** for fixes and floating-pin refreshes. A commit's breaking marker (`!` / `BREAKING CHANGE:` — see [Commit style](#commit-style)) forces at least the corresponding bump. **1.0** is a deliberate event — when "no breaking change without a major bump" is a credible promise, roughly gated on the Tier-1 roadmap — not a date.
+Post-1.0, `VERSION` holds full semver `X.Y.Z`: **MAJOR** for a breaking change to the user-facing surface (config schema needing migration, a removed/renamed flag or bundled skill, a base-image major bump), **MINOR** for additive (new skill/flag/config slot/env var), **PATCH** for fixes and floating-pin refreshes. A commit's breaking marker (`!` / `BREAKING CHANGE:` — see [Commit style](#commit-style)) forces at least the corresponding bump. **1.0** is a deliberate event — when "no breaking change without a major bump" is a credible promise, roughly gated on the roadmap's **Next** section — not a date.
 
 ### Image tags
 
@@ -185,7 +185,7 @@ konrad/
 ├── .gitlab-ci.yml                     # Lock-resolver bot (source of truth; mirrors to GitHub)
 ├── ARCHITECTURE.md                     # System design and the *why* (consolidated)
 ├── CHANGELOG.md                       # Released-change log (Keep a Changelog; agent-maintained)
-├── ROADMAP.md                         # Backlog tiers (shipped work → CHANGELOG.md)
+├── ROADMAP.md                         # Backlog (shipped work → CHANGELOG.md)
 ├── CLAUDE.md                          # Repo instructions for agents working ON konrad
 ├── REUSE.toml                         # Per-file copyright/license by glob (REUSE spec)
 ├── LICENSES/                          # SPDX license texts (REUSE)
@@ -219,7 +219,7 @@ Co-Authored-By: ...                               (when applicable)
 
 ## When to update what
 
-**ROADMAP.md** — a real idea worth keeping but not doing now → add it. A decision we made and are sticking with → don't add it (commit message is enough). A known shortcoming we've accepted as a trade-off → add it, so it doesn't get forgotten. When a Tier-N item ships, delete its bullet and add a terse [CHANGELOG.md](CHANGELOG.md) entry in the same commit.
+**ROADMAP.md** — a real idea worth keeping but not doing now → add it. A decision we made and are sticking with → don't add it (commit message is enough). A known shortcoming we've accepted as a trade-off → add it, so it doesn't get forgotten. When a roadmap item ships, delete its bullet and add a terse [CHANGELOG.md](CHANGELOG.md) entry in the same commit.
 
 **CHANGELOG.md** — every user-facing change that ships under a `VERSION` bump → a terse entry under that version ([Keep a Changelog](https://keepachangelog.com/); agent-maintained, rationale stays in the commit). Doc/CI/contributor-only changes that don't bump usually don't need one.
 

@@ -19,7 +19,7 @@ One audience and one job per file:
 | [ARCHITECTURE.md](ARCHITECTURE.md) | This file — system design and the *why*. |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Contributor guide — dev loop, branching, commit style, **versioning & releases**. |
 | [CLAUDE.md](CLAUDE.md) | Instructions for AI agents working on Konrad's source. |
-| [ROADMAP.md](ROADMAP.md) | Backlog tiers (Inbox / Tier 1 / Tier 2 / Post-1.0 / Obsolete). |
+| [ROADMAP.md](ROADMAP.md) | Backlog (Inbox / Next / Later / Blocked). |
 | [CHANGELOG.md](CHANGELOG.md) | Released, user-facing changes (Keep a Changelog). |
 | [VERSION](VERSION) | Single source of the version; drives image tags. |
 | [LICENSE](LICENSE) · [REUSE.toml](REUSE.toml) · [LICENSES/](LICENSES/) | AGPL-3.0; per-file copyright/license (REUSE spec). |

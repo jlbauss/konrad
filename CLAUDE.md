@@ -65,7 +65,7 @@ rule or preference, add it here as a bullet — that's what this section is for.
 ### Docs
 
 - One audience per file; one canonical home per fact; others link, never duplicate. The map is the Repository guide in [ARCHITECTURE.md](ARCHITECTURE.md#repository-guide). User/project `AGENTS.md` overlays are additive, never replacements.
-- When a ROADMAP item ships: add a terse [CHANGELOG.md](CHANGELOG.md) entry (Keep a Changelog) and delete the tier bullet, same commit. The changelog stays terse — rationale lives in the commit + ARCHITECTURE, never restated. Doc/CI/contributor-only changes (no `VERSION` bump) usually need no entry.
+- When a ROADMAP item ships: add a terse [CHANGELOG.md](CHANGELOG.md) entry (Keep a Changelog) and delete the roadmap bullet, same commit. The changelog stays terse — rationale lives in the commit + ARCHITECTURE, never restated. Doc/CI/contributor-only changes (no `VERSION` bump) usually need no entry.
 - Use the `docs(roadmap)` prefix for ROADMAP-only edits — agent commits append a one-line "what changed" note (no body); batch a session's edits and `--amend` before pushing, never after.
 
 ### Commits, versioning & release
