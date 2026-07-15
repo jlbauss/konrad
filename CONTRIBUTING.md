@@ -1,6 +1,6 @@
 # Contributing to konrad
 
-Thanks for your interest. Konrad is early-stage / alpha software — the runtime works, the daily-rebuild CI works, but the surface area is still moving and the docs lag the code in spots. Contributions of all sizes are welcome, especially the ones that surface gaps before more users do.
+Thanks for your interest. Konrad is beta software — the runtime and the daily-rebuild CI are solid, but the pre-1.0 surface area is still moving and the docs can lag the code in spots. Contributions of all sizes are welcome, especially the ones that surface gaps before more users do.
 
 ## Before you start
 
@@ -166,7 +166,7 @@ konrad/
 │   │   ├── instructions/              # Baked layer's system-instructions dir
 │   │   │   └── environment.md         # Runtime environment manifest (tools, libs, layout)
 │   │   ├── agents/                    # Built-in primary agents (konrad, manual-transformer)
-│   │   └── skills/                    # Bundled skills (do-it-manually, spreadsheets, pdf, quality-assurance)
+│   │   └── skills/                    # Bundled skills (pdf, spreadsheets, image-editing, frontend-design, do-it-manually, grill-me, write-a-skill, quality-assurance)
 │   └── fonts/konrad/                  # → /usr/local/share/fonts/konrad/ (seven OFL families)
 ├── scripts/
 │   ├── build-image.sh                 # Local build (KONRAD_VERSION + GIT_SHA build args)

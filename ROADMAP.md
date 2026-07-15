@@ -17,7 +17,7 @@ _Raw ideas land here. Promote into the appropriate tier after a refinement pass.
 
 _Gates the beta declaration — a genuinely usable product for the organization._
 
-- [ ] `M` **README rework.** Clean up the install path and tighten the getting-started flow.
+_Empty — the beta gate is cleared._
 
 ## Tier 2 — beta → 1.0
 

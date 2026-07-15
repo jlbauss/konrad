@@ -16,6 +16,16 @@ build publishes as `:0.X` (minor line), `:latest`, and an immutable
 
 ## [Unreleased]
 
+### Changed
+
+- **README reworked for the beta.** Getting started is now a three-step quick
+  start (install → connect a model → run); the status flips alpha → beta; all
+  eight bundled skills are documented (`image-editing`, `frontend-design`,
+  `grill-me`, and `write-a-skill` were missing); stale content corrected — the
+  `-v` HTTP-trace claim (opt-in via `KONRAD_TRACE_FETCH=1` since 0.5.0), a dead
+  LM Studio troubleshooting row, and the pre-0.18 org-instructions path. Closes
+  the ROADMAP's last Tier 1 (road-to-beta) item.
+
 ## [0.19.0] - 2026-07-09
 
 ### Changed
