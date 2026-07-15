@@ -100,7 +100,7 @@ There's no traditional unit-test suite. The validation gates are:
 
 ## Branching and pull requests
 
-Trunk-based: `main` is always deployable — what's at `ghcr.io/jlbauss/konrad:latest` mirrors `main`'s current state. The primary repo is **GitLab** (`gitlab.git.nrw/jbauss2/konrad`, public). The GitHub mirror is a **private CI execution surface only** — it exists because gitlab.git.nrw's shared runners can't run the privileged Podman build (see [ARCHITECTURE.md](ARCHITECTURE.md)). You never need a GitHub account to contribute.
+Trunk-based: `main` is always deployable — what's at `ghcr.io/jlbauss/konrad:latest` mirrors `main`'s current state. The primary repo is **GitLab** (`gitlab.git.nrw/jbauss2/konrad`, public). The GitHub mirror is **public for discoverability, but CI-and-releases only** — it exists because gitlab.git.nrw's shared runners can't run the privileged Podman build (see [ARCHITECTURE.md](ARCHITECTURE.md)), and [mirror-release.yml](.github/workflows/mirror-release.yml) recreates each GitLab release there off the mirrored tag. Contributions happen on GitLab; you never need a GitHub account to contribute.
 
 **Maintainer** (direct repo access) — trunk-based via the git CLI, no MR ceremony. The canonical loop is **branch → develop → bump → merge**:
 
@@ -109,7 +109,7 @@ Trunk-based: `main` is always deployable — what's at `ghcr.io/jlbauss/konrad:l
 3. **Bump** `VERSION` as the *last commit before merging*, not up front — with ff-only the branch tip becomes `main`, so a late bump keeps the version matching the integrated change and shrinks the window where two in-flight branches collide on the `VERSION` line (what to bump: [Versioning](#versioning)).
 4. **Merge**: `git checkout main && git merge --ff-only feat/short-name && git push origin main`
 
-For a higher-risk change, optionally push the branch to the private GitHub mirror and open a PR there to get a `:pr-<num>` test image first (see *Testing a change as an image* below); merge on GitLab once it checks out.
+For a higher-risk change, optionally push the branch to the GitHub mirror and open a PR there to get a `:pr-<num>` test image first (see *Testing a change as an image* below); merge on GitLab once it checks out.
 
 **Collaborators** (have GitLab repo access) — branch on the repo, push, then either hand the maintainer the branch to fast-forward, or open a **GitLab MR** if you want a review thread.
 
@@ -153,7 +153,7 @@ There is deliberately **no version- or date-derived image tag**. `VERSION` drive
 
 ### Git tags & releases
 
-Releases live on **GitLab** — the GitHub mirror is CI-only, no releases there. Tags are **`vX.Y.Z`** (`v`-prefixed). The [`release` job in `.gitlab-ci.yml`](.gitlab-ci.yml) cuts the `v<VERSION>` tag + a GitLab Release automatically whenever a `chore(release):` bump to `VERSION` lands on main, pulling the release notes from the matching [CHANGELOG.md](CHANGELOG.md) section — which stays the authoritative record. So every `VERSION` bump (patch included) gets a tag; nothing to do by hand **except promote the CHANGELOG section in the bump commit** (see [Release commit](#when-to-update-what)) — the job fails closed if `## [<VERSION>]` is missing.
+Releases are cut on **GitLab** — the authoritative record — and mirrored to GitHub automatically: [mirror-release.yml](.github/workflows/mirror-release.yml) fires on each mirrored `v*` tag and recreates the release from the same CHANGELOG section (its `workflow_dispatch` backfills any tag that's missing one). Tags are **`vX.Y.Z`** (`v`-prefixed). The [`release` job in `.gitlab-ci.yml`](.gitlab-ci.yml) cuts the `v<VERSION>` tag + a GitLab Release automatically whenever a `chore(release):` bump to `VERSION` lands on main, pulling the release notes from the matching [CHANGELOG.md](CHANGELOG.md) section — which stays the authoritative record. So every `VERSION` bump (patch included) gets a tag; nothing to do by hand **except promote the CHANGELOG section in the bump commit** (see [Release commit](#when-to-update-what)) — the job fails closed if `## [<VERSION>]` is missing.
 
 ## Repo layout — what goes where
 

@@ -327,7 +327,7 @@ For deeper digging, pass `-v` / `--verbose`: per-phase timestamps plus a pointer
 
 ## Internals
 
-How Konrad is built and why — the design and its rationale live in [ARCHITECTURE.md](ARCHITECTURE.md); repo layout, dev loop, versioning, and how to contribute in [CONTRIBUTING.md](CONTRIBUTING.md).
+How Konrad is built and why — the design and its rationale live in [ARCHITECTURE.md](ARCHITECTURE.md); repo layout, dev loop, versioning, and how to contribute in [CONTRIBUTING.md](CONTRIBUTING.md). Development happens at [gitlab.git.nrw/jbauss2/konrad](https://gitlab.git.nrw/jbauss2/konrad) — the GitHub repo is a public mirror (CI + releases); issues and contributions go to GitLab.
 
 ## License and attribution
 

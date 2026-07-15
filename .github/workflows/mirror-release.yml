@@ -1,0 +1,95 @@
+# =============================================================================
+# konrad CI — mirror GitLab releases onto the GitHub mirror.
+#
+# Releases are cut on GitLab (the `release` job in .gitlab-ci.yml tags
+# v<VERSION> and publishes a GitLab Release from the matching CHANGELOG
+# section). The push mirror carries the tag here; this workflow turns it
+# into a GitHub Release with the same notes, so the public mirror shows
+# real releases instead of bare tags. GitLab stays authoritative — this
+# job only ever *copies*.
+#
+# Trigger model:
+#   - push of a v* tag    → create the release for that tag (fail closed
+#     if CHANGELOG.md has no `## [<VERSION>]` section, mirroring the
+#     GitLab job's semantics — same slip, same loud failure)
+#   - workflow_dispatch   → backfill sweep: create a release for every
+#     v* tag that doesn't have one yet (missing CHANGELOG sections are
+#     skipped with a warning here, so one pre-discipline tag can't wedge
+#     the whole sweep). Run once after flipping the mirror public.
+#
+# Notes extraction is the same awk as .gitlab-ci.yml's release job: the
+# section between `## [<VERSION>]` and the next `## [` heading. On a tag
+# push we read CHANGELOG.md at the tag's commit (the release bump commit,
+# which carries the promoted section); the dispatch sweep reads the
+# default branch's CHANGELOG, which is append-only and holds every
+# released section.
+# =============================================================================
+
+name: Mirror GitLab releases
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The dispatch sweep enumerates every tag; a tag push needs only
+          # its own ref, but full history is cheap at this repo's size.
+          fetch-depth: 0
+
+      - name: Create GitHub release(s) from CHANGELOG
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+
+          notes_for() {
+            awk -v ver="$1" '
+              $0 ~ "^## \\[" ver "\\]" { grab = 1; next }
+              grab && /^## \[/ { exit }
+              grab && NF { started = 1 }
+              grab && started { print }
+            ' CHANGELOG.md
+          }
+
+          # release_tag <tag> <push|sweep> — idempotent: an existing
+          # release is left untouched, so re-runs and re-mirrored tags
+          # are safe.
+          release_tag() {
+            tag="$1" mode="$2"
+            ver="${tag#v}"
+            if gh release view "$tag" --json name >/dev/null 2>&1; then
+              echo "$tag: release already exists — skipping"
+              return 0
+            fi
+            notes="$(notes_for "$ver")"
+            if [ -z "$notes" ]; then
+              if [ "$mode" = "sweep" ]; then
+                echo "::warning::$tag: no '## [$ver]' section in CHANGELOG.md — skipped in backfill sweep"
+                return 0
+              fi
+              echo "::error::no '## [$ver]' section in CHANGELOG.md — promote the ## [Unreleased] entry, then re-run"
+              return 1
+            fi
+            echo "Creating GitHub release for $tag"
+            gh release create "$tag" \
+              --title "konrad $tag" \
+              --notes "$notes" \
+              --verify-tag
+          }
+
+          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            release_tag "$GITHUB_REF_NAME" push
+          else
+            for tag in $(git tag --list 'v*'); do
+              release_tag "$tag" sweep
+            done
+          fi

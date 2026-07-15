@@ -16,6 +16,15 @@ build publishes as `:0.X` (minor line), `:latest`, and an immutable
 
 ## [Unreleased]
 
+### Added
+
+- **GitHub mirror is public, with mirrored releases.** The mirror
+  ([github.com/jlbauss/konrad](https://github.com/jlbauss/konrad)) flips from
+  private CI surface to public for discoverability; a new
+  [mirror-release.yml](.github/workflows/mirror-release.yml) recreates each
+  GitLab release there from the mirrored `v*` tag and the same CHANGELOG
+  section. Contributions stay on GitLab.
+
 ### Changed
 
 - **README reworked for the beta.** Getting started is now a three-step quick
