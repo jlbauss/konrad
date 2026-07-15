@@ -17,9 +17,9 @@ doclang==0.7.2
 docling-core==2.87.0
 docling-ibm-models==3.13.3
 docling-parse==7.8.0
-docling-slim==2.112.0
+docling-slim==2.113.0
 et-xmlfile==2.0.0
-faker==40.28.1
+faker==40.31.0
 filelock==3.29.7
 filetype==1.2.0
 flatbuffers==25.12.19
