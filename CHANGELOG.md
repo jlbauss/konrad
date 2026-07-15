@@ -16,6 +16,8 @@ build publishes as `:0.X` (minor line), `:latest`, and an immutable
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-07-15
+
 ### Added
 
 - **GitHub mirror is public, with mirrored releases.** The mirror
