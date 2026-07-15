@@ -299,6 +299,8 @@ opencode's sessions and conversation DB are **ephemeral** — gone on container 
 
 ## Troubleshooting
 
+> **These docs are deliberately short — your AI assistant fills the gap.** For any question they don't answer, ask your regular web-enabled assistant (Claude, ChatGPT, …) and point it at this repository (`https://gitlab.git.nrw/jbauss2/konrad`): the README, [ARCHITECTURE.md](ARCHITECTURE.md), and the source together answer most setup, configuration, and behavior questions. Don't ask Konrad's own agent about Konrad — it's firewalled off the web and tuned for document work, not self-support.
+
 | Symptom                                                          | Likely cause                                | Fix                                                                                       |
 | ---------------------------------------------------------------- | ------------------------------------------- | ----------------------------------------------------------------------------------------- |
 | `Cannot connect to Podman` / `connection refused`                | Podman VM not running (macOS)               | `podman machine init` (once), then `podman machine start`                                 |
