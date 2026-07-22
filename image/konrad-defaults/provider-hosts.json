@@ -22,6 +22,7 @@
   "chutes": "llm.chutes.ai",
   "clarifai": "api.clarifai.com",
   "claudinio": "api.claudin.io",
+  "cline-pass": "api.cline.bot",
   "cloudferro-sherlock": "api-sherlock.cloudferro.com",
   "cloudflare-workers-ai": "api.cloudflare.com",
   "cohere": "api.cohere.com",
