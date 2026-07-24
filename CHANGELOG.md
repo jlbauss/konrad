@@ -16,6 +16,20 @@ build publishes as `:0.X` (minor line), `:latest`, and an immutable
 
 ## [Unreleased]
 
+### Added
+
+- **Inline model discovery.** For every provider with a `baseURL` — the pre-wired
+  local engines and your own OpenAI-compatible endpoints — konrad now probes the
+  `/models` list at session start and fills the picker automatically, so a running
+  local server usually needs no config. It's a bounded, parallel probe through the
+  egress firewall, so authenticated remote endpoints are covered too; declared
+  models still win, and it opts out with `KONRAD_NO_DISCOVERY=1` (per-probe ceiling
+  `KONRAD_DISCOVERY_TIMEOUT`). It also sets each model's context window — read from
+  `/v1/models` (vLLM, llama.cpp) or the server's native endpoint (LM Studio,
+  Ollama) — so opencode's auto-compaction works without hand-declaring
+  `limit.context` (with a derived `limit.output` of `context/6`, overridable).
+  Replaces the dropped `opencode-models-discovery` plugin.
+
 ## [0.20.0] - 2026-07-15
 
 ### Added

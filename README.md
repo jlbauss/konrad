@@ -79,7 +79,7 @@ Any opencode-supported API provider (OpenRouter, Anthropic, OpenAI, Gemini, …)
 konrad connect
 ```
 
-Prefer a **local model**? [LM Studio](https://lmstudio.ai/) (`:1234`), [Ollama](https://ollama.com/) (`:11434`), and [llama.cpp](https://github.com/ggerganov/llama.cpp) (`:8080`) are pre-wired at their default ports — you only declare the model you've loaded (no auto-discovery yet). Recipe in [Set up a model provider](#set-up-a-model-provider).
+Prefer a **local model**? [LM Studio](https://lmstudio.ai/) (`:1234`), [Ollama](https://ollama.com/) (`:11434`), and [llama.cpp](https://github.com/ggerganov/llama.cpp) (`:8080`) are pre-wired at their default ports — start the server, and konrad discovers the loaded models into the picker automatically. Recipe in [Set up a model provider](#set-up-a-model-provider).
 
 **Recommended model class.** Konrad's skills and prompts are tuned for a **30B-class open-weight model with strong agentic ability** — we test against [`qwen/qwen3.6-27b`](https://huggingface.co/Qwen). Models should have **native vision**, a context window **≥ 256k**, and agentic strength at least on par with Qwen3.6 27B ([Artificial Analysis Agentic Index](https://artificialanalysis.ai/models/capabilities/agentic)); stronger models only help.
 
@@ -135,7 +135,7 @@ Modifiers — pass them **before** the subcommand.
 - **Linux and macOS only, no Docker support yet.** Podman is the default; on macOS 26+ with Apple's [`container`](https://github.com/apple/container) CLI installed, Konrad uses that native engine instead — no `podman machine` VM. Docker support is on the roadmap, untested. No Windows support — WSL is at your own discretion and untested.
 - **Pre-1.0: expect churn, but versioned.** Konrad uses [semantic versioning](CONTRIBUTING.md#versioning) — pre-1.0 that's `0.X.Y` (`X`/minor = new functionality or any user-visible change, `Y`/patch = fixes). The leading `0.` means config shapes, flags, and image internals can still change without a migration path; no stability promise until 1.0.
 - **No unit-test suite.** Every published image passes a CI smoke gate (binaries, Python deps, baked content, a docling round-trip) and an end-to-end self-test exists for contributors, but there's no unit coverage — regressions on less-traveled paths can still slip through.
-- **Local-model UX is still rough.** Tool-call parsing, context overflow, and model switching have known edges — the "works flawlessly on local models" shakedown is still a roadmap item. You must also hand-declare each loaded model (no auto-discovery yet).
+- **Local-model UX is still rough.** Tool-call parsing, context overflow, and model switching have known edges — the "works flawlessly on local models" shakedown is still a roadmap item.
 
 ## Configuration
 
@@ -175,10 +175,14 @@ The merge of `opencode.jsonc` is deep and ordered **baked < org₁ < … < user*
 
 Prefer to authenticate without launching the TUI — or doing an **OAuth** login (Claude Pro/Max, Copilot)? Run **`konrad connect`** (`konrad connect -p <provider>` to skip the picker). It runs `opencode auth login` with no agent in the loop and the firewall off, so even an OAuth first-connect needs no `--allow-host` (see [Egress firewall](#egress-firewall)).
 
-Editing `opencode.jsonc` is only needed to:
+konrad **discovers models automatically** for any provider with a `baseURL` — the pre-wired local engines (LM Studio / Ollama / llama.cpp) and your own OpenAI-compatible endpoints alike: at session start it probes each one's `/models` list and fills the picker with what's loaded, so a running local server usually needs no config at all. It's a bounded, parallel probe through the same egress firewall (so authenticated remote endpoints are covered too); tune it with `KONRAD_DISCOVERY_TIMEOUT` or turn it off with `KONRAD_NO_DISCOVERY=1`.
 
-- **declare a local model** — the local engines (LM Studio / Ollama / llama.cpp) are pre-wired at their default ports, but there's no model auto-discovery yet (an inline replacement is on the [roadmap](ROADMAP.md)), so you list what you've loaded (recipe below).
-- **add a custom / self-hosted endpoint** — anything not in the models.dev catalog needs an explicit `baseURL` (recipe below).
+It also sets each model's **context window** when the server can report one — which is what opencode's automatic history compaction needs to fire before you overflow. vLLM and llama.cpp expose it on `/v1/models`; for LM Studio and Ollama, konrad reads it from their native endpoints too, so all four are covered. Only a server that exposes it nowhere leaves a model without one — konrad won't guess a window (a wrong one compacts at the wrong time), so declare `limit.context` yourself there. (opencode requires an output limit alongside context, and no server advertises one, so discovered models get a `limit.output` of `context/6` — opencode reserves that much of the window for replies — which you can override by declaring the model.)
+
+Editing `opencode.jsonc` is then only needed to:
+
+- **pin a model's options** (or its `limit.context`) — a model you _declare_ always wins over the discovered copy, so declare one when you need custom settings or a context window discovery couldn't get (recipe below).
+- **add a custom / self-hosted endpoint** — anything not in the models.dev catalog needs an explicit `baseURL` (recipe below); once it has one, its models are discovered like any other.
 
 opencode Zen — the upstream's paid hosted gateway — is **disabled by default** (`disabled_providers: ["opencode"]`). Override `disabled_providers` to re-enable.
 
