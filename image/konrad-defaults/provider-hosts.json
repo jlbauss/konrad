@@ -92,6 +92,7 @@
   "nova": "api.nova.amazon.com",
   "novita-ai": "api.novita.ai",
   "nvidia": "integrate.api.nvidia.com",
+  "ofox": "api.ofox.ai",
   "ollama-cloud": "ollama.com",
   "openai": "api.openai.com",
   "opencode": "opencode.ai",
