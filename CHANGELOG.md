@@ -16,6 +16,8 @@ build publishes as `:0.X` (minor line), `:latest`, and an immutable
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-07-24
+
 ### Added
 
 - **Inline model discovery.** For every provider with a `baseURL` — the pre-wired
