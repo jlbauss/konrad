@@ -217,6 +217,41 @@ if [[ -n "${HTTP_PROXY:-}" ]]; then
   dbg "egress allow-list written for the instructions glob ($ALLOWED_HOSTS_MD)"
 fi
 
+# ── 1c. Inline model discovery (fills the picker; declarations still win) ─────
+# Probe each configured OpenAI-compatible provider's /models endpoint and merge
+# what it returns BELOW the composed config, so discovery populates the model
+# picker while any explicitly-declared model still wins (arg order below: the
+# discovered fragment is the merge base, the composed config the overlay). This
+# is the inline replacement for the dropped opencode-models-discovery plugin —
+# see discover-models.sh and ARCHITECTURE → Configuration & instructions.
+# Agent-only: the proxy sidecar ($1 = konrad-proxy) and the pure-auth flows
+# (opencode auth / mcp — no picker, and `konrad connect` runs firewall-off) skip
+# it, as does KONRAD_NO_DISCOVERY=1. Best-effort end to end: an unreachable
+# provider, a parse failure, or a re-merge error leaves the composed config
+# untouched and never blocks the launch. Discovery keys off the SAME composed
+# config the agent runs with (baseURLs and per-provider auth), through the SAME
+# proxy — see the key invariant in discover-models.sh.
+if [[ "$1" == "opencode" && "${2:-}" != "auth" && "${2:-}" != "mcp" \
+      && "${KONRAD_NO_DISCOVERY:-0}" != "1" ]]; then
+  discovery_fragment="$(mktemp)"
+  if "$KONRAD_BAKED/discover-models.sh" "$TARGET_JSONC" > "$discovery_fragment" 2>/dev/null \
+     && [[ "$(tr -d '[:space:]' < "$discovery_fragment")" != "{}" ]]; then
+    if merged="$(node "$KONRAD_BAKED/merge-config.js" "$discovery_fragment" "$TARGET_JSONC" 2>/dev/null)"; then
+      printf '%s\n' "$merged" > "$TARGET_JSONC"
+      read -r n_models n_providers < <(jq -r \
+        '"\([.provider[]?.models // {} | keys[]] | length) \(.provider // {} | keys | length)"' \
+        "$discovery_fragment" 2>/dev/null) || true
+      step "models · discovered ${n_models:-?} across ${n_providers:-?} provider(s)"
+      dbg "model discovery merged below the composed config ($TARGET_JSONC)"
+    else
+      warn "model discovery: re-merge failed; keeping the composed config unchanged"
+    fi
+  else
+    dbg "model discovery: nothing discovered (providers offline, none configured, or opted out)"
+  fi
+  rm -f "$discovery_fragment"
+fi
+
 # ── 2. Layer in org- and user-shipped agents / skills / AGENTS.md ────────────
 # Each piece is optional. `cp -r` means a later layer OVERWRITES the baked (or
 # org) files on name collision (e.g. a user-shipped `agents/konrad.md` replaces

@@ -58,13 +58,13 @@
   // wants it removes "opencode" from this list in their override).
   "disabled_providers": ["opencode"],
 
-  // No dynamic model discovery. konrad previously shipped the
-  // opencode-models-discovery plugin to auto-populate the picker from each
-  // provider's /v1/models endpoint, but the plugin added ~3-4 s of Bun
-  // startup time and tripped on LM Studio's embedding modality. Until we
-  // ship an inline replacement (see ROADMAP → Future features), users
-  // declare their own models in ~/.config/konrad/opencode.jsonc — see
-  // README → Configuration → "Recipes".
+  // Model discovery is NOT declared here — there's nothing to configure. The
+  // entrypoint probes each provider's /models endpoint at session start
+  // (discover-models.sh) and merges what it finds BELOW this composed config, so
+  // the picker fills in automatically while any model you DECLARE here still
+  // wins. It replaced the opencode-models-discovery plugin, which cost ~16 s per
+  // run through config. Opt out with KONRAD_NO_DISCOVERY=1. See ARCHITECTURE →
+  // Configuration & instructions and README → Configuration.
 
   // Local-engine providers, pre-wired to their default ports on the host.
   // host.containers.internal resolves to the host machine from inside Podman.

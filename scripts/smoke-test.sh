@@ -114,6 +114,10 @@ in_image test -x /usr/local/bin/konrad-entrypoint \
   || fail "konrad-entrypoint missing or non-executable"
 in_image test -f /etc/konrad/merge-config.js \
   || fail "merge-config.js missing"
+# Inline model-discovery probe — run by the entrypoint at session start, so it
+# must be baked and executable (COPY --chmod=0755 of konrad-defaults/).
+in_image test -x /etc/konrad/discover-models.sh \
+  || fail "discover-models.sh missing or non-executable"
 # apple/container egress seal + local-model host alias depend on the shared
 # privilege-drop helper, a privilege-drop tool (setpriv preferred), and `ip`
 # (iproute2). Missing any would make the root prelude fail closed and abort the
