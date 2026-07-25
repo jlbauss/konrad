@@ -19,7 +19,7 @@ docling-ibm-models==3.13.3
 docling-parse==7.8.1
 docling-slim==2.115.0
 et-xmlfile==2.0.0
-faker==40.35.0
+faker==40.36.0
 filelock==3.32.0
 filetype==1.2.0
 flatbuffers==25.12.19
@@ -97,7 +97,7 @@ tabulate==0.10.0
 tokenizers==0.22.2
 torch==2.13.0+cpu
 torchvision==0.28.0+cpu
-tqdm==4.69.0
+tqdm==4.69.1
 transformers==5.14.1
 tree-sitter==0.26.0
 tree-sitter-c==0.24.2
