@@ -283,9 +283,9 @@ If you run a fleet of Konrad installs, an **org layer** lets you ship defaults e
 konrad org add https://git.example.com/acme/konrad-org
 ```
 
-Every `konrad update` re-syncs it (fetch + hard reset — **local edits inside the layer are clobbered**; personal overrides belong in `user/`, which always merges on top), so shipping a change to the fleet is just `git push`. Two things to know before subscribing:
+Konrad re-syncs it in the background (fetch + hard reset — **local edits inside the layer are clobbered**; personal overrides belong in `user/`, which always merges on top), or on demand with `konrad org sync`, so shipping a change to the fleet is just `git push`. Two things to know before subscribing:
 
-- **Subscribing is trusting.** A layer may ship a `hooks/post-sync` script that Konrad runs *on your machine* after every sync (the escape hatch for jobs plain config can't express, like mirroring a wiki into `context/`). Only subscribe to repos you trust, exactly as with any `curl | sh` internal tooling.
+- **Subscribing is trusting.** A layer may ship a `hooks/post-sync` script that Konrad runs *on your machine* after every sync (the escape hatch for jobs plain config can't express, like mirroring a wiki into `context/`). Only subscribe to repos you trust, exactly as with any `curl | sh` internal tooling. The hook can also reach its own members through Konrad's **notice queue** — the background sync is unwatched, so a hook that drops a `key: value` file into `$KONRAD_NOTICE_DIR` gets it rendered (attributed to the layer, sanitized) at the member's next launch; see [ARCHITECTURE.md → Configuration & instructions](ARCHITECTURE.md#configuration--instructions).
 - **It's a defaults mechanism, not policy enforcement.** The layer is files in the user's own home directory — users can stack overrides on top or unsubscribe.
 
 A ready-to-publish starter repo — sample config, instructions, a house skill, an example hook — lives in [`examples/org-package/`](examples/org-package/). The full mechanics (multiple layers and precedence, tag pinning, private repos via your host `git`, the instructions channel) and the design rationale are in [ARCHITECTURE.md → Configuration & instructions](ARCHITECTURE.md#configuration--instructions).
@@ -305,6 +305,8 @@ Rarely needed — the flags cover day-to-day use. Collected here so the rest of 
 | `KONRAD_NO_PULL=1` | Installer: skip the image pre-pull. |
 | `KONRAD_NO_AUTO_REFRESH=1` | Disable the throttled background refresh (image pull + org sync — see [Staying current](#staying-current)). |
 | `KONRAD_REFRESH_INTERVAL` | Seconds between background refreshes (`0` disables). Default `86400` (daily). |
+| `KONRAD_NO_NOTICES=1` | Suppress the launch-time notice queue (background-refresh / org-hook news). For automation — a suppressed notice waits for a later interactive launch rather than being lost. |
+| `KONRAD_HOOK_TIMEOUT` | Seconds an org layer's `post-sync` hook may run before it's killed. Default `120`. |
 | `KONRAD_DEBUG=1` / `KONRAD_TRACE_FETCH=1` | Verbose launch / raw HTTP trace — see [Debugging opencode](#debugging-opencode). |
 
 ## State

@@ -106,13 +106,21 @@ KONRAD_LOG_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/konrad/log"
 
 # Background-refresh state (see maybe_background_refresh). Lives beside the log
 # dir in konrad's own XDG state — not the workspace. The stamp throttles how
-# often the detached worker fires; the note is written by a worker that pulled a
-# genuinely newer image and flushed (announced) by the next launch; the log
-# captures the worker's own output (it never reaches the user's terminal).
+# often the detached worker fires; the log captures the worker's own output (it
+# never reaches the user's terminal); the notices dir is the drained news queue
+# (see notices_flush) — a detached worker or an org post-sync hook writes into
+# it, and the next launch renders + drains it. KONRAD_REFRESH_NOTE is the
+# pre-0.23 single-file note, still migrated on read for one release.
 KONRAD_STATE_DIR="$(dirname "$KONRAD_LOG_DIR")"
 KONRAD_REFRESH_STAMP="$KONRAD_STATE_DIR/last-refresh"
 KONRAD_REFRESH_NOTE="$KONRAD_STATE_DIR/refresh-note"
 KONRAD_REFRESH_LOG="$KONRAD_STATE_DIR/refresh.log"
+KONRAD_NOTICES_DIR="$KONRAD_STATE_DIR/notices"
+
+# Whether an org post-sync hook is running with a member watching (add / sync /
+# update set 1) or unwatched under the background worker (0, the default here).
+# org_run_hook exports it into the hook so it can pick `echo` vs. a notice.
+KONRAD_HOOK_INTERACTIVE="${KONRAD_HOOK_INTERACTIVE:-0}"
 
 # --- Resolve the script's source directory, even when symlinked ---
 # Lets `konrad-dev rebuild` find image/Dockerfile no matter where
@@ -1338,23 +1346,143 @@ refresh_stamp_now() {
   date +%s > "$KONRAD_REFRESH_STAMP" 2>/dev/null || true
 }
 
-# Announce a background image update from a PRIOR launch's worker, once. The
-# worker writes the note only when a pull produced a genuinely different image
-# ID, and by now :latest has been re-tagged to it — so this run is already on
-# the new image and the message is past tense. Quiet single line, removed after
-# showing so it fires exactly once.
-refresh_note_flush() {
-  [[ -f "$KONRAD_REFRESH_NOTE" ]] || return 0
-  local ver=""
-  # Redirection, not `head <file> | …`, so a vanished file can't make the
-  # pipeline non-zero and trip `set -euo pipefail`; any failure → empty ver.
-  ver="$(tr -dc 'A-Za-z0-9.+_-' < "$KONRAD_REFRESH_NOTE" 2>/dev/null)" || ver=""
-  rm -f "$KONRAD_REFRESH_NOTE" 2>/dev/null || true
-  if [[ -n "$ver" ]]; then
-    info "updated to a newer image in the background (konrad $ver) — running it now."
-  else
-    info "updated to a newer image in the background — running it now."
+# --- Notice queue -------------------------------------------------------------
+#
+# A drained "news" channel from a PRIOR launch's background worker — or an org
+# layer's post-sync hook — to the next foreground launch. Generalizes the
+# pre-0.23 single-line image-update note into "news" of any severity, including
+# failures konrad can't fix for the user (an expired credential, a frozen
+# layer). Deliberately STATELESS: a notice is rendered then deleted, and the
+# next refresh re-creates it while the underlying fault persists — so a fixed
+# fault stops regenerating and its notice stops appearing, with nothing to
+# acknowledge, migrate, or get stuck. Layout under $KONRAD_NOTICES_DIR:
+#   <file>            a konrad-authored notice           (source "konrad")
+#   org-<name>/<file> a layer hook's notices for <name>  (source "org:<name>")
+# The source is derived from the PATH, never from a field the hook writes, so an
+# org hook cannot forge konrad-branded text. Each notice file is `key: value`
+# lines: severity (info|warn|blocked), summary, detail (repeatable), fix.
+
+# Strip anything that could garble the terminal or spoof a konrad line out of a
+# notice value: whole ANSI/CSI escape sequences first (they need their ESC),
+# then any remaining control char, then cap the length. Harmless on trusted
+# konrad text too — one render path serves both sources.
+_notice_sanitize() {
+  sed $'s/\x1b\\[[0-9;?]*[A-Za-z]//g' 2>/dev/null | tr -d '[:cntrl:]' | cut -c1-200
+}
+
+# Render one notice file. $1 = file, $2 = source ("konrad" | "org:<name>").
+# info → one dim line (today's behavior, no regression); warn/blocked → a framed
+# block on stderr; blocked additionally waits for Enter — but ONLY on an
+# interactive stdin, and never for automation (KONRAD_NO_NOTICES, or a disabled
+# refresh), because `konrad run` is pipeable and a launch must never hard-block.
+_notice_render() {
+  local file="$1" source="$2"
+  [[ -f "$file" ]] || return 0
+  local severity="info" summary="" fix="" line key val i
+  local -a details=()
+  local n=0
+  while IFS= read -r line && (( n++ < 40 )); do   # cap lines from a buggy hook
+    key="${line%%:*}"
+    [[ "$key" == "$line" ]] && continue           # no colon → ignore the line
+    val="${line#*:}"; val="${val# }"
+    val="$(printf '%s' "$val" | _notice_sanitize)"
+    case "$key" in
+      severity) severity="$val" ;;
+      summary)  summary="$val" ;;
+      detail)   [[ -n "$val" ]] && details+=("$val") ;;
+      fix)      fix="$val" ;;
+    esac
+  done < "$file"
+  [[ -n "$summary" ]] || return 0
+  case "$severity" in warn|blocked) ;; *) severity="info" ;; esac
+
+  local attrib=""
+  [[ "$source" == org:* ]] && attrib="From your organization layer ${source#org:}: "
+
+  if [[ "$severity" == "info" ]]; then
+    info "${attrib}${summary}"
+    return 0
   fi
+
+  local color="$_C_WARN" tag="warning"
+  [[ "$severity" == "blocked" ]] && tag="action needed"
+  {
+    printf '%s  ┌─ konrad · %s%s\n' "$color" "$tag" "$_C_OFF"
+    printf '%s  │%s %s%s\n' "$color" "$_C_OFF" "$attrib" "$summary"
+    for (( i=0; i<${#details[@]}; i++ )); do
+      printf '%s  │%s   %s\n' "$color" "$_C_OFF" "${details[i]}"
+    done
+    [[ -n "$fix" ]] && printf '%s  │%s   %sfix:%s %s\n' "$color" "$_C_OFF" "$_C_GO" "$_C_OFF" "$fix"
+    printf '%s  └─%s\n' "$color" "$_C_OFF"
+  } >&2
+
+  if [[ "$severity" == "blocked" && -t 0 \
+        && "${KONRAD_NO_NOTICES:-0}" != "1" \
+        && "${KONRAD_NO_AUTO_REFRESH:-0}" != "1" ]]; then
+    printf '%s  Press Enter to continue…%s ' "$_C_DIM" "$_C_OFF" >&2
+    read -r _ || true
+  fi
+  return 0
+}
+
+# Drain the notices dir (and migrate the pre-0.23 single-file note): render every
+# notice, then delete it. KONRAD_NO_NOTICES=1 suppresses the whole pass for
+# automation — the notice is left in place for a later interactive launch, not
+# lost. Called from launch_preflight.
+notices_flush() {
+  [[ "${KONRAD_NO_NOTICES:-0}" == "1" ]] && return 0
+
+  # Pre-0.23 single-file image note → render through the same info path once.
+  if [[ -f "$KONRAD_REFRESH_NOTE" ]]; then
+    local ver=""
+    ver="$(tr -dc 'A-Za-z0-9.+_-' < "$KONRAD_REFRESH_NOTE" 2>/dev/null)" || ver=""
+    rm -f "$KONRAD_REFRESH_NOTE" 2>/dev/null || true
+    if [[ -n "$ver" ]]; then
+      info "updated to a newer image in the background (konrad $ver) — running it now."
+    else
+      info "updated to a newer image in the background — running it now."
+    fi
+  fi
+
+  [[ -d "$KONRAD_NOTICES_DIR" ]] || return 0
+  local entry name f
+  for entry in "$KONRAD_NOTICES_DIR"/*; do        # konrad-authored: top-level files
+    [[ -f "$entry" ]] || continue
+    _notice_render "$entry" "konrad"
+    rm -f "$entry" 2>/dev/null || true
+  done
+  for entry in "$KONRAD_NOTICES_DIR"/org-*/; do    # org-layer: one subdir per layer
+    [[ -d "$entry" ]] || continue
+    name="$(basename "$entry")"; name="${name#org-}"
+    for f in "$entry"*; do
+      [[ -f "$f" ]] || continue
+      _notice_render "$f" "org:$name"
+      rm -f "$f" 2>/dev/null || true
+    done
+    rmdir "$entry" 2>/dev/null || true
+  done
+  return 0
+}
+
+# Write a konrad-authored (top-level, source "konrad") notice. Fixed filenames,
+# so a repeating condition overwrites rather than piling up. Used by the
+# background worker. $1 name  $2 severity  $3 summary  [$4 detail]  [$5 fix].
+notice_emit() {
+  local name="$1" severity="$2" summary="$3" detail="${4:-}" fix="${5:-}"
+  mkdir -p "$KONRAD_NOTICES_DIR" 2>/dev/null || return 0
+  local f="$KONRAD_NOTICES_DIR/$name"
+  # Gate the rename on the file existing, NOT on the group's exit status: an
+  # info notice has no detail/fix, so the group's last command is a false
+  # `[[ -n "$fix" ]]` test and the group would exit non-zero even on a clean
+  # write. Write to .tmp, then rename atomically if it landed.
+  {
+    printf 'severity: %s\n' "$severity"
+    printf 'summary: %s\n' "$summary"
+    [[ -n "$detail" ]] && printf 'detail: %s\n' "$detail"
+    [[ -n "$fix" ]] && printf 'fix: %s\n' "$fix"
+  } > "$f.tmp" 2>/dev/null || true
+  if [[ -f "$f.tmp" ]]; then mv -f "$f.tmp" "$f" 2>/dev/null || true; fi
+  return 0
 }
 
 # The detached worker body. Best-effort end to end: it leans on the already
@@ -1366,14 +1494,19 @@ _refresh_worker() {
   local baseline_id="$1" new_id new_ver
   printf '=== konrad background refresh %s (engine=%s) ===\n' \
     "$(date '+%Y-%m-%d %H:%M:%S')" "$KONRAD_ENGINE"
-  if eng_pull "$REGISTRY_IMAGE"; then
+  # A KONRAD_IMAGE override pins what RUNS; it must not also freeze the config
+  # layers. Skip the pull + :latest re-tag (that override isn't :latest), but
+  # still sync org layers below — the two are independent channels sharing one
+  # trigger.
+  if [[ -n "${KONRAD_IMAGE:-}" ]]; then
+    printf 'image pull skipped (KONRAD_IMAGE override in effect) — syncing org layers only\n'
+  elif eng_pull "$REGISTRY_IMAGE"; then
     eng_tag "$REGISTRY_IMAGE" "$IMAGE_DEFAULT" || true
     new_id="$(eng_image_id "$IMAGE_DEFAULT")"
     if [[ -n "$new_id" && -n "$baseline_id" && "$new_id" != "$baseline_id" ]]; then
       new_ver="$(eng_image_label "$IMAGE_DEFAULT" org.opencontainers.image.version)"
-      if printf '%s\n' "$new_ver" > "$KONRAD_REFRESH_NOTE.tmp" 2>/dev/null; then
-        mv -f "$KONRAD_REFRESH_NOTE.tmp" "$KONRAD_REFRESH_NOTE" 2>/dev/null || true
-      fi
+      notice_emit "konrad-image-update" "info" \
+        "updated to a newer image in the background (konrad ${new_ver:-unknown}) — running it now."
       printf 'image updated: %s -> %s (%s)\n' "$baseline_id" "$new_id" "${new_ver:-unknown}"
     else
       printf 'image already current (id %s)\n' "${new_id:-unknown}"
@@ -1390,10 +1523,11 @@ _refresh_worker() {
 }
 
 # Decide whether to fire the worker, then detach it. Guards (any failing → skip
-# silently): dev CLI never auto-updates; a KONRAD_IMAGE override must not be
-# clobbered by a :latest re-tag; the first-ever pull is the foreground
-# require_image path, not this; the opt-out; and the throttle. The stamp is
-# written BEFORE detaching, so a failed/slow worker still counts against the
+# silently): dev CLI never auto-updates; the first-ever pull is the foreground
+# require_image path, not this; the opt-out; and the throttle. A KONRAD_IMAGE
+# override is NOT a guard here — it pins what runs (so the worker skips the pull
+# + :latest re-tag) but must still keep the org config layers fresh. The stamp
+# is written BEFORE detaching, so a failed/slow worker still counts against the
 # interval (availability over freshness — the same principle as org sync) and
 # concurrent launches inside the window don't stack workers. The worker ignores
 # INT/HUP/TERM and redirects all output to the refresh log, so it survives the
@@ -1401,7 +1535,6 @@ _refresh_worker() {
 maybe_background_refresh() {
   is_dev && return 0
   [[ "${KONRAD_NO_AUTO_REFRESH:-0}" == "1" ]] && return 0
-  [[ -n "${KONRAD_IMAGE:-}" ]] && return 0
   eng_image_exists "$IMAGE_NAME" || return 0
 
   local interval="${KONRAD_REFRESH_INTERVAL:-86400}"
@@ -1430,7 +1563,14 @@ maybe_background_refresh() {
   # Blank the color vars in the subshell: they were set from an interactive
   # stderr at startup, but the worker's stderr is the (non-TTY) log file — so
   # org_sync_all's info/warn lines would otherwise embed ANSI codes in the log.
+  # GIT_TERMINAL_PROMPT=0: this worker keeps the controlling terminal (no setsid
+  # — it isn't portable to a macOS host), so a credential-less git fetch would
+  # otherwise open /dev/tty and hang the run while writing a prompt into the TUI;
+  # 0 makes git fail fast instead (paired with http.lowSpeed* on the fetch). Any
+  # post-sync hook runs unwatched here — KONRAD_HOOK_INTERACTIVE stays 0 (its
+  # global default; only add/sync/update flip it to 1).
   ( trap '' INT HUP TERM
+    export GIT_TERMINAL_PROMPT=0
     _C_BRAND='' _C_OK='' _C_GO='' _C_WARN='' _C_ERR='' _C_DIM='' _C_OFF=''
     _refresh_worker "$baseline_id"
   ) > "$KONRAD_REFRESH_LOG" 2>&1 </dev/null &
@@ -1446,7 +1586,7 @@ launch_preflight() {
   require_image;  dbg "image OK"
   prune_log_dir
   warn_old_org_layout      # pre-0.18 flat org/ files would otherwise vanish silently
-  refresh_note_flush       # announce a newer image a prior launch pulled in the background
+  notices_flush            # render+drain any news a prior worker or org hook left
   maybe_background_refresh # throttled, detached: pull :latest + re-sync org layers
 }
 
@@ -1707,17 +1847,86 @@ warn_old_org_layout() {
 # one place org code runs outside the sandbox (a wiki mirror into context/, or
 # per-member identity derivation, need the host): subscribing to a layer IS
 # the decision to trust its code, documented as the boundary in the README.
-# cwd = the layer dir; no special env (the hook derives paths from the
-# well-known ~/.config/konrad/ home, same principle as layer discovery);
-# stdout/stderr stream to the user; the hook owns its own idempotency — it
-# runs on every sync, changed or not, since e.g. a mirrored wiki moves even
-# when the layer itself didn't.
+# cwd = the layer dir; the hook owns its own idempotency — it runs on every
+# sync, changed or not, since e.g. a mirrored wiki moves even when the layer
+# itself didn't.
+#
+# Since 0.23 konrad exports a small contract so a layer can reach its own
+# members through the notice queue (the dominant sync path is now unwatched):
+#   KONRAD_NOTICE_DIR        drop `key: value` notice files here (see notice_emit)
+#   KONRAD_LAYER_NAME        this layer's installed name (needn't be guessed)
+#   KONRAD_HOOK_INTERACTIVE  1 on add/sync/update, 0 in the background worker —
+#                            so a hook can pick `echo` vs. a notice without
+#                            sniffing the tty
+# konrad clears this layer's notices before each run; the hook re-creates what
+# still applies (same self-clearing rule as the rest of the queue). The hook is
+# time-bounded (KONRAD_HOOK_TIMEOUT, default 120s) so an unwatched hang can't
+# live until reboot — a portable watchdog, not GNU `timeout` (absent on macOS).
+# Free fallback: a non-zero exit that wrote no notice promotes the hook's last
+# captured lines into a warn attributed to the layer, so every existing layer
+# gains visibility with no change on its side.
 org_run_hook() {
-  local dir="$1"
+  local dir="$1" name ndir tmp
+  name="$(basename "$dir")"
   [[ -x "$dir/hooks/post-sync" ]] || return 0
-  info "org '$(basename "$dir")': running post-sync hook"
-  (cd "$dir" && ./hooks/post-sync) \
-    || warn "org '$(basename "$dir")': post-sync hook failed (exit $?)"
+  ndir="$KONRAD_NOTICES_DIR/org-$name"
+  rm -rf "$ndir" 2>/dev/null || true
+  mkdir -p "$ndir" 2>/dev/null || true
+  info "org '$name': running post-sync hook"
+
+  tmp="$(mktemp 2>/dev/null)" || tmp=""
+  local timeout="${KONRAD_HOOK_TIMEOUT:-120}"
+  [[ "$timeout" =~ ^[0-9]+$ ]] || timeout=120
+
+  # Run the hook backgrounded, output to $tmp, killed by a watchdog after the
+  # bound. `trap - INT HUP TERM` in the child: the background worker sets those
+  # to SIG_IGN (to survive the foreground exec) and children inherit it, which
+  # would make the watchdog's SIGTERM a no-op — reset so the hook is killable
+  # (the SIGKILL escalation is the backstop regardless).
+  ( trap - INT HUP TERM
+    cd "$dir" || exit 127
+    KONRAD_NOTICE_DIR="$ndir" KONRAD_LAYER_NAME="$name" \
+    KONRAD_HOOK_INTERACTIVE="${KONRAD_HOOK_INTERACTIVE:-0}" \
+      ./hooks/post-sync
+  ) >"${tmp:-/dev/null}" 2>&1 &
+  local hook_pid=$!
+  local killed_flag="${tmp:+$tmp.killed}"
+  ( sleep "$timeout"; [[ -n "$killed_flag" ]] && : >"$killed_flag" 2>/dev/null
+    kill -TERM "$hook_pid" 2>/dev/null; sleep 3; kill -KILL "$hook_pid" 2>/dev/null ) 2>/dev/null &
+  local wd_pid=$!
+  local rc=0
+  wait "$hook_pid" 2>/dev/null || rc=$?
+  kill "$wd_pid" 2>/dev/null || true
+  wait "$wd_pid" 2>/dev/null || true
+
+  # In interactive mode the streamed-to-$tmp output didn't reach the user live;
+  # show it now (the background path already routes $tmp's echo to the log).
+  [[ "${KONRAD_HOOK_INTERACTIVE:-0}" == "1" && -s "${tmp:-/dev/null}" ]] && cat "$tmp" >&2
+
+  local timed_out=0
+  [[ -n "$killed_flag" && -f "$killed_flag" ]] && timed_out=1
+  rm -f "$killed_flag" 2>/dev/null || true
+
+  if (( timed_out )); then
+    warn "org '$name': post-sync hook timed out after ${timeout}s — killed."
+    { printf 'severity: blocked\n'
+      printf 'summary: post-sync hook timed out after %ss and was killed\n' "$timeout"
+      printf 'detail: the layer may be left half-synced\n'
+      printf 'fix: check the layer'\''s hooks/post-sync; raise KONRAD_HOOK_TIMEOUT if it is legitimately slow\n'
+    } > "$ndir/hook-timeout" 2>/dev/null || true
+  elif (( rc != 0 )); then
+    warn "org '$name': post-sync hook failed (exit $rc)"
+    # Free fallback: if the hook wrote no notice of its own, promote its tail.
+    if [[ -z "$(ls -A "$ndir" 2>/dev/null)" && -s "${tmp:-/dev/null}" ]]; then
+      { printf 'severity: warn\n'
+        printf 'summary: post-sync hook failed (exit %s)\n' "$rc"
+        tail -n 5 "$tmp" 2>/dev/null | while IFS= read -r l; do printf 'detail: %s\n' "$l"; done
+        printf 'fix: check the layer'\''s post-sync hook; full output in %s\n' "$KONRAD_REFRESH_LOG"
+      } > "$ndir/hook-failure" 2>/dev/null || true
+    fi
+  fi
+  if [[ -n "$tmp" ]]; then rm -f "$tmp" 2>/dev/null || true; fi
+  # Leave $ndir even if empty — notices_flush rmdir's an empty layer dir.
   return 0
 }
 
@@ -1739,7 +1948,11 @@ org_sync_layer() {
   fi
   # Managed mirror: reset --hard, deliberately no clean -xdf — untracked files
   # (e.g. state a hook keeps beside itself) survive; tracked edits don't.
-  if git -C "$dir" fetch --quiet && git -C "$dir" reset --hard --quiet "$upstream"; then
+  # http.lowSpeed*: abort a black-holed connection (<1 KB/s for 15s) instead of
+  # hanging — matters most for the unwatched background worker (paired with its
+  # GIT_TERMINAL_PROMPT=0), but helps a watched sync on a dead network too.
+  if git -C "$dir" -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=15 fetch --quiet \
+       && git -C "$dir" reset --hard --quiet "$upstream"; then
     info "org '$name': synced to $upstream ($(git -C "$dir" rev-parse --short HEAD))"
     org_run_hook "$dir"
   else
@@ -1761,6 +1974,7 @@ org_sync_all() {
 }
 
 do_org_add() {
+  export KONRAD_HOOK_INTERACTIVE=1   # a member is watching add/sync/update
   local url="" name="" branch=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -1794,7 +2008,7 @@ do_org_add() {
   git clone ${clone_args[@]+"${clone_args[@]}"} -- "$url" "$dest" \
     || die "git clone failed — nothing was added."
   org_run_hook "$dest"
-  info "org layer '$name' added — it merges between konrad's baked defaults and your user layer, and re-syncs on every 'konrad update' (or '$SELF org sync')."
+  info "org layer '$name' added — it merges between konrad's baked defaults and your user layer, and re-syncs in the background (or on demand with '$SELF org sync')."
 }
 
 do_org_list() {
@@ -1826,6 +2040,7 @@ do_org_list() {
 }
 
 do_org_sync() {
+  export KONRAD_HOOK_INTERACTIVE=1   # a member is watching add/sync/update
   local name="${1:-}"
   warn_old_org_layout
   if [[ -z "$name" ]]; then
@@ -2028,6 +2243,7 @@ do_update() {
   # first, so one 'konrad update' keeps CLI, image, AND org defaults fresh —
   # no org-side updater needed. Best-effort: a failed sync warns and the
   # update carries on with the last-good checkout.
+  export KONRAD_HOOK_INTERACTIVE=1   # a member is watching add/sync/update
   org_sync_all
   # An explicit update IS a refresh — stamp the throttle so the opportunistic
   # background worker (maybe_background_refresh) doesn't redundantly re-fire on
@@ -2352,9 +2568,10 @@ Subcommands:
                           $self mcp-auth wiki
   $self org add <git-url> [--name <n>] [--branch <b>]
                         Subscribe to an org config layer: clones the repo to
-                        ~/.config/konrad/org/<name>/ and re-syncs it on every
-                        'konrad update' (name defaults to the repo basename,
-                        branch to the remote default). The layer merges between
+                        ~/.config/konrad/org/<name>/ and re-syncs it in the
+                        background (or on demand with '$self org sync'; name
+                        defaults to the repo basename, branch to the remote
+                        default). The layer merges between
                         konrad's baked defaults and your user layer. Subscribing
                         runs the layer's optional hooks/post-sync ON YOUR
                         MACHINE, on add and on every sync — add only repos you
@@ -2414,6 +2631,8 @@ Background auto-update (keeps the image + org layers fresh; the CLI updates via
 its install channel — 'konrad update' / brew / curl|sh):
   KONRAD_NO_AUTO_REFRESH=1 $self     Disable the throttled background refresh.
   KONRAD_REFRESH_INTERVAL=3600 $self Seconds between background refreshes (0 disables). Default 86400.
+  KONRAD_NO_NOTICES=1 $self          Suppress the launch-time notice queue (kept for a later launch, not lost).
+  KONRAD_HOOK_TIMEOUT=120 $self      Seconds an org post-sync hook may run before it's killed. Default 120.
 
 Files the agent may write in your workspace (konrad does NOT create or
 gitignore these — they appear only if the agent actually uses them):

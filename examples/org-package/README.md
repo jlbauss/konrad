@@ -51,6 +51,15 @@ agent to grep, or deriving per-member identity from your forge's CLI — and kee
 it idempotent: it runs on every sync, changed or not. The example hook just
 stamps a marker file so you can watch the mechanism; replace or delete it.
 
+Because the dominant sync path is now the **unwatched** background refresh, a
+hook's `echo` no longer reaches a human. Konrad exports `KONRAD_NOTICE_DIR` (plus
+`KONRAD_LAYER_NAME` and `KONRAD_HOOK_INTERACTIVE`) so the hook can drop a
+`key: value` notice — `severity: info|warn|blocked`, `summary:`, optional
+`detail:`/`fix:` — that Konrad renders (attributed to your layer, sanitized) at
+the member's next launch. The example hook sketches the high-value case: telling
+a member, in your own words, when their forge sign-in has expired and frozen the
+mirror. See [ARCHITECTURE.md → Distribution & updates](../../ARCHITECTURE.md#distribution--updates).
+
 ## Adapt it
 
 - **`opencode.jsonc`** — point `baseURL` at your real internal gateway, declare
