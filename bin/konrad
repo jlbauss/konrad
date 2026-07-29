@@ -1345,8 +1345,10 @@ refresh_stamp_now() {
 # showing so it fires exactly once.
 refresh_note_flush() {
   [[ -f "$KONRAD_REFRESH_NOTE" ]] || return 0
-  local ver
-  ver="$(head -1 "$KONRAD_REFRESH_NOTE" 2>/dev/null | tr -dc 'A-Za-z0-9.+_-')"
+  local ver=""
+  # Redirection, not `head <file> | …`, so a vanished file can't make the
+  # pipeline non-zero and trip `set -euo pipefail`; any failure → empty ver.
+  ver="$(tr -dc 'A-Za-z0-9.+_-' < "$KONRAD_REFRESH_NOTE" 2>/dev/null)" || ver=""
   rm -f "$KONRAD_REFRESH_NOTE" 2>/dev/null || true
   if [[ -n "$ver" ]]; then
     info "updated to a newer image in the background (konrad $ver) — running it now."
@@ -1406,9 +1408,16 @@ maybe_background_refresh() {
   [[ "$interval" =~ ^[0-9]+$ ]] || interval=86400
   (( interval == 0 )) && return 0   # explicit disable
 
-  local now last
+  # Read the stamp only when it exists, via input redirection (no `head` on a
+  # possibly-missing file): under `set -euo pipefail` a `head missing | tr`
+  # pipeline is non-zero and would abort the whole launch — and "missing" is
+  # exactly the first-launch-after-install state. Any read failure → treat as
+  # unstamped (fire), never crash.
+  local now last=""
   now="$(date +%s)"
-  last="$(head -1 "$KONRAD_REFRESH_STAMP" 2>/dev/null | tr -dc '0-9')"
+  if [[ -f "$KONRAD_REFRESH_STAMP" ]]; then
+    last="$(tr -dc '0-9' < "$KONRAD_REFRESH_STAMP" 2>/dev/null)" || last=""
+  fi
   if [[ -n "$last" ]] && (( now - last < interval )); then
     dbg "background refresh: throttled ($(( now - last ))s < ${interval}s)"
     return 0

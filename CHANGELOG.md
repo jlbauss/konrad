@@ -16,6 +16,13 @@ build publishes as `:0.X` (minor line), `:latest`, and an immutable
 
 ## [Unreleased]
 
+### Fixed
+
+- Background auto-update no longer aborts a launch on the first run after
+  upgrading: reading the (not-yet-existent) throttle stamp under
+  `set -euo pipefail` could exit the CLI silently before it started. Launches
+  are now robust to a missing or malformed stamp.
+
 ## [0.22.0] - 2026-07-29
 
 ### Added
