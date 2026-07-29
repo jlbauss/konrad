@@ -16,6 +16,8 @@ build publishes as `:0.X` (minor line), `:latest`, and an immutable
 
 ## [Unreleased]
 
+## [0.22.1] - 2026-07-29
+
 ### Fixed
 
 - Background auto-update no longer aborts a launch on the first run after
