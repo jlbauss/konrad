@@ -102,7 +102,7 @@ The action verbs are subcommands; `konrad` with no subcommand launches the TUI.
 
 | Subcommand             | What it does                                                            |
 | ---------------------- | ----------------------------------------------------------------------- |
-| _(none)_               | Default. Launch the opencode TUI against the current directory.         |
+| *(none)*               | Default. Launch the opencode TUI against the current directory.         |
 | `run <args…>`          | Non-interactive: `opencode run <args…>` — one prompt, answer on stdout (pipeable). |
 | `opencode <args…>`     | Pass-through to `opencode <args…>` in the sandbox — the escape hatch for opencode subcommands konrad doesn't wrap (`opencode models`, `agent list`, `session list`, …). |
 | `shell`                | Open a bash shell in the container instead of the TUI.                  |
@@ -181,7 +181,7 @@ It also sets each model's **context window** when the server can report one — 
 
 Editing `opencode.jsonc` is then only needed to:
 
-- **pin a model's options** (or its `limit.context`) — a model you _declare_ always wins over the discovered copy, so declare one when you need custom settings or a context window discovery couldn't get (recipe below).
+- **pin a model's options** (or its `limit.context`) — a model you *declare* always wins over the discovered copy, so declare one when you need custom settings or a context window discovery couldn't get (recipe below).
 - **add a custom / self-hosted endpoint** — anything not in the models.dev catalog needs an explicit `baseURL` (recipe below); once it has one, its models are discovered like any other.
 
 opencode Zen — the upstream's paid hosted gateway — is **disabled by default** (`disabled_providers: ["opencode"]`). Override `disabled_providers` to re-enable.
@@ -194,7 +194,7 @@ The allow-list maintains itself: it's derived from your model providers — decl
 
 It's **on by default**; `konrad --no-firewall` turns it off for a run. Full design (why a hostname proxy, how the derivation works, the per-engine plumbing): [ARCHITECTURE.md](ARCHITECTURE.md#egress-firewall).
 
-**The firewall is the containment boundary — not a secret read-gate.** Your provider credential lives on-disk in the `konrad-secrets` volume, and a prompt-injected agent can read it or copy it into `/workspace`; what stops it _leaving the box_ is this default-deny firewall, not a read restriction. So `--no-firewall` (or opening `--allow-host` to a host you don't trust) removes that containment for the run — use it only when you trust the agent and the task.
+**The firewall is the containment boundary — not a secret read-gate.** Your provider credential lives on-disk in the `konrad-secrets` volume, and a prompt-injected agent can read it or copy it into `/workspace`; what stops it *leaving the box* is this default-deny firewall, not a read restriction. So `--no-firewall` (or opening `--allow-host` to a host you don't trust) removes that containment for the run — use it only when you trust the agent and the task.
 
 ### Resource limits
 
@@ -247,7 +247,7 @@ All three local engines are pre-wired at their default ports (LM Studio `:1234`,
 
 ### Adding your own model instructions
 
-Two additive ways, both loaded _on top of_ Konrad's base:
+Two additive ways, both loaded *on top of* Konrad's base:
 
 - **`AGENTS.md`** — auto-discovered: `~/.config/konrad/user/AGENTS.md` (your rules, global) or `<workspace>/AGENTS.md` (per-project).
 - **`~/.config/konrad/user/instructions/*.md`** — every `.md` here is appended to the system instructions (org layers have the same `instructions/` slot).
@@ -256,7 +256,7 @@ Don't set the `instructions` array in your `opencode.jsonc` — arrays **replace
 
 ### Reference material (the `context/` mount)
 
-Drop reference material — a mirrored wiki, internal docs, lookup tables — into `~/.config/konrad/context/<name>/` and Konrad bind-mounts `context/` **read-only** at `/context` inside the sandbox: the agent can `grep` it while it works, with no network and no stored secret. It's not a config layer, just files the agent reads; the mount appears only when the directory exists, and `konrad reset`/`uninstall` leave it alone. To make the agent actually _reach_ for a corpus, name it in your `AGENTS.md` ("ASG processes are documented in `/context/asg-wiki/`").
+Drop reference material — a mirrored wiki, internal docs, lookup tables — into `~/.config/konrad/context/<name>/` and Konrad bind-mounts `context/` **read-only** at `/context` inside the sandbox: the agent can `grep` it while it works, with no network and no stored secret. It's not a config layer, just files the agent reads; the mount appears only when the directory exists, and `konrad reset`/`uninstall` leave it alone. To make the agent actually *reach* for a corpus, name it in your `AGENTS.md` ("ASG processes are documented in `/context/asg-wiki/`").
 
 ### For organizations
 
@@ -268,7 +268,7 @@ konrad org add https://git.example.com/acme/konrad-org
 
 Every `konrad update` re-syncs it (fetch + hard reset — **local edits inside the layer are clobbered**; personal overrides belong in `user/`, which always merges on top), so shipping a change to the fleet is just `git push`. Two things to know before subscribing:
 
-- **Subscribing is trusting.** A layer may ship a `hooks/post-sync` script that Konrad runs _on your machine_ after every sync (the escape hatch for jobs plain config can't express, like mirroring a wiki into `context/`). Only subscribe to repos you trust, exactly as with any `curl | sh` internal tooling.
+- **Subscribing is trusting.** A layer may ship a `hooks/post-sync` script that Konrad runs *on your machine* after every sync (the escape hatch for jobs plain config can't express, like mirroring a wiki into `context/`). Only subscribe to repos you trust, exactly as with any `curl | sh` internal tooling.
 - **It's a defaults mechanism, not policy enforcement.** The layer is files in the user's own home directory — users can stack overrides on top or unsubscribe.
 
 A ready-to-publish starter repo — sample config, instructions, a house skill, an example hook — lives in [`examples/org-package/`](examples/org-package/). The full mechanics (multiple layers and precedence, tag pinning, private repos via your host `git`, the instructions channel) and the design rationale are in [ARCHITECTURE.md → Configuration & instructions](ARCHITECTURE.md#configuration--instructions).

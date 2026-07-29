@@ -2,6 +2,9 @@
 // markdown" across konrad and any config-layer repo that symlinks this file.
 // Repo-specific globs/ignores live in each repo's .markdownlint-cli2.jsonc,
 // never here, so this file stays portable.
+//
+// SPDX-FileCopyrightText: 2026 Jan-Luca Bauß
+// SPDX-License-Identifier: AGPL-3.0-or-later
 {
   "default": true,
   // Long-form prose by deliberate choice — we wrap at paragraphs, not columns.
@@ -16,5 +19,16 @@
   "MD024": { "siblings_only": true },
   // Table-column alignment/padding — cosmetic, and aligning pipes in our wide
   // tables is maintenance for nothing. Content correctness matters, not padding.
-  "MD060": false
+  "MD060": false,
+  // House style — pinned, not "consistent". These rules default to "match
+  // whatever the file did first", which documents no convention and lets style
+  // drift file-to-file (and forces after-the-fact corrections). Pin them so the
+  // one right answer is written down and reads the same everywhere.
+  "MD049": { "style": "asterisk" },  // emphasis: *italic*, never _italic_
+  "MD050": { "style": "asterisk" },  // strong:   **bold**, never __bold__
+  "MD004": { "style": "dash" },      // unordered lists: - item
+  "MD048": { "style": "backtick" },  // code fences: ``` not ~~~
+  "MD035": { "style": "---" },       // horizontal rule: ---
+  "MD003": { "style": "atx" },       // headings: # H1, never setext
+  "MD029": { "style": "ordered" }    // ordered lists: 1. 2. 3., incrementing
 }

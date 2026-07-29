@@ -16,6 +16,12 @@ build publishes as `:0.X` (minor line), `:latest`, and an immutable
 
 ## [Unreleased]
 
+### Changed
+
+- Shared `.markdownlint.jsonc` now pins emphasis/list/fence/heading style (was
+  markdownlint's per-file `consistent` mode); repos symlinking it should run
+  `markdownlint-cli2 --fix` once after bumping.
+
 ## [0.21.0] - 2026-07-24
 
 ### Added

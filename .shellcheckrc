@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: 2026 Jan-Luca Bauß
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+# shellcheck project config — the single place shellcheck reads settings from
+# (both the CLI and the VS Code shellcheck extension auto-discover it), parallel
+# to .markdownlint.jsonc for markdown. Found from the repo root; shellcheck's
+# ancestor lookup means scripts in subdirs pick it up too.
+#
+# SC1091 ("not following sourced file"): our scripts source libraries by their
+# runtime install path — e.g. image/entrypoint.sh sources
+# /usr/local/lib/konrad-privdrop.sh — which doesn't exist at lint time. Those
+# libraries are first-party and shellchecked on their own, so following them
+# inline adds nothing. Disable the info so `shellcheck` exits clean and "keep
+# clean" is verifiable by exit code. It is info-level only and never a bug
+# signal — it just means "couldn't open the other file".
+disable=SC1091

@@ -145,7 +145,13 @@
       "settings": {
         "claudeCode.initialPermissionMode": "bypassPermissions",
         "claudeCode.allowDangerouslySkipPermissions": true,
-        "editor.formatOnSave": true
+        "editor.formatOnSave": true,
+        // markdownlint fixes are code actions, not a formatter, so formatOnSave
+        // alone won't apply them — this auto-normalizes the pinned style rules
+        // (emphasis/strong/list/fence/heading) on every save of a .md file.
+        "editor.codeActionsOnSave": {
+          "source.fixAll.markdownlint": "explicit"
+        }
       },
       "extensions": [
         "anthropic.claude-code",

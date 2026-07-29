@@ -289,6 +289,29 @@ markdownlint:
     - npx --yes markdownlint-cli2
 
 # =============================================================================
+# Shellcheck gate.
+#
+# Same shape as reuse/markdownlint above — a plain file check on the shared
+# runner, gating at MR/push so the shell (bin/konrad, image/entrypoint.sh,
+# scripts/, image helpers) stays clean. Until now shellcheck was a manual gate
+# only (CLAUDE.md), so nothing enforced it; this makes it always-green like the
+# others. Config (the SC1091 disable + rationale) lives in .shellcheckrc at the
+# repo root, auto-discovered here and by the VS Code extension. Lints every
+# tracked shell script; bin/konrad has no .sh suffix so it's named explicitly.
+# Run locally before pushing (see CLAUDE.md); CI is the backstop.
+# =============================================================================
+shellcheck:
+  image: koalaman/shellcheck-alpine:stable
+  tags: [docker]
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_PIPELINE_SOURCE == "push"
+  before_script:
+    - apk add --no-cache git
+  script:
+    - shellcheck $(git ls-files '*.sh') bin/konrad
+
+# =============================================================================
 # Tagged GitLab Releases — "tag what I bumped."
 #
 # Releases live on GitLab (the GitHub mirror is CI-only). This job closes
