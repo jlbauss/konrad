@@ -16,6 +16,16 @@ build publishes as `:0.X` (minor line), `:latest`, and an immutable
 
 ## [Unreleased]
 
+### Added
+
+- **Background auto-update.** Every launch now opportunistically refreshes the
+  image and subscribed org layers in a detached, throttled worker (at most once
+  daily) — it never blocks or delays a run, a newer image is used on the next
+  launch (with a one-line note), and offline it silently gives up. The CLI still
+  updates through its install channel, not the background worker. Tune with
+  `KONRAD_REFRESH_INTERVAL` / `KONRAD_NO_AUTO_REFRESH`; `konrad update` forces
+  the same refresh synchronously.
+
 ### Changed
 
 - Shared `.markdownlint.jsonc` now pins emphasis/list/fence/heading style (was

@@ -22,7 +22,7 @@ Under the hood it's a thin wrapper around [opencode](https://github.com/sst/open
 - **Your models, your choice.** Local engines (LM Studio / Ollama / llama.cpp) or any opencode-supported API provider — never locked to one vendor.
 - **Batteries included.** One container image ships the agent's tools (ripgrep, fd, jq, pandoc, poppler, Python 3 + a system venv, Typst, LibreOffice) and a curated skill set already wired together: no venv, no pip, no host setup.
 - **Fully open source.** AGPL-3.0, no telemetry, nothing proprietary.
-- **Always current.** A bot tracks every upstream and CI rebuilds the image as they move; `konrad update` keeps you fresh. See [build & reproducibility](ARCHITECTURE.md#build--reproducibility).
+- **Always current.** A bot tracks every upstream and CI rebuilds the image as they move; a throttled background refresh then keeps your image and org layers fresh automatically (`konrad update` forces it now). See [Staying current](#staying-current) and [build & reproducibility](ARCHITECTURE.md#build--reproducibility).
 
 What ships in the box:
 
@@ -127,6 +127,23 @@ Modifiers — pass them **before** the subcommand.
 | `-h`, `--help`           | Show usage.                                                             |
 
 `konrad-dev` is the contributor binary — same surface, except the `rebuild` subcommand replaces `update`. See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+### Staying current
+
+konrad keeps the **image** and your subscribed **org layers** fresh on its own: at
+launch, at most once a day, it fires a background refresh (a `:latest` pull + an
+org-layer sync) that runs detached — it never blocks or delays a run, and a fresh
+image is picked up on the *next* launch (you'll see a one-line note when that
+happens). Offline? The refresh silently gives up and the run proceeds on what you
+already have. Tune or disable it with `KONRAD_REFRESH_INTERVAL` /
+`KONRAD_NO_AUTO_REFRESH` (see [Environment variables](#environment-variables-advanced)); read the last run's log at
+`~/.local/state/konrad/refresh.log`.
+
+`konrad update` still does the same refresh **now**, synchronously, *and* updates
+the CLI itself — the one piece the background refresh deliberately leaves alone
+(the CLI updates through its install channel, never by a background process
+rewriting the running script). `konrad update --check` compares local vs. registry
+without pulling.
 
 ## Status
 
@@ -282,9 +299,12 @@ Rarely needed — the flags cover day-to-day use. Collected here so the rest of 
 | `KONRAD_ENGINE` | Pin the container engine (`podman` or `container`) instead of the per-OS auto-selection. |
 | `KONRAD_FIREWALL=0` | Disable the egress firewall (same as `--no-firewall`). |
 | `KONRAD_IMAGE` | Run a specific image tag (e.g. a PR test build) instead of the default. |
+| `KONRAD_REGISTRY_IMAGE` | Advanced: override the pull *source* for updates/refresh (vs. `KONRAD_IMAGE`, which sets what *runs*) — e.g. rehearse a `:pr-<num>` candidate or a local registry. |
 | `KONRAD_MEMORY` / `KONRAD_CPUS` / `KONRAD_PIDS_LIMIT` | Pin or disable the resource caps — see [Resource limits](#resource-limits). |
 | `KONRAD_INSTALL_DIR` | Installer: where to put the CLI (default `~/.local/bin`). |
 | `KONRAD_NO_PULL=1` | Installer: skip the image pre-pull. |
+| `KONRAD_NO_AUTO_REFRESH=1` | Disable the throttled background refresh (image pull + org sync — see [Staying current](#staying-current)). |
+| `KONRAD_REFRESH_INTERVAL` | Seconds between background refreshes (`0` disables). Default `86400` (daily). |
 | `KONRAD_DEBUG=1` / `KONRAD_TRACE_FETCH=1` | Verbose launch / raw HTTP trace — see [Debugging opencode](#debugging-opencode). |
 
 ## State
