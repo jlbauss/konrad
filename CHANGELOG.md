@@ -16,6 +16,32 @@ build publishes as `:0.X` (minor line), `:latest`, and an immutable
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-07-29
+
+### Added
+
+- **Notice queue.** The background refresh and org `post-sync` hooks can now
+  surface news — image updates, refresh faults, an expired credential that froze
+  a layer — at the member's next launch, not just in a log nobody reads. A
+  severity ladder (`info` line / `warn` block / `blocked` + one Enter) that never
+  breaks a piped `konrad run`; stateless, so a fixed fault's notice clears
+  itself. Suppress with `KONRAD_NO_NOTICES=1`.
+- **Org post-sync hook contract.** Hooks now receive `KONRAD_NOTICE_DIR` (a
+  first-class channel to their own members, rendered attributed + sanitized),
+  `KONRAD_LAYER_NAME`, and `KONRAD_HOOK_INTERACTIVE`, and are bounded by
+  `KONRAD_HOOK_TIMEOUT` (default 120 s) so an unwatched hang can't live until
+  reboot. A hook that fails without writing a notice has its last output promoted
+  into a warning, so existing layers gain visibility with no change.
+
+### Fixed
+
+- `KONRAD_IMAGE` (pinning what *runs*, e.g. a `:pr-N` test image) no longer
+  silently freezes org-layer sync — the two are independent channels now.
+- The background refresh can no longer hang on a git credential prompt: a
+  credential-less `git fetch` fails fast (`GIT_TERMINAL_PROMPT=0`) instead of
+  blocking on `/dev/tty`, and a black-holed connection aborts rather than hanging
+  (`http.lowSpeed*`).
+
 ## [0.22.1] - 2026-07-29
 
 ### Fixed
