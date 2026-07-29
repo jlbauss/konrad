@@ -32,11 +32,20 @@ if is_dev; then IMAGE_DEFAULT="$IMAGE_LOCAL_TAG"; else IMAGE_DEFAULT="konrad:lat
 IMAGE_NAME="${KONRAD_IMAGE:-$IMAGE_DEFAULT}"
 
 # Registry coordinates — where CI publishes the prebuilt image and where
-# `konrad update` pulls from. `:latest` always points at the newest
-# build that passed the smoke gate (see .github/workflows/build-image.yml).
-# CI runs on a GitHub mirror of this repo even though the primary repo
-# lives on gitlab.git.nrw — see the README's "Pinning strategy" section.
-REGISTRY_IMAGE="ghcr.io/jlbauss/konrad:latest"
+# `konrad update` / the background refresh pull from. `:latest` always points
+# at the newest build that passed the smoke gate (see
+# .github/workflows/build-image.yml). CI runs on a GitHub mirror of this repo
+# even though the primary repo lives on gitlab.git.nrw — see the README's
+# "Pinning strategy" section.
+#
+# KONRAD_REGISTRY_IMAGE overrides the pull SOURCE (distinct from KONRAD_IMAGE,
+# which overrides what RUNS). It's the seam that lets a test point the whole
+# update surface — require_image's first pull, do_pull_image, do_update, and the
+# background refresh worker — at a controlled image (a `:pr-<num>` candidate or a
+# local registry) instead of the real `:latest`, so a release can be rehearsed
+# before it's promoted. It's also the knob the ROADMAP's GitLab-registry mirror
+# will re-point. Unset in normal use.
+REGISTRY_IMAGE="${KONRAD_REGISTRY_IMAGE:-ghcr.io/jlbauss/konrad:latest}"
 
 # URL of the curl|sh installer. `konrad update` re-runs it after the
 # image pull so the CLI itself stays fresh; standalone installs don't
@@ -94,6 +103,16 @@ CONTEXT_CFG_DIR="$KONRAD_CFG_DIR/context"
 # workspace path. Shared across all projects so logs live in one
 # discoverable place; pruned (>7d) before every launch.
 KONRAD_LOG_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/konrad/log"
+
+# Background-refresh state (see maybe_background_refresh). Lives beside the log
+# dir in konrad's own XDG state — not the workspace. The stamp throttles how
+# often the detached worker fires; the note is written by a worker that pulled a
+# genuinely newer image and flushed (announced) by the next launch; the log
+# captures the worker's own output (it never reaches the user's terminal).
+KONRAD_STATE_DIR="$(dirname "$KONRAD_LOG_DIR")"
+KONRAD_REFRESH_STAMP="$KONRAD_STATE_DIR/last-refresh"
+KONRAD_REFRESH_NOTE="$KONRAD_STATE_DIR/refresh-note"
+KONRAD_REFRESH_LOG="$KONRAD_STATE_DIR/refresh.log"
 
 # --- Resolve the script's source directory, even when symlinked ---
 # Lets `konrad-dev rebuild` find image/Dockerfile no matter where
@@ -424,6 +443,26 @@ eng_image_label() {
             [ .. | objects | (.labels? // .Labels? // empty)
               | objects | .[$k]? ]
             | map(select(. != null and . != "")) | first // empty' 2>/dev/null
+      ;;
+  esac
+  return 0
+}
+
+# Read an image's content ID — the "did the image actually change" signal the
+# background refresh compares before vs. after a pull (a lock-only rebuild bumps
+# the ID without bumping the version label, so the label alone would miss it).
+# Best-effort like eng_image_label: podman has a template field; apple/container
+# emits JSON only, dug out with jq. A miss returns empty — callers then simply
+# skip the "updated" announcement rather than guess.
+eng_image_id() {
+  case "$KONRAD_ENGINE" in
+    podman)
+      podman image inspect "$1" --format '{{.Id}}' 2>/dev/null
+      ;;
+    container)
+      command -v jq >/dev/null 2>&1 || return 0
+      container image inspect "$1" 2>/dev/null \
+        | jq -r 'first(.. | objects | (.Id? // .id? // .digest?) | select(type=="string")) // empty' 2>/dev/null
       ;;
   esac
   return 0
@@ -1282,6 +1321,113 @@ EOF
 
 # --- Actions ---
 
+# ── Background image + org-layer refresh (throttled, detached) ───────────────
+# The published image is the canonical artifact, but an install channel
+# (curl|sh, and the planned Homebrew tap) only carries the CLI — so keeping the
+# *image* fresh is konrad's own job. Rather than gate a launch on a pull (slow,
+# and offline would block the run), every launching verb opportunistically fires
+# a DETACHED worker that pulls :latest and re-syncs org layers, at most once per
+# KONRAD_REFRESH_INTERVAL. The current run uses whatever it already has; the next
+# run picks up anything new. It never blocks and never fails a launch. CLI
+# self-update is deliberately NOT here — that's the install channel's job; a
+# background process rewriting the running script is a footgun. See ARCHITECTURE
+# → Distribution & updates.
+
+refresh_stamp_now() {
+  mkdir -p "$KONRAD_STATE_DIR" 2>/dev/null || true
+  date +%s > "$KONRAD_REFRESH_STAMP" 2>/dev/null || true
+}
+
+# Announce a background image update from a PRIOR launch's worker, once. The
+# worker writes the note only when a pull produced a genuinely different image
+# ID, and by now :latest has been re-tagged to it — so this run is already on
+# the new image and the message is past tense. Quiet single line, removed after
+# showing so it fires exactly once.
+refresh_note_flush() {
+  [[ -f "$KONRAD_REFRESH_NOTE" ]] || return 0
+  local ver
+  ver="$(head -1 "$KONRAD_REFRESH_NOTE" 2>/dev/null | tr -dc 'A-Za-z0-9.+_-')"
+  rm -f "$KONRAD_REFRESH_NOTE" 2>/dev/null || true
+  if [[ -n "$ver" ]]; then
+    info "updated to a newer image in the background (konrad $ver) — running it now."
+  else
+    info "updated to a newer image in the background — running it now."
+  fi
+}
+
+# The detached worker body. Best-effort end to end: it leans on the already
+# best-effort eng_*/org_sync_all and logs rather than aborts (it's backgrounded,
+# so there's nothing to abort — but the log stays clean). $1 is the image ID this
+# launch started from; a post-pull ID that differs means a real update, recorded
+# in the note for the next launch to announce.
+_refresh_worker() {
+  local baseline_id="$1" new_id new_ver
+  printf '=== konrad background refresh %s (engine=%s) ===\n' \
+    "$(date '+%Y-%m-%d %H:%M:%S')" "$KONRAD_ENGINE"
+  if eng_pull "$REGISTRY_IMAGE"; then
+    eng_tag "$REGISTRY_IMAGE" "$IMAGE_DEFAULT" || true
+    new_id="$(eng_image_id "$IMAGE_DEFAULT")"
+    if [[ -n "$new_id" && -n "$baseline_id" && "$new_id" != "$baseline_id" ]]; then
+      new_ver="$(eng_image_label "$IMAGE_DEFAULT" org.opencontainers.image.version)"
+      if printf '%s\n' "$new_ver" > "$KONRAD_REFRESH_NOTE.tmp" 2>/dev/null; then
+        mv -f "$KONRAD_REFRESH_NOTE.tmp" "$KONRAD_REFRESH_NOTE" 2>/dev/null || true
+      fi
+      printf 'image updated: %s -> %s (%s)\n' "$baseline_id" "$new_id" "${new_ver:-unknown}"
+    else
+      printf 'image already current (id %s)\n' "${new_id:-unknown}"
+    fi
+  else
+    printf 'image pull failed (offline? registry unreachable?) — keeping current image\n'
+  fi
+  # Org layers ride the same refresh (git fetch + reset --hard + any post-sync
+  # hook), so subscriptions stay fresh without an explicit `konrad update`. The
+  # info/warn lines land in this log, not the terminal; a post-sync hook likewise
+  # runs unwatched here (see ARCHITECTURE → Configuration & instructions).
+  org_sync_all
+  printf '=== refresh done %s ===\n' "$(date '+%Y-%m-%d %H:%M:%S')"
+}
+
+# Decide whether to fire the worker, then detach it. Guards (any failing → skip
+# silently): dev CLI never auto-updates; a KONRAD_IMAGE override must not be
+# clobbered by a :latest re-tag; the first-ever pull is the foreground
+# require_image path, not this; the opt-out; and the throttle. The stamp is
+# written BEFORE detaching, so a failed/slow worker still counts against the
+# interval (availability over freshness — the same principle as org sync) and
+# concurrent launches inside the window don't stack workers. The worker ignores
+# INT/HUP/TERM and redirects all output to the refresh log, so it survives the
+# foreground `exec` into the container and never touches the terminal.
+maybe_background_refresh() {
+  is_dev && return 0
+  [[ "${KONRAD_NO_AUTO_REFRESH:-0}" == "1" ]] && return 0
+  [[ -n "${KONRAD_IMAGE:-}" ]] && return 0
+  eng_image_exists "$IMAGE_NAME" || return 0
+
+  local interval="${KONRAD_REFRESH_INTERVAL:-86400}"
+  [[ "$interval" =~ ^[0-9]+$ ]] || interval=86400
+  (( interval == 0 )) && return 0   # explicit disable
+
+  local now last
+  now="$(date +%s)"
+  last="$(head -1 "$KONRAD_REFRESH_STAMP" 2>/dev/null | tr -dc '0-9')"
+  if [[ -n "$last" ]] && (( now - last < interval )); then
+    dbg "background refresh: throttled ($(( now - last ))s < ${interval}s)"
+    return 0
+  fi
+
+  refresh_stamp_now
+  local baseline_id
+  baseline_id="$(eng_image_id "$IMAGE_NAME")"
+  dbg "background refresh: firing detached worker (baseline id ${baseline_id:-unknown})"
+  # Blank the color vars in the subshell: they were set from an interactive
+  # stderr at startup, but the worker's stderr is the (non-TTY) log file — so
+  # org_sync_all's info/warn lines would otherwise embed ANSI codes in the log.
+  ( trap '' INT HUP TERM
+    _C_BRAND='' _C_OK='' _C_GO='' _C_WARN='' _C_ERR='' _C_DIM='' _C_OFF=''
+    _refresh_worker "$baseline_id"
+  ) > "$KONRAD_REFRESH_LOG" 2>&1 </dev/null &
+  return 0
+}
+
 # Shared preflight for every container-launching verb (run / shell / connect /
 # mcp-auth / opencode): engine reachable, image present, logs pruned. brand() is
 # left to the caller — its placement varies (connect/mcp-auth print context
@@ -1290,7 +1436,9 @@ launch_preflight() {
   require_engine; dbg "engine OK"
   require_image;  dbg "image OK"
   prune_log_dir
-  warn_old_org_layout   # pre-0.18 flat org/ files would otherwise vanish silently
+  warn_old_org_layout      # pre-0.18 flat org/ files would otherwise vanish silently
+  refresh_note_flush       # announce a newer image a prior launch pulled in the background
+  maybe_background_refresh # throttled, detached: pull :latest + re-sync org layers
 }
 
 do_run() {
@@ -1872,6 +2020,10 @@ do_update() {
   # no org-side updater needed. Best-effort: a failed sync warns and the
   # update carries on with the last-good checkout.
   org_sync_all
+  # An explicit update IS a refresh — stamp the throttle so the opportunistic
+  # background worker (maybe_background_refresh) doesn't redundantly re-fire on
+  # the next launch right after the user updated by hand.
+  refresh_stamp_now
 
   # A symlink install tracks a checkout — refresh the CLI with `git pull` in that
   # clone, NOT the remote installer (which would clobber the symlink with a
@@ -2240,6 +2392,7 @@ $cross_pointer
 Override which image runs:
   KONRAD_IMAGE=konrad:pr-42 $self    Test a published PR image.
   KONRAD_IMAGE=konrad:my-tag $self   Run a custom-tagged image you built or pulled.
+  KONRAD_REGISTRY_IMAGE=<ref> $self  Advanced: override the update/refresh pull SOURCE (rehearse a candidate).
 
 Resource caps (auto-scaled to this host: $(default_memory) RAM / $(default_cpus) CPUs;
 bounds runaway use and lifts Apple container's tight 1G default that OOM-kills docling):
@@ -2247,6 +2400,11 @@ bounds runaway use and lifts Apple container's tight 1G default that OOM-kills d
   KONRAD_MEMORY=0 $self              Drop the RAM cap (Podman's old unbounded run).
   KONRAD_CPUS=8 $self                Pin the CPU-core cap (also docling/torch's thread budget).
   KONRAD_PIDS_LIMIT=4096 $self       Raise the task/thread cap (Podman; 0 disables). Default 1024.
+
+Background auto-update (keeps the image + org layers fresh; the CLI updates via
+its install channel — 'konrad update' / brew / curl|sh):
+  KONRAD_NO_AUTO_REFRESH=1 $self     Disable the throttled background refresh.
+  KONRAD_REFRESH_INTERVAL=3600 $self Seconds between background refreshes (0 disables). Default 86400.
 
 Files the agent may write in your workspace (konrad does NOT create or
 gitignore these — they appear only if the agent actually uses them):
@@ -2258,6 +2416,8 @@ gitignore these — they appear only if the agent actually uses them):
 Files on the host (outside the workspace):
   $KONRAD_LOG_DIR
                         opencode logs. Pruned >7d on every launch. \`tail -f\` to read.
+  $KONRAD_REFRESH_LOG
+                        Last background-refresh run (image pull + org sync). Read to debug auto-update.
 
 Files in ~/.config/konrad/user/ (all optional — your personal layer):
   opencode.jsonc        Deep-merged with konrad's baked defaults at start.
