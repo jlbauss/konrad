@@ -49,6 +49,7 @@
   "github-models": "models.github.ai",
   "gmicloud": "api.gmi-serving.com",
   "google": "generativelanguage.googleapis.com",
+  "greenpt": "api.greenpt.ai",
   "groq": "api.groq.com",
   "helicone": "ai-gateway.helicone.ai",
   "hetzner": "inference.hetzner.com",
