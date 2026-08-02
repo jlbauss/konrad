@@ -132,6 +132,7 @@
   "tencent-coding-plan": "api.lkeap.cloud.tencent.com",
   "tencent-token-plan": "api.lkeap.cloud.tencent.com",
   "tencent-tokenhub": "tokenhub.tencentmaas.com",
+  "tensorx": "api.tensorx.ai",
   "the-grid-ai": "api.thegrid.ai",
   "thinkingmachines": "tinker.thinkingmachines.dev",
   "tinfoil": "inference.tinfoil.sh",
