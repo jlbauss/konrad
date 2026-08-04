@@ -16,6 +16,17 @@ build publishes as `:0.X` (minor line), `:latest`, and an immutable
 
 ## [Unreleased]
 
+## [0.23.1] - 2026-08-04
+
+### Fixed
+
+- **docling PDF conversion no longer fails.** The RT-DETR-v2 layout stage
+  ("heron", via transformers) began routing through `torch.compile` →
+  `_inductor`, which JIT-compiles CPU kernels with a `g++` this slim image
+  doesn't ship — so every convert died with `InvalidCxxCompiler`. torch now runs
+  eager (`TORCHDYNAMO_DISABLE`), which needs no compiler and is faster for
+  one-shot conversions.
+
 ## [0.23.0] - 2026-07-29
 
 ### Added
