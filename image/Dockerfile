@@ -316,8 +316,19 @@ COPY --from=python-models /opt/models/docling-project--CodeFormulaV2            
 COPY --from=python-models /opt/models/docling-project--DocumentFigureClassifier-v2.5   /opt/models/docling-project--DocumentFigureClassifier-v2.5
 COPY --from=python-models /opt/models/RapidOcr                                         /opt/models/RapidOcr
 
+# TORCHDYNAMO_DISABLE / TORCH_COMPILE_DISABLE force torch into eager mode. The
+# docling layout stage (RT-DETR-v2 "heron", served via transformers) now routes
+# through torch.compile → _inductor, which JIT-compiles CPU kernels with g++ at
+# inference time. This is a deliberately slim CPU image with no compiler, so
+# inductor dies with `InvalidCxxCompiler: ... (None, 'g++')` and every docling
+# convert fails. Eager mode needs no compiler and, for one-shot CPU conversions,
+# is neutral-to-faster (it skips inductor's up-front compile cost entirely).
+# Both vars set because torch has renamed this knob across versions; the smoke
+# test's docling round-trip guards against the active name going stale.
 ENV VIRTUAL_ENV=/opt/venv \
-    DOCLING_ARTIFACTS_PATH=/opt/models
+    DOCLING_ARTIFACTS_PATH=/opt/models \
+    TORCHDYNAMO_DISABLE=1 \
+    TORCH_COMPILE_DISABLE=1
 
 # ── XDG home structure for the node user — node owns its whole home ──────────
 # With the Docling model cache now baked at /opt/models (outside $HOME), the
