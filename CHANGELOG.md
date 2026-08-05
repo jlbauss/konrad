@@ -16,6 +16,8 @@ build publishes as `:0.X` (minor line), `:latest`, and an immutable
 
 ## [Unreleased]
 
+## [0.25.0] - 2026-08-05
+
 ### Added
 
 - **Desktop launcher (`konrad install-desktop`).** Adds a user-scope clickable
