@@ -1879,6 +1879,15 @@ emit_wrapper() {
 # offers to install it if missing, then opens a throwaway scratch session.
 set -euo pipefail
 
+# A Dock/Launchpad click — or Ghostty's `-e`, which runs us via `login -p`,
+# preserving the minimal GUI PATH instead of resetting it via path_helper —
+# starts with PATH ≈ /usr/bin:/bin. That omits where konrad AND the container
+# engine live, so konrad would misdetect the engine (e.g. fall back to podman
+# because Apple's `container` in /usr/local/bin isn't found). Terminal.app hides
+# this by sourcing your shell rc; other launch paths don't. Prepend the standard
+# locations so both konrad and its engine resolve regardless of the launcher.
+export PATH="$HOME/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin:$PATH"
+
 find_konrad() {
   if command -v konrad >/dev/null 2>&1; then command -v konrad; return 0; fi
   local c

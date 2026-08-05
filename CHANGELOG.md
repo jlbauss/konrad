@@ -26,6 +26,15 @@ build publishes as `:0.X` (minor line), `:latest`, and an immutable
   loudly instead of producing a dead icon. macOS-only; Linux already uses the
   desktop's default terminal.
 
+### Fixed
+
+- **Desktop launcher now sets a full PATH before starting konrad.** A GUI/Dock
+  launch (and terminals like Ghostty that run the launcher via `login -p`) starts
+  with a minimal PATH that omits `/usr/local/bin`, so konrad couldn't find Apple's
+  `container` engine and wrongly reported "Podman is not installed". The wrapper
+  now prepends the standard locations (`~/.local/bin`, Homebrew, `/usr/local/bin`)
+  so konrad and its engine resolve regardless of how the launcher was started.
+
 ## [0.25.0] - 2026-08-05
 
 ### Added
