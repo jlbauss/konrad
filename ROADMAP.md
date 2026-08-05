@@ -1,11 +1,6 @@
 # Roadmap & Backlog
 
-Two horizons: **Next** (beta → 1.0) and **Later** (post-1.0). Raw ideas land
-in the Inbox; upstream-blocked items sit at the bottom. Every bullet is
-self-contained — reorder freely. Sizes are planning guesses, not commitments:
-`S` (hours), `M` (a day or two), `L` (several days), `XL` (a week+).
-Conventions for what lands here (vs. CHANGELOG or a commit message) are in
-[CONTRIBUTING → When to update what](CONTRIBUTING.md#when-to-update-what).
+Two horizons: **Next** (beta → 1.0) and **Later** (post-1.0). Raw ideas land in the Inbox; upstream-blocked items sit at the bottom. Every bullet is self-contained — reorder freely. Sizes are planning guesses, not commitments: `S` (hours), `M` (a day or two), `L` (several days), `XL` (a week+). Conventions for what lands here (vs. CHANGELOG or a commit message) are in [CONTRIBUTING → When to update what](CONTRIBUTING.md#when-to-update-what).
 
 ## Inbox
 

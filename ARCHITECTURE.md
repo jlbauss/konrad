@@ -5,9 +5,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 # Architecture
 
-How Konrad is built and *why* — the load-bearing choices and the rationale
-behind the non-obvious ones. Where this doc and the code disagree, the code is
-canonical; fix the doc.
+How Konrad is built and *why* — the load-bearing choices and the rationale behind the non-obvious ones. Where this doc and the code disagree, the code is canonical; fix the doc.
 
 ## Repository guide
 

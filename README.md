@@ -133,43 +133,20 @@ Modifiers — pass them **before** the subcommand.
 
 ### Desktop launcher
 
-Prefer a clickable icon over the terminal? `konrad install-desktop` adds a
-user-scope launcher that opens a fresh scratch session (a GUI launch has no
-project folder, so a throwaway workspace is the sensible landing spot):
+Prefer a clickable icon over the terminal? `konrad install-desktop` adds a user-scope launcher that opens a fresh scratch session (a GUI launch has no project folder, so a throwaway workspace is the sensible landing spot):
 
-- **Linux** — a `konrad.desktop` entry in your application menu (opens your
-  terminal via `Terminal=true`).
-- **macOS** — a `~/Applications/Konrad.app` for the Dock, Launchpad, and
-  Spotlight.
+- **Linux** — a `konrad.desktop` entry in your application menu (opens your terminal via `Terminal=true`).
+- **macOS** — a `~/Applications/Konrad.app` for the Dock, Launchpad, and Spotlight.
 
-No root, nothing system-wide; `konrad install-desktop --remove` deletes it, and
-`konrad uninstall` sweeps it too. The `curl | sh` installer offers to create it
-for you (or set `KONRAD_DESKTOP=1` to opt in non-interactively). If the launcher
-is ever clicked on a machine where the `konrad` CLI is missing, it offers to
-install it first.
+No root, nothing system-wide; `konrad install-desktop --remove` deletes it, and `konrad uninstall` sweeps it too. The `curl | sh` installer offers to create it for you (or set `KONRAD_DESKTOP=1` to opt in non-interactively). If the launcher is ever clicked on a machine where the `konrad` CLI is missing, it offers to install it first.
 
-On **macOS**, the app opens Terminal.app by default; point it at another terminal
-with `KONRAD_TERMINAL` (`ghostty`, `alacritty`, or `iterm`) when you create it —
-e.g. `KONRAD_TERMINAL=ghostty konrad install-desktop` (the terminal must be
-installed). On **Linux** the entry uses your desktop's own default terminal, so
-there's nothing to set.
+On **macOS**, the app opens Terminal.app by default; point it at another terminal with `KONRAD_TERMINAL` (`ghostty`, `alacritty`, or `iterm`) when you create it — e.g. `KONRAD_TERMINAL=ghostty konrad install-desktop` (the terminal must be installed). On **Linux** the entry uses your desktop's own default terminal, so there's nothing to set.
 
 ### Staying current
 
-konrad keeps the **image** and your subscribed **org layers** fresh on its own: at
-launch, at most once a day, it fires a background refresh (a `:latest` pull + an
-org-layer sync) that runs detached — it never blocks or delays a run, and a fresh
-image is picked up on the *next* launch (you'll see a one-line note when that
-happens). Offline? The refresh silently gives up and the run proceeds on what you
-already have. Tune or disable it with `KONRAD_REFRESH_INTERVAL` /
-`KONRAD_NO_AUTO_REFRESH` (see [Environment variables](#environment-variables-advanced)); read the last run's log at
-`~/.local/state/konrad/refresh.log`.
+konrad keeps the **image** and your subscribed **org layers** fresh on its own: at launch, at most once a day, it fires a background refresh (a `:latest` pull + an org-layer sync) that runs detached — it never blocks or delays a run, and a fresh image is picked up on the *next* launch (you'll see a one-line note when that happens). Offline? The refresh silently gives up and the run proceeds on what you already have. Tune or disable it with `KONRAD_REFRESH_INTERVAL` / `KONRAD_NO_AUTO_REFRESH` (see [Environment variables](#environment-variables-advanced)); read the last run's log at `~/.local/state/konrad/refresh.log`.
 
-`konrad update` still does the same refresh **now**, synchronously, *and* updates
-the CLI itself — the one piece the background refresh deliberately leaves alone
-(the CLI updates through its install channel, never by a background process
-rewriting the running script). `konrad update --check` compares local vs. registry
-without pulling.
+`konrad update` still does the same refresh **now**, synchronously, *and* updates the CLI itself — the one piece the background refresh deliberately leaves alone (the CLI updates through its install channel, never by a background process rewriting the running script). `konrad update --check` compares local vs. registry without pulling.
 
 ## Status
 

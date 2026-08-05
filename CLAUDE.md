@@ -5,19 +5,13 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 # CLAUDE.md
 
-Guidance for AI agents working on Konrad's source. (Konrad's *runtime* agent
-behavior lives in `image/opencode/`, not here.) Canonical homes for everything
-else — link, don't restate: [README.md](README.md) (users) · [CONTRIBUTING.md](CONTRIBUTING.md)
-(dev + release process) · [ARCHITECTURE.md](ARCHITECTURE.md) (design + *why*) ·
-[ROADMAP.md](ROADMAP.md) (backlog) · [CHANGELOG.md](CHANGELOG.md) (released changes).
+Guidance for AI agents working on Konrad's source. (Konrad's *runtime* agent behavior lives in `image/opencode/`, not here.) Canonical homes for everything else — link, don't restate: [README.md](README.md) (users) · [CONTRIBUTING.md](CONTRIBUTING.md) (dev + release process) · [ARCHITECTURE.md](ARCHITECTURE.md) (design + *why*) · [ROADMAP.md](ROADMAP.md) (backlog) · [CHANGELOG.md](CHANGELOG.md) (released changes).
 
 Very important: ALWAYS read the README, ROADMAP, CONTRIBUTING and ARCHITECTURE docs once before you start planning or building, so they are in your context and you are able to follow the instructions they give.
 
 ## What this repo is
 
-`bin/konrad` is a host CLI that runs [opencode](https://github.com/sst/opencode) in
-a sandboxed Podman container. The image is the canonical artifact; the CLI is the
-primary consumer. Full design: [ARCHITECTURE.md](ARCHITECTURE.md).
+`bin/konrad` is a host CLI that runs [opencode](https://github.com/sst/opencode) in a sandboxed Podman container. The image is the canonical artifact; the CLI is the primary consumer. Full design: [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Validating a change (no automated tests)
 
@@ -28,21 +22,9 @@ konrad-dev rebuild && ./scripts/smoke-test.sh konrad:local  # build + smoke
 konrad-dev shell                                            # poke around the image
 ```
 
-Anything under `image/` is baked and needs `konrad-dev rebuild` before it takes
-effect (skills, agents, `environment.md`, Dockerfile, deps). `bin/konrad`,
-`scripts/`, and `.devcontainer/` are live — no rebuild. Dev loop and the
-`konrad`/`konrad-dev` split: [CONTRIBUTING.md](CONTRIBUTING.md).
+Anything under `image/` is baked and needs `konrad-dev rebuild` before it takes effect (skills, agents, `environment.md`, Dockerfile, deps). `bin/konrad`, `scripts/`, and `.devcontainer/` are live — no rebuild. Dev loop and the `konrad`/`konrad-dev` split: [CONTRIBUTING.md](CONTRIBUTING.md).
 
-A **first/uncached `konrad-dev rebuild` needs real RAM** on the *daemon* it
-builds against: the `python-models` stage pulls + processes ~1 GB of Docling
-weights through torch and is OOM-killed (exit 137, `Killed`) under ~2 GB. The
-build uses the daemon's full RAM — there is **no build `--memory` knob to raise**
-(it's a ceiling, not a floor), so the fix is more daemon memory, not a flag: on
-macOS `podman machine set --memory <MB>` (the build runs on the machine VM via
-the bound socket); the `.devcontainer` declares its own `hostRequirements` for
-orchestrated hosts. The model layer is byte-stable/commit-pinned, so a *warm*
-rebuild skips this stage entirely — it only bites the first build or after a
-cache wipe. On a too-small box, build in CI / on a bigger host instead.
+A **first/uncached `konrad-dev rebuild` needs real RAM** on the *daemon* it builds against: the `python-models` stage pulls + processes ~1 GB of Docling weights through torch and is OOM-killed (exit 137, `Killed`) under ~2 GB. The build uses the daemon's full RAM — there is **no build `--memory` knob to raise** (it's a ceiling, not a floor), so the fix is more daemon memory, not a flag: on macOS `podman machine set --memory <MB>` (the build runs on the machine VM via the bound socket); the `.devcontainer` declares its own `hostRequirements` for orchestrated hosts. The model layer is byte-stable/commit-pinned, so a *warm* rebuild skips this stage entirely — it only bites the first build or after a cache wipe. On a too-small box, build in CI / on a bigger host instead.
 
 ## Quick facts
 
@@ -53,9 +35,7 @@ cache wipe. On a too-small box, build in CI / on a bigger host instead.
 
 ## Working agreements
 
-Durable rules for every agent in this repo — written here (not just in per-session
-memory) so they travel with the repo to every machine. When the user gives a durable
-rule or preference, add it here as a bullet — that's what this section is for.
+Durable rules for every agent in this repo — written here (not just in per-session memory) so they travel with the repo to every machine. When the user gives a durable rule or preference, add it here as a bullet — that's what this section is for.
 
 ### Naming & terminology
 
@@ -83,7 +63,7 @@ rule or preference, add it here as a bullet — that's what this section is for.
 - Keep `bin/konrad` (and `image/entrypoint.sh`, `scripts/*.sh`) executable: a `644` `bin/konrad` breaks `konrad-dev`, so `chmod +x` after any rewrite that drops the bit and verify with `ls -l`.
 - Validate smoke locally before pushing CI changes (`scripts/smoke-test.sh`, `image/Dockerfile`, `image/build-manifest.sh`): `konrad-dev rebuild && ./scripts/smoke-test.sh konrad:local` beats a CI round-trip.
 - Prefer `trash` over `rm` inside `/workspace` — it survives rebuilds and is recoverable (`trash-restore` / `trash-list`). `rm` hard-deletes; use it deliberately.
-- Keep markdown **markdownlint-green** (like `reuse`/shellcheck): run `npx --yes markdownlint-cli2` before pushing doc changes; CI gates it — or `npx --yes markdownlint-cli2 --fix` to *auto-normalize* style rather than hand-correcting (it fixes emphasis/strong/list/fence style in place). House style is pinned in the ruleset (not left to markdownlint's drift-prone `consistent` mode) — write it this way by default: `*italic*` and `**bold**` (asterisks, never `_`/`__`), `-` bullets, backtick fences, `---` rules, ATX `#` headings, incrementing `1. 2. 3.` ordered lists. Rules live in `.markdownlint.jsonc` (the shared ruleset — config-layer repos symlink it, so a rule change here propagates on their next submodule bump), scope/ignores in `.markdownlint-cli2.jsonc`. The VS Code extension (`DavidAnson.vscode-markdownlint`) flags issues live. Baked `image/**` docs are deliberately out of scope — they ride intentional image rebuilds, not a docs linter.
+- Keep markdown **markdownlint-green** (like `reuse`/shellcheck): run `npx --yes markdownlint-cli2` before pushing doc changes; CI gates it — or `npx --yes markdownlint-cli2 --fix` to *auto-normalize* style rather than hand-correcting (it fixes emphasis/strong/list/fence style in place). House style is pinned in the ruleset (not left to markdownlint's drift-prone `consistent` mode) — write it this way by default: `*italic*` and `**bold**` (asterisks, never `_`/`__`), `-` bullets, backtick fences, `---` rules, ATX `#` headings, incrementing `1. 2. 3.` ordered lists. **One long line per paragraph / bullet / blockquote — never hard-wrap prose at a column** (`MD013` is off for exactly this; wrap only what must stay multi-line: code fences, tables, distinct license-header lines). A column break renders fine in a file view, but GitHub *Release notes* turn every newline into a `<br>`, so a column-wrapped `CHANGELOG.md` ships ragged releases — and mixing both styles reads as sloppy. Rules live in `.markdownlint.jsonc` (the shared ruleset — config-layer repos symlink it, so a rule change here propagates on their next submodule bump), scope/ignores in `.markdownlint-cli2.jsonc`. The VS Code extension (`DavidAnson.vscode-markdownlint`) flags issues live. Baked `image/**` docs are deliberately out of scope — they ride intentional image rebuilds, not a docs linter.
 
 ### Tooling & shell discipline
 

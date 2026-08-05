@@ -5,14 +5,9 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 # Changelog
 
-All notable, user-facing changes to konrad. The format follows
-[Keep a Changelog](https://keepachangelog.com/en/1.1.0/); konrad follows
-[semantic versioning](CONTRIBUTING.md#versioning) (pre-1.0: `0.X.Y`).
+All notable, user-facing changes to konrad. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); konrad follows [semantic versioning](CONTRIBUTING.md#versioning) (pre-1.0: `0.X.Y`).
 
-Entries stay terse — the *why* lives in the git commit log and the
-[ARCHITECTURE.md](ARCHITECTURE.md), linked rather than restated. Each image
-build publishes as `:0.X` (minor line), `:latest`, and an immutable
-`:<short-sha>` (see the [image tags](CONTRIBUTING.md#image-tags)).
+Entries stay terse — the *why* lives in the git commit log and the [ARCHITECTURE.md](ARCHITECTURE.md), linked rather than restated. Each image build publishes as `:0.X` (minor line), `:latest`, and an immutable `:<short-sha>` (see the [image tags](CONTRIBUTING.md#image-tags)).
 
 ## [Unreleased]
 
@@ -20,314 +15,153 @@ build publishes as `:0.X` (minor line), `:latest`, and an immutable
 
 ### Added
 
-- **`KONRAD_TERMINAL` — pick the terminal the macOS launcher opens.**
-  `KONRAD_TERMINAL=ghostty|alacritty|iterm konrad install-desktop` makes
-  `Konrad.app` open that terminal instead of the default Terminal.app (macOS has
-  no OS-level default-terminal setting). A non-default choice is validated
-  against LaunchServices at install, so a typo or an uninstalled terminal fails
-  loudly instead of producing a dead icon. macOS-only; Linux already uses the
-  desktop's default terminal.
+- **`KONRAD_TERMINAL` — pick the terminal the macOS launcher opens.** `KONRAD_TERMINAL=ghostty|alacritty|iterm konrad install-desktop` makes `Konrad.app` open that terminal instead of the default Terminal.app (macOS has no OS-level default-terminal setting). A non-default choice is validated against LaunchServices at install, so a typo or an uninstalled terminal fails loudly instead of producing a dead icon. macOS-only; Linux already uses the desktop's default terminal.
 
 ### Fixed
 
-- **Desktop launcher now sets a full PATH before starting konrad.** A GUI/Dock
-  launch (and terminals like Ghostty that run the launcher via `login -p`) starts
-  with a minimal PATH that omits `/usr/local/bin`, so konrad couldn't find Apple's
-  `container` engine and wrongly reported "Podman is not installed". The wrapper
-  now prepends the standard locations (`~/.local/bin`, Homebrew, `/usr/local/bin`)
-  so konrad and its engine resolve regardless of how the launcher was started.
+- **Desktop launcher now sets a full PATH before starting konrad.** A GUI/Dock launch (and terminals like Ghostty that run the launcher via `login -p`) starts with a minimal PATH that omits `/usr/local/bin`, so konrad couldn't find Apple's `container` engine and wrongly reported "Podman is not installed". The wrapper now prepends the standard locations (`~/.local/bin`, Homebrew, `/usr/local/bin`) so konrad and its engine resolve regardless of how the launcher was started.
 
 ## [0.25.0] - 2026-08-05
 
 ### Added
 
-- **Desktop launcher (`konrad install-desktop`).** Adds a user-scope clickable
-  launcher that opens a scratch session — a Linux application-menu entry or a
-  macOS `~/Applications/Konrad.app` (Dock / Launchpad / Spotlight). No root;
-  `install-desktop --remove` deletes it and `uninstall` sweeps it. The `curl|sh`
-  installer offers to create it (`KONRAD_DESKTOP=1`/`0` to force the choice), and
-  the launcher offers to install the CLI if it's ever clicked without one.
-  Ships konrad's first logo (`assets/konrad.svg`). Rationale:
-  [ARCHITECTURE.md](ARCHITECTURE.md#distribution--updates).
+- **Desktop launcher (`konrad install-desktop`).** Adds a user-scope clickable launcher that opens a scratch session — a Linux application-menu entry or a macOS `~/Applications/Konrad.app` (Dock / Launchpad / Spotlight). No root; `install-desktop --remove` deletes it and `uninstall` sweeps it. The `curl|sh` installer offers to create it (`KONRAD_DESKTOP=1`/`0` to force the choice), and the launcher offers to install the CLI if it's ever clicked without one. Ships konrad's first logo (`assets/konrad.svg`). Rationale: [ARCHITECTURE.md](ARCHITECTURE.md#distribution--updates).
 
 ## [0.24.0] - 2026-08-05
 
 ### Added
 
-- **Ephemeral scratch workspaces for no-project launches.** `konrad scratch`
-  launches the TUI in a fresh throwaway workspace under
-  `~/.local/state/konrad/scratch/`, and running `konrad` straight from your home
-  folder now redirects there instead of refusing. `konrad open` reveals the
-  newest scratch workspace in your file manager (`open` / `xdg-open`). Rationale:
-  [ARCHITECTURE.md](ARCHITECTURE.md#state-secrets--isolation).
+- **Ephemeral scratch workspaces for no-project launches.** `konrad scratch` launches the TUI in a fresh throwaway workspace under `~/.local/state/konrad/scratch/`, and running `konrad` straight from your home folder now redirects there instead of refusing. `konrad open` reveals the newest scratch workspace in your file manager (`open` / `xdg-open`). Rationale: [ARCHITECTURE.md](ARCHITECTURE.md#state-secrets--isolation).
 
 ### Changed
 
-- **State retention is one shared knob.** `KONRAD_RETENTION_DAYS` (default 30,
-  `0` disables) prunes both the log dir and the scratch workspaces at launch;
-  the log dir's previous fixed 7-day window is now 30. `konrad reset` also wipes
-  scratch workspaces.
-- **`konrad --version` and the startup banner now report image *provenance*
-  instead of a misleading image "version".** The image is identified by what
-  actually pins it: `<short-sha> (built <date>) · cli <X> at build`. The startup
-  banner reads `cli <X> · image <short-sha> (built <date>) · <engine>`, and
-  `--version` breaks onto three tidy lines (cli / image / engine). The image's
-  own version label drifts from the CLI on CLI-only patches, so leading with it
-  read like a mismatch; the short-sha + build date + CLI-at-build don't.
+- **State retention is one shared knob.** `KONRAD_RETENTION_DAYS` (default 30, `0` disables) prunes both the log dir and the scratch workspaces at launch; the log dir's previous fixed 7-day window is now 30. `konrad reset` also wipes scratch workspaces.
+- **`konrad --version` and the startup banner now report image *provenance* instead of a misleading image "version".** The image is identified by what actually pins it: `<short-sha> (built <date>) · cli <X> at build`. The startup banner reads `cli <X> · image <short-sha> (built <date>) · <engine>`, and `--version` breaks onto three tidy lines (cli / image / engine). The image's own version label drifts from the CLI on CLI-only patches, so leading with it read like a mismatch; the short-sha + build date + CLI-at-build don't.
 
 ### Fixed
 
-- **Debug/help output names the engine actually in use.** The `-v` launch
-  labels and the `--help` build-manifest example were hardcoded to "podman" and
-  read wrong on the apple/container engine; they now reflect the active engine.
+- **Debug/help output names the engine actually in use.** The `-v` launch labels and the `--help` build-manifest example were hardcoded to "podman" and read wrong on the apple/container engine; they now reflect the active engine.
 
 ## [0.23.2] - 2026-08-05
 
 ### Fixed
 
-- **Egress firewall no longer leaks networks — and self-heals ones already
-  leaked.** A failed or interrupted network create used to leave its network
-  behind (the teardown flag was set too late); on Apple's `container` engine
-  each orphan is a live `vmnet` service, and a pile of them wedged `container
-  system start`. The flag is now set before the create, every firewall launch
-  sweeps orphaned `konrad-fw-*` nets from dead runs (concurrent runs untouched),
-  and a wedged create fails fast (`--no-firewall` / `KONRAD_ENGINE=podman`
-  named) instead of hanging.
+- **Egress firewall no longer leaks networks — and self-heals ones already leaked.** A failed or interrupted network create used to leave its network behind (the teardown flag was set too late); on Apple's `container` engine each orphan is a live `vmnet` service, and a pile of them wedged `container system start`. The flag is now set before the create, every firewall launch sweeps orphaned `konrad-fw-*` nets from dead runs (concurrent runs untouched), and a wedged create fails fast (`--no-firewall` / `KONRAD_ENGINE=podman` named) instead of hanging.
 
 ## [0.23.1] - 2026-08-04
 
 ### Fixed
 
-- **docling PDF conversion no longer fails.** The RT-DETR-v2 layout stage
-  ("heron", via transformers) began routing through `torch.compile` →
-  `_inductor`, which JIT-compiles CPU kernels with a `g++` this slim image
-  doesn't ship — so every convert died with `InvalidCxxCompiler`. torch now runs
-  eager (`TORCHDYNAMO_DISABLE`), which needs no compiler and is faster for
-  one-shot conversions.
+- **docling PDF conversion no longer fails.** The RT-DETR-v2 layout stage ("heron", via transformers) began routing through `torch.compile` → `_inductor`, which JIT-compiles CPU kernels with a `g++` this slim image doesn't ship — so every convert died with `InvalidCxxCompiler`. torch now runs eager (`TORCHDYNAMO_DISABLE`), which needs no compiler and is faster for one-shot conversions.
 
 ## [0.23.0] - 2026-07-29
 
 ### Added
 
-- **Notice queue.** The background refresh and org `post-sync` hooks can now
-  surface news — image updates, refresh faults, an expired credential that froze
-  a layer — at the member's next launch, not just in a log nobody reads. A
-  severity ladder (`info` line / `warn` block / `blocked` + one Enter) that never
-  breaks a piped `konrad run`; stateless, so a fixed fault's notice clears
-  itself. Suppress with `KONRAD_NO_NOTICES=1`.
-- **Org post-sync hook contract.** Hooks now receive `KONRAD_NOTICE_DIR` (a
-  first-class channel to their own members, rendered attributed + sanitized),
-  `KONRAD_LAYER_NAME`, and `KONRAD_HOOK_INTERACTIVE`, and are bounded by
-  `KONRAD_HOOK_TIMEOUT` (default 120 s) so an unwatched hang can't live until
-  reboot. A hook that fails without writing a notice has its last output promoted
-  into a warning, so existing layers gain visibility with no change.
+- **Notice queue.** The background refresh and org `post-sync` hooks can now surface news — image updates, refresh faults, an expired credential that froze a layer — at the member's next launch, not just in a log nobody reads. A severity ladder (`info` line / `warn` block / `blocked` + one Enter) that never breaks a piped `konrad run`; stateless, so a fixed fault's notice clears itself. Suppress with `KONRAD_NO_NOTICES=1`.
+- **Org post-sync hook contract.** Hooks now receive `KONRAD_NOTICE_DIR` (a first-class channel to their own members, rendered attributed + sanitized), `KONRAD_LAYER_NAME`, and `KONRAD_HOOK_INTERACTIVE`, and are bounded by `KONRAD_HOOK_TIMEOUT` (default 120 s) so an unwatched hang can't live until reboot. A hook that fails without writing a notice has its last output promoted into a warning, so existing layers gain visibility with no change.
 
 ### Fixed
 
-- `KONRAD_IMAGE` (pinning what *runs*, e.g. a `:pr-N` test image) no longer
-  silently freezes org-layer sync — the two are independent channels now.
-- The background refresh can no longer hang on a git credential prompt: a
-  credential-less `git fetch` fails fast (`GIT_TERMINAL_PROMPT=0`) instead of
-  blocking on `/dev/tty`, and a black-holed connection aborts rather than hanging
-  (`http.lowSpeed*`).
+- `KONRAD_IMAGE` (pinning what *runs*, e.g. a `:pr-N` test image) no longer silently freezes org-layer sync — the two are independent channels now.
+- The background refresh can no longer hang on a git credential prompt: a credential-less `git fetch` fails fast (`GIT_TERMINAL_PROMPT=0`) instead of blocking on `/dev/tty`, and a black-holed connection aborts rather than hanging (`http.lowSpeed*`).
 
 ## [0.22.1] - 2026-07-29
 
 ### Fixed
 
-- Background auto-update no longer aborts a launch on the first run after
-  upgrading: reading the (not-yet-existent) throttle stamp under
-  `set -euo pipefail` could exit the CLI silently before it started. Launches
-  are now robust to a missing or malformed stamp.
+- Background auto-update no longer aborts a launch on the first run after upgrading: reading the (not-yet-existent) throttle stamp under `set -euo pipefail` could exit the CLI silently before it started. Launches are now robust to a missing or malformed stamp.
 
 ## [0.22.0] - 2026-07-29
 
 ### Added
 
-- **Background auto-update.** Every launch now opportunistically refreshes the
-  image and subscribed org layers in a detached, throttled worker (at most once
-  daily) — it never blocks or delays a run, a newer image is used on the next
-  launch (with a one-line note), and offline it silently gives up. The CLI still
-  updates through its install channel, not the background worker. Tune with
-  `KONRAD_REFRESH_INTERVAL` / `KONRAD_NO_AUTO_REFRESH`; `konrad update` forces
-  the same refresh synchronously.
+- **Background auto-update.** Every launch now opportunistically refreshes the image and subscribed org layers in a detached, throttled worker (at most once daily) — it never blocks or delays a run, a newer image is used on the next launch (with a one-line note), and offline it silently gives up. The CLI still updates through its install channel, not the background worker. Tune with `KONRAD_REFRESH_INTERVAL` / `KONRAD_NO_AUTO_REFRESH`; `konrad update` forces the same refresh synchronously.
 
 ### Changed
 
-- Shared `.markdownlint.jsonc` now pins emphasis/list/fence/heading style (was
-  markdownlint's per-file `consistent` mode); repos symlinking it should run
-  `markdownlint-cli2 --fix` once after bumping.
+- Shared `.markdownlint.jsonc` now pins emphasis/list/fence/heading style (was markdownlint's per-file `consistent` mode); repos symlinking it should run `markdownlint-cli2 --fix` once after bumping.
 
 ## [0.21.0] - 2026-07-24
 
 ### Added
 
-- **Inline model discovery.** For every provider with a `baseURL` — the pre-wired
-  local engines and your own OpenAI-compatible endpoints — konrad now probes the
-  `/models` list at session start and fills the picker automatically, so a running
-  local server usually needs no config. It's a bounded, parallel probe through the
-  egress firewall, so authenticated remote endpoints are covered too; declared
-  models still win, and it opts out with `KONRAD_NO_DISCOVERY=1` (per-probe ceiling
-  `KONRAD_DISCOVERY_TIMEOUT`). It also sets each model's context window — read from
-  `/v1/models` (vLLM, llama.cpp) or the server's native endpoint (LM Studio,
-  Ollama) — so opencode's auto-compaction works without hand-declaring
-  `limit.context` (with a derived `limit.output` of `context/6`, overridable).
-  Replaces the dropped `opencode-models-discovery` plugin.
+- **Inline model discovery.** For every provider with a `baseURL` — the pre-wired local engines and your own OpenAI-compatible endpoints — konrad now probes the `/models` list at session start and fills the picker automatically, so a running local server usually needs no config. It's a bounded, parallel probe through the egress firewall, so authenticated remote endpoints are covered too; declared models still win, and it opts out with `KONRAD_NO_DISCOVERY=1` (per-probe ceiling `KONRAD_DISCOVERY_TIMEOUT`). It also sets each model's context window — read from `/v1/models` (vLLM, llama.cpp) or the server's native endpoint (LM Studio, Ollama) — so opencode's auto-compaction works without hand-declaring `limit.context` (with a derived `limit.output` of `context/6`, overridable). Replaces the dropped `opencode-models-discovery` plugin.
 
 ## [0.20.0] - 2026-07-15
 
 ### Added
 
-- **GitHub mirror is public, with mirrored releases.** The mirror
-  ([github.com/jlbauss/konrad](https://github.com/jlbauss/konrad)) flips from
-  private CI surface to public for discoverability; a new
-  [mirror-release.yml](.github/workflows/mirror-release.yml) recreates each
-  GitLab release there from the mirrored `v*` tag and the same CHANGELOG
-  section. Contributions stay on GitLab.
+- **GitHub mirror is public, with mirrored releases.** The mirror ([github.com/jlbauss/konrad](https://github.com/jlbauss/konrad)) flips from private CI surface to public for discoverability; a new [mirror-release.yml](.github/workflows/mirror-release.yml) recreates each GitLab release there from the mirrored `v*` tag and the same CHANGELOG section. Contributions stay on GitLab.
 
 ### Changed
 
-- **README reworked for the beta.** Getting started is now a three-step quick
-  start (install → connect a model → run); the status flips alpha → beta; all
-  eight bundled skills are documented (`image-editing`, `frontend-design`,
-  `grill-me`, and `write-a-skill` were missing); stale content corrected — the
-  `-v` HTTP-trace claim (opt-in via `KONRAD_TRACE_FETCH=1` since 0.5.0), a dead
-  LM Studio troubleshooting row, and the pre-0.18 org-instructions path. Later
-  sections slimmed to user essentials — deep design detail now lives only in
-  [ARCHITECTURE.md](ARCHITECTURE.md), org-layer mechanics in ARCHITECTURE and
-  [`examples/org-package/`](examples/org-package/). Closes the ROADMAP's last
-  Tier 1 (road-to-beta) item.
+- **README reworked for the beta.** Getting started is now a three-step quick start (install → connect a model → run); the status flips alpha → beta; all eight bundled skills are documented (`image-editing`, `frontend-design`, `grill-me`, and `write-a-skill` were missing); stale content corrected — the `-v` HTTP-trace claim (opt-in via `KONRAD_TRACE_FETCH=1` since 0.5.0), a dead LM Studio troubleshooting row, and the pre-0.18 org-instructions path. Later sections slimmed to user essentials — deep design detail now lives only in [ARCHITECTURE.md](ARCHITECTURE.md), org-layer mechanics in ARCHITECTURE and [`examples/org-package/`](examples/org-package/). Closes the ROADMAP's last Tier 1 (road-to-beta) item.
 
 ## [0.19.0] - 2026-07-09
 
 ### Changed
 
-- **Default resource ceilings lowered to leave headroom for a co-resident local
-  model.** The auto-scaled RAM cap is now clamped to at most `8G` (was up to half
-  the host, `32G`) and the CPU cap to at most `8` cores (was all-but-two,
-  uncapped), so konrad no longer claims most of a big workstation that is also
-  serving a local model. `docling` fits comfortably in both; raise them with
-  `KONRAD_MEMORY` / `KONRAD_CPUS` for heavy OCR. Only affects machines above
-  ~`16G` / ~10 cores — smaller hosts are unchanged.
+- **Default resource ceilings lowered to leave headroom for a co-resident local model.** The auto-scaled RAM cap is now clamped to at most `8G` (was up to half the host, `32G`) and the CPU cap to at most `8` cores (was all-but-two, uncapped), so konrad no longer claims most of a big workstation that is also serving a local model. `docling` fits comfortably in both; raise them with `KONRAD_MEMORY` / `KONRAD_CPUS` for heavy OCR. Only affects machines above ~`16G` / ~10 cores — smaller hosts are unchanged.
 
 ### Security
 
-- **Container hardening on the Podman path.** The agent and proxy containers now
-  run with every Linux capability dropped (`--cap-drop=ALL`),
-  `--security-opt=no-new-privileges`, and a task-count cap (`--pids-limit`,
-  default `1024`, override via `KONRAD_PIDS_LIMIT`) that bounds a fork bomb below
-  the host's PID max. Apple's `container` already bounds these at its per-container
-  VM boundary. Closes the beta container-hardening items from the
-  [security audit](SECURITY-AUDIT.md).
+- **Container hardening on the Podman path.** The agent and proxy containers now run with every Linux capability dropped (`--cap-drop=ALL`), `--security-opt=no-new-privileges`, and a task-count cap (`--pids-limit`, default `1024`, override via `KONRAD_PIDS_LIMIT`) that bounds a fork bomb below the host's PID max. Apple's `container` already bounds these at its per-container VM boundary. Closes the beta container-hardening items from the [security audit](SECURITY-AUDIT.md).
 
 ## [0.18.2] - 2026-07-09
 
 ### Fixed
 
-- **Org/user `opencode.json` layers are no longer firewall-blocked.** The egress
-  allow-list derivation ([compose-allowed-hosts.sh](image/konrad-defaults/compose-allowed-hosts.sh))
-  globbed only each layer's `opencode.jsonc`, so a layer whose config was named
-  `opencode.json` (accepted everywhere else since 0.18.1) had its declared
-  provider `baseURL` host silently dropped from the allow-list — the provider
-  worked as a model but the proxy default-denied it. The derivation now accepts
-  either extension, matching the config compose; the smoke test exercises a
-  mixed-extension layer set so it can't regress.
+- **Org/user `opencode.json` layers are no longer firewall-blocked.** The egress allow-list derivation ([compose-allowed-hosts.sh](image/konrad-defaults/compose-allowed-hosts.sh)) globbed only each layer's `opencode.jsonc`, so a layer whose config was named `opencode.json` (accepted everywhere else since 0.18.1) had its declared provider `baseURL` host silently dropped from the allow-list — the provider worked as a model but the proxy default-denied it. The derivation now accepts either extension, matching the config compose; the smoke test exercises a mixed-extension layer set so it can't regress.
 
 ## [0.18.1] - 2026-07-09
 
 ### Fixed
 
-- **Org/user config layers may be named `opencode.json` or `opencode.jsonc`.** The
-  startup compose (and `konrad connect --custom`) only loaded `opencode.jsonc`,
-  silently ignoring a layer's `opencode.json` — even though opencode accepts both
-  and konrad's merge parses either. Each layer now takes either extension (`.jsonc`
-  wins if both exist, with a warning).
-- **`konrad connect --custom` detects providers declared in named org layers.** It
-  scanned a flat `org/opencode.jsonc`, which no longer exists since 0.18 made
-  `org/` a container of named layers (`org/<name>/`); it now globs them like the
-  compose does, so an org-shipped custom provider is recognised instead of
-  prompting to re-declare it.
+- **Org/user config layers may be named `opencode.json` or `opencode.jsonc`.** The startup compose (and `konrad connect --custom`) only loaded `opencode.jsonc`, silently ignoring a layer's `opencode.json` — even though opencode accepts both and konrad's merge parses either. Each layer now takes either extension (`.jsonc` wins if both exist, with a warning).
+- **`konrad connect --custom` detects providers declared in named org layers.** It scanned a flat `org/opencode.jsonc`, which no longer exists since 0.18 made `org/` a container of named layers (`org/<name>/`); it now globs them like the compose does, so an org-shipped custom provider is recognised instead of prompting to re-declare it.
 
 ## [0.18.0] - 2026-07-06
 
 ### Added
 
-- **`konrad org` — git-native org-layer subscriptions.** `org add <git-url>`
-  clones an organization's config repo to `~/.config/konrad/org/<name>/`;
-  `org sync` (riding every `konrad update`) keeps it fresh as a managed mirror;
-  `org list` / `org remove` round out the lifecycle. A layer may ship a
-  `hooks/post-sync` konrad runs host-side after add + every sync (subscribing
-  is trusting). Several layers compose in alphabetical name order. `git` is a
-  new soft dependency, needed only by these verbs. See
-  [README → For organizations](README.md#for-organizations).
+- **`konrad org` — git-native org-layer subscriptions.** `org add <git-url>` clones an organization's config repo to `~/.config/konrad/org/<name>/`; `org sync` (riding every `konrad update`) keeps it fresh as a managed mirror; `org list` / `org remove` round out the lifecycle. A layer may ship a `hooks/post-sync` konrad runs host-side after add + every sync (subscribing is trusting). Several layers compose in alphabetical name order. `git` is a new soft dependency, needed only by these verbs. See [README → For organizations](README.md#for-organizations).
 
 ### Changed
 
-- **BREAKING: `~/.config/konrad/org/` is now a container of named layers**
-  (`org/<name>/`), not a layer itself — a flat pre-0.18 `org/` no longer loads
-  (konrad warns at launch). Migrate:
-  `cd ~/.config/konrad && mv org myorg && mkdir org && mv myorg org/` — or
-  resubscribe with `konrad org add <your org repo>`.
-  [`examples/org-package/`](examples/org-package/) is now a git-native example
-  repo (its `install.sh` is gone).
+- **BREAKING: `~/.config/konrad/org/` is now a container of named layers** (`org/<name>/`), not a layer itself — a flat pre-0.18 `org/` no longer loads (konrad warns at launch). Migrate: `cd ~/.config/konrad && mv org myorg && mkdir org && mv myorg org/` — or resubscribe with `konrad org add <your org repo>`. [`examples/org-package/`](examples/org-package/) is now a git-native example repo (its `install.sh` is gone).
 
 ## [0.17.2] - 2026-06-25
 
 ### Fixed
 
-- **The agent can ask you questions again.** opencode's `question` tool (the
-  multiple-choice picker konrad's instructions tell it to use for decisions and
-  clarifications) is opt-in and was never enabled, so the agent hit "tool not
-  available" and fell back to prose. The baseline now allows it (`todowrite`
-  pinned alongside for good measure).
+- **The agent can ask you questions again.** opencode's `question` tool (the multiple-choice picker konrad's instructions tell it to use for decisions and clarifications) is opt-in and was never enabled, so the agent hit "tool not available" and fell back to prose. The baseline now allows it (`todowrite` pinned alongside for good measure).
 
 ## [0.17.1] - 2026-06-24
 
 ### Fixed
 
-- **Modifier flags after a subcommand now error instead of being silently dropped.**
-  `konrad shell --no-firewall` used to run the firewall anyway — the flag vanished;
-  konrad now fails with a hint to put modifier flags before the subcommand.
+- **Modifier flags after a subcommand now error instead of being silently dropped.** `konrad shell --no-firewall` used to run the firewall anyway — the flag vanished; konrad now fails with a hint to put modifier flags before the subcommand.
 
 ## [0.17.0] - 2026-06-23
 
 ### Added
 
-- **Additive instruction files per layer (`instructions/*.md`).** Drop any number
-  of `.md` files into a layer's `instructions/` dir (`~/.config/konrad/org/instructions/`,
-  `~/.config/konrad/user/instructions/`) and each is appended to the system
-  instructions — additively across `baked < org < user`, nothing dropped, no need
-  to touch the `instructions` array. opencode expands the layered globs itself
-  (absent dirs are skipped). `org/AGENTS.md` still works as a single-file
-  back-compat alias.
+- **Additive instruction files per layer (`instructions/*.md`).** Drop any number of `.md` files into a layer's `instructions/` dir (`~/.config/konrad/org/instructions/`, `~/.config/konrad/user/instructions/`) and each is appended to the system instructions — additively across `baked < org < user`, nothing dropped, no need to touch the `instructions` array. opencode expands the layered globs itself (absent dirs are skipped). `org/AGENTS.md` still works as a single-file back-compat alias.
 
 ## [0.16.0] - 2026-06-23
 
 ### Changed
 
-- **Coherent install / launch / `--version` output.** `scripts/install.sh` now
-  uses the same styled output as the CLI (the dim `konrad` prefix, colored
-  `warning:`/`error:` tags, `✓`/`→` glyphs, `NO_COLOR`-aware), and delegates the
-  image pre-pull to `konrad pull-image` — so it starts the container engine the
-  same way a normal run does instead of warning and skipping.
-- **Compact `konrad --version`.** Now mirrors the startup banner — a
-  `cli X · image Y` headline (CLI and image versions kept distinct) plus one dim
-  line with the immutable pin (registry repo : short-sha), local tag, build
-  date, and engine.
-- **Quieter launch on Apple `container`.** The egress-seal step is now a clean
-  `✓ egress seal` phase line instead of a verbose `konrad egress seal: …`
-  message that interrupted the launch sequence (the gateway IP moved to `-v`).
+- **Coherent install / launch / `--version` output.** `scripts/install.sh` now uses the same styled output as the CLI (the dim `konrad` prefix, colored `warning:`/`error:` tags, `✓`/`→` glyphs, `NO_COLOR`-aware), and delegates the image pre-pull to `konrad pull-image` — so it starts the container engine the same way a normal run does instead of warning and skipping.
+- **Compact `konrad --version`.** Now mirrors the startup banner — a `cli X · image Y` headline (CLI and image versions kept distinct) plus one dim line with the immutable pin (registry repo : short-sha), local tag, build date, and engine.
+- **Quieter launch on Apple `container`.** The egress-seal step is now a clean `✓ egress seal` phase line instead of a verbose `konrad egress seal: …` message that interrupted the launch sequence (the gateway IP moved to `-v`).
 
 ## [0.15.0] - 2026-06-23
 
 ### Added
 
-- **Read-only `context/` mount.** Drop reference material (a mirrored wiki,
-  internal docs) into `~/.config/konrad/context/<name>/` and Konrad bind-mounts
-  it read-only at `/context/<name>` so the agent can `grep` it with no network
-  and no stored secret. Not a config layer — see
-  [Reference material](README.md#reference-material-the-context-mount) and
-  [ARCHITECTURE](ARCHITECTURE.md#state-secrets--isolation).
+- **Read-only `context/` mount.** Drop reference material (a mirrored wiki, internal docs) into `~/.config/konrad/context/<name>/` and Konrad bind-mounts it read-only at `/context/<name>` so the agent can `grep` it with no network and no stored secret. Not a config layer — see [Reference material](README.md#reference-material-the-context-mount) and [ARCHITECTURE](ARCHITECTURE.md#state-secrets--isolation).
 
 ## [0.14.1] - 2026-06-21
 
@@ -339,270 +173,134 @@ build publishes as `:0.X` (minor line), `:latest`, and an immutable
 
 ### Changed
 
-- **Image tags reduced to `:0.X` / `:latest` / `:<short-sha>`.** Dropped the
-  `:0.X.Y` and `:0.X.Y-YYYY-MM-DD` tags — neither was reliably immutable or
-  reliably present (`VERSION` drives the CLI, not image content). `:<short-sha>`
-  is now the one immutable per-build handle, and `konrad --version` prints it as
-  the image identity. See [image tags](CONTRIBUTING.md#image-tags).
-- **CLI action verbs are subcommands, not flags (breaking).** `konrad update`,
-  `shell`, `reset`, `uninstall` (and `konrad-dev rebuild`) replace `--update`,
-  `--shell`/`-s`, `--reset`, `--uninstall`, `--rebuild`; `--check-updates` is now
-  `update --check`. Only run modifiers (`--profile`, `--no-firewall`,
-  `--allow-host`, `-v`) and the meta flags `--version`/`--help` remain flags.
-- **Restyled startup output.** One `konrad` identity (host + container) with
-  indented ✓/→ phase steps, color- and TTY-gated (plain when piped / in CI);
-  incidental lines (prune count, log path, preflight) moved behind `-v`. The
-  config line names the active layers (e.g. `config · baked + user`).
-- **The engine is started automatically when stopped** — a halted Podman machine
-  or Apple `container` service is brought up instead of erroring out.
-- **`konrad update` refreshes the CLI first, then the image**, by delegating the
-  whole job to the installer (one source of truth for both halves).
+- **Image tags reduced to `:0.X` / `:latest` / `:<short-sha>`.** Dropped the `:0.X.Y` and `:0.X.Y-YYYY-MM-DD` tags — neither was reliably immutable or reliably present (`VERSION` drives the CLI, not image content). `:<short-sha>` is now the one immutable per-build handle, and `konrad --version` prints it as the image identity. See [image tags](CONTRIBUTING.md#image-tags).
+- **CLI action verbs are subcommands, not flags (breaking).** `konrad update`, `shell`, `reset`, `uninstall` (and `konrad-dev rebuild`) replace `--update`, `--shell`/`-s`, `--reset`, `--uninstall`, `--rebuild`; `--check-updates` is now `update --check`. Only run modifiers (`--profile`, `--no-firewall`, `--allow-host`, `-v`) and the meta flags `--version`/`--help` remain flags.
+- **Restyled startup output.** One `konrad` identity (host + container) with indented ✓/→ phase steps, color- and TTY-gated (plain when piped / in CI); incidental lines (prune count, log path, preflight) moved behind `-v`. The config line names the active layers (e.g. `config · baked + user`).
+- **The engine is started automatically when stopped** — a halted Podman machine or Apple `container` service is brought up instead of erroring out.
+- **`konrad update` refreshes the CLI first, then the image**, by delegating the whole job to the installer (one source of truth for both halves).
 - Renamed the installer `scripts/install-remote.sh` → `scripts/install.sh`.
 
 ### Added
 
-- **`konrad opencode <args…>` pass-through.** A generic escape hatch that execs
-  `opencode <args…>` in the sandbox — covers the opencode subcommands konrad
-  doesn't wrap (`opencode models`, `agent list`, `session list`, …) without a
-  bespoke verb each. Firewall on, stdout output, like `run`.
-- **`$HOME`-as-workspace guard.** konrad refuses to run with your home directory
-  as `/workspace` — it would expose all of `$HOME` to the agent and the mount is
-  refused outright on SELinux / macOS — and names the fix (`cd` into a project).
+- **`konrad opencode <args…>` pass-through.** A generic escape hatch that execs `opencode <args…>` in the sandbox — covers the opencode subcommands konrad doesn't wrap (`opencode models`, `agent list`, `session list`, …) without a bespoke verb each. Firewall on, stdout output, like `run`.
+- **`$HOME`-as-workspace guard.** konrad refuses to run with your home directory as `/workspace` — it would expose all of `$HOME` to the agent and the mount is refused outright on SELinux / macOS — and names the fix (`cd` into a project).
 - **Clearer "engine not installed" error** with the per-OS install one-liner.
 
 ### Removed
 
-- **konrad no longer touches your workspace at startup** — no `.gitignore` edits,
-  no `.agent/` pre-creation, no `.agent/` auto-prune, no session sidecar. The
-  agent and the quality-assurance helper create what they need on demand.
-- **Dropped the pre-0.4 flat-config auto-migration.** Move a pre-0.4 config into
-  `~/.config/konrad/user/` by hand (see README → Configuration).
+- **konrad no longer touches your workspace at startup** — no `.gitignore` edits, no `.agent/` pre-creation, no `.agent/` auto-prune, no session sidecar. The agent and the quality-assurance helper create what they need on demand.
+- **Dropped the pre-0.4 flat-config auto-migration.** Move a pre-0.4 config into `~/.config/konrad/user/` by hand (see README → Configuration).
 
 ## [0.13.1] - 2026-06-19
 
 ### Fixed
 
-- **macOS `--update` no longer unpacks every architecture.** On Apple Silicon the
-  native `container image pull` was unqualified, so it unpacked the whole multi-arch
-  index (amd64 *and* arm64) before running the arm64 image — wasted bandwidth and disk.
-  The pull is now pinned to `linux/<host-arch>`. Podman was already host-arch-only and
-  is unchanged.
+- **macOS `--update` no longer unpacks every architecture.** On Apple Silicon the native `container image pull` was unqualified, so it unpacked the whole multi-arch index (amd64 *and* arm64) before running the arm64 image — wasted bandwidth and disk. The pull is now pinned to `linux/<host-arch>`. Podman was already host-arch-only and is unchanged.
 
 ## [0.13.0] - 2026-06-19
 
 ### Added
 
-- **Default RAM + CPU caps on the agent container, auto-scaled to the host.** Every
-  `run` / `--shell` / `run`-oneshot launch now caps the agent (`--memory` / `--cpus`,
-  both engines) at a ceiling derived from the machine — half the host RAM (clamped to
-  `2G`–`32G`) and all but two of the cores (min `2`). This lifts Apple `container`'s tight 1G
-  default — too small for the bundled docling models, which the kernel OOM-killed
-  mid-run — and bounds runaway/fork-bomb usage on otherwise-uncapped Podman. Pin an
-  explicit value with `KONRAD_MEMORY` / `KONRAD_CPUS`; set either to `0` to drop that
-  cap (restoring Podman's previous unbounded behaviour). The CPU cap also sets the
-  container's `OMP_NUM_THREADS`, so docling/torch use the granted cores instead of
-  self-throttling to their 4-thread default — a multi-core host now actually speeds up
-  PDF extraction. Partial delivery of the roadmap's container-hardening item.
-  See [ARCHITECTURE → State, secrets & isolation](ARCHITECTURE.md#state-secrets--isolation).
+- **Default RAM + CPU caps on the agent container, auto-scaled to the host.** Every `run` / `--shell` / `run`-oneshot launch now caps the agent (`--memory` / `--cpus`, both engines) at a ceiling derived from the machine — half the host RAM (clamped to `2G`–`32G`) and all but two of the cores (min `2`). This lifts Apple `container`'s tight 1G default — too small for the bundled docling models, which the kernel OOM-killed mid-run — and bounds runaway/fork-bomb usage on otherwise-uncapped Podman. Pin an explicit value with `KONRAD_MEMORY` / `KONRAD_CPUS`; set either to `0` to drop that cap (restoring Podman's previous unbounded behaviour). The CPU cap also sets the container's `OMP_NUM_THREADS`, so docling/torch use the granted cores instead of self-throttling to their 4-thread default — a multi-core host now actually speeds up PDF extraction. Partial delivery of the roadmap's container-hardening item. See [ARCHITECTURE → State, secrets & isolation](ARCHITECTURE.md#state-secrets--isolation).
 
 ## [0.12.0] - 2026-06-19
 
 ### Added
 
-- **Apple `container` engine support (Apple-Silicon macOS).** On macOS 26+ with
-  Apple's [`container`](https://github.com/apple/container) CLI installed, Konrad
-  uses it as the native engine instead of Podman — no `podman machine` VM to start.
-  Podman stays the default everywhere else (Linux, the dev container, and Macs
-  without `container`); pin the choice with `KONRAD_ENGINE=podman|container`. The
-  egress firewall ports across unchanged — the agent reaches the dual-homed proxy
-  by IP (DNS is dead on an `--internal` net there, and the proxy egresses via the
-  built-in `default` net), and mount-option suffixes / userns mapping are dropped
-  (VirtioFS maps UIDs; the persistent stores become host-dir binds). apple/container's
-  isolated network is "host-only" (its gateway sits on the Mac), so the agent's
-  direct route to the host is **sealed** — a privileged prelude blackholes that
-  gateway, then drops to the unprivileged, capability-less `node` user — bringing
-  it to parity with rootless Podman: the host is reachable only through the proxy,
-  at the allow-listed `host.containers.internal`. Local models keep working over
-  that same path. See [ARCHITECTURE → Egress firewall](ARCHITECTURE.md#egress-firewall).
+- **Apple `container` engine support (Apple-Silicon macOS).** On macOS 26+ with Apple's [`container`](https://github.com/apple/container) CLI installed, Konrad uses it as the native engine instead of Podman — no `podman machine` VM to start. Podman stays the default everywhere else (Linux, the dev container, and Macs without `container`); pin the choice with `KONRAD_ENGINE=podman|container`. The egress firewall ports across unchanged — the agent reaches the dual-homed proxy by IP (DNS is dead on an `--internal` net there, and the proxy egresses via the built-in `default` net), and mount-option suffixes / userns mapping are dropped (VirtioFS maps UIDs; the persistent stores become host-dir binds). apple/container's isolated network is "host-only" (its gateway sits on the Mac), so the agent's direct route to the host is **sealed** — a privileged prelude blackholes that gateway, then drops to the unprivileged, capability-less `node` user — bringing it to parity with rootless Podman: the host is reachable only through the proxy, at the allow-listed `host.containers.internal`. Local models keep working over that same path. See [ARCHITECTURE → Egress firewall](ARCHITECTURE.md#egress-firewall).
 
 ### Changed
 
-- Image pulls now show each engine's **native** progress (Podman's per-layer bars
-  on Linux, Apple `container`'s on macOS) instead of Konrad's custom `[N/M]` layer
-  counter, which had to pipe `podman pull` and so suppressed its native bars. The
-  registry probe that powers `konrad --check-updates` is unchanged.
+- Image pulls now show each engine's **native** progress (Podman's per-layer bars on Linux, Apple `container`'s on macOS) instead of Konrad's custom `[N/M]` layer counter, which had to pipe `podman pull` and so suppressed its native bars. The registry probe that powers `konrad --check-updates` is unchanged.
 
 ## [0.11.0] - 2026-06-16
 
 ### Added
 
-- `konrad mcp-auth <server>` — authenticate a remote MCP server's OAuth (e.g. an
-  internal wiki or issue tracker declared in your config) with no agent in the
-  loop and the firewall off, mirroring `konrad connect`. opencode's loopback
-  callback port is published to `127.0.0.1`, so the browser's post-approval
-  redirect reaches the sandbox and the flow completes on its own instead of
-  hanging on "Waiting for authorization." The token persists on the
-  `konrad-secrets` volume (sibling to `auth.json`) and is reused on every run.
+- `konrad mcp-auth <server>` — authenticate a remote MCP server's OAuth (e.g. an internal wiki or issue tracker declared in your config) with no agent in the loop and the firewall off, mirroring `konrad connect`. opencode's loopback callback port is published to `127.0.0.1`, so the browser's post-approval redirect reaches the sandbox and the flow completes on its own instead of hanging on "Waiting for authorization." The token persists on the `konrad-secrets` volume (sibling to `auth.json`) and is reused on every run.
 
 ## [0.10.0] - 2026-06-15
 
 ### Added
 
-- `konrad connect` — authenticate a provider (`opencode auth login`) with no agent
-  in the loop and the firewall off, so an OAuth login (Claude Pro/Max, …) no longer
-  needs a one-time `--allow-host`. Args pass straight through (`konrad connect -p
-  openrouter` skips the picker); the credential lands on the `konrad-secrets` volume.
-  Same auth backend as the TUI's `/connect`, just agent-free.
-- `konrad connect --custom [id]` — guided flow for a self-hosted / custom endpoint:
-  declares the provider (baseURL + a model) in your user config layer, then walks
-  you through the key step. Prompts for whatever you don't pass; if the provider is
-  already declared (e.g. by an org layer) it skips straight to the key.
+- `konrad connect` — authenticate a provider (`opencode auth login`) with no agent in the loop and the firewall off, so an OAuth login (Claude Pro/Max, …) no longer needs a one-time `--allow-host`. Args pass straight through (`konrad connect -p openrouter` skips the picker); the credential lands on the `konrad-secrets` volume. Same auth backend as the TUI's `/connect`, just agent-free.
+- `konrad connect --custom [id]` — guided flow for a self-hosted / custom endpoint: declares the provider (baseURL + a model) in your user config layer, then walks you through the key step. Prompts for whatever you don't pass; if the provider is already declared (e.g. by an org layer) it skips straight to the key.
 
 ## [0.9.4] - 2026-06-15
 
 ### Added
 
-- The agent now sees the egress allow-list: the concrete set of reachable hosts
-  is inlined into its instructions at session start, so it stops wasting turns
-  on fetches the firewall would refuse. Derived from the same single source the
-  proxy filters on, so the two can't drift.
+- The agent now sees the egress allow-list: the concrete set of reachable hosts is inlined into its instructions at session start, so it stops wasting turns on fetches the firewall would refuse. Derived from the same single source the proxy filters on, so the two can't drift.
 
 ## [0.9.3] - 2026-06-14
 
 ### Changed
 
-- Fewer permission prompts: the agent now acts freely inside its sandbox and
-  asks only before an irreversible `rm -rf` of your real `/workspace` files.
-  Root (`sudo`), host container/cluster control (`podman`/`docker`/`kubectl`),
-  and the secrets volume are denied outright; network stays open because the
-  egress firewall — not a per-command prompt — is the real boundary. Permissions
-  now live once in the baked defaults; agents carry only their deltas.
+- Fewer permission prompts: the agent now acts freely inside its sandbox and asks only before an irreversible `rm -rf` of your real `/workspace` files. Root (`sudo`), host container/cluster control (`podman`/`docker`/`kubectl`), and the secrets volume are denied outright; network stays open because the egress firewall — not a per-command prompt — is the real boundary. Permissions now live once in the baked defaults; agents carry only their deltas.
 
 ## [0.9.2] - 2026-06-13
 
 ### Fixed
 
-- Egress firewall no longer blocks built-in providers (OpenRouter, Anthropic,
-  OpenAI, …) enabled with just an API key or `/connect`. These carry no URL in
-  your config, so the proxy now resolves them to a host via a baked,
-  models.dev-derived map plus the providers you've connected (`auth.json`) —
-  previously only providers with an explicit `baseURL` were allowed.
+- Egress firewall no longer blocks built-in providers (OpenRouter, Anthropic, OpenAI, …) enabled with just an API key or `/connect`. These carry no URL in your config, so the proxy now resolves them to a host via a baked, models.dev-derived map plus the providers you've connected (`auth.json`) — previously only providers with an explicit `baseURL` were allowed.
 
 ### Changed
 
-- The firewall allow-list **live-reloads** when you connect a provider
-  mid-session — connecting now takes effect within seconds, with no konrad
-  restart and no `--no-firewall` (API-key providers; an OAuth first-connect
-  still needs a one-time `--allow-host`).
+- The firewall allow-list **live-reloads** when you connect a provider mid-session — connecting now takes effect within seconds, with no konrad restart and no `--no-firewall` (API-key providers; an OAuth first-connect still needs a one-time `--allow-host`).
 
 ## [0.9.1] - 2026-06-13
 
 ### Fixed
 
-- The opencode layer is now reproducible across rebuilds — npm/Node build cruft
-  (debug logs, V8 compile cache) no longer leaks into image layers, so an
-  unrelated `python.lock` bump stops needlessly re-shipping the opencode layer.
-  Sibling to the 0.9.0 venv-layer dedupe.
+- The opencode layer is now reproducible across rebuilds — npm/Node build cruft (debug logs, V8 compile cache) no longer leaks into image layers, so an unrelated `python.lock` bump stops needlessly re-shipping the opencode layer. Sibling to the 0.9.0 venv-layer dedupe.
 
 ### Changed
 
-- opencode ships a single CPU-portable binary (`-baseline` on x64) instead of one
-  picked from the build host's CPU — halves the opencode layer (~104 → ~52 MB)
-  and removes a latent illegal-instruction risk on older x64 CPUs.
+- opencode ships a single CPU-portable binary (`-baseline` on x64) instead of one picked from the build host's CPU — halves the opencode layer (~104 → ~52 MB) and removes a latent illegal-instruction risk on older x64 CPUs.
 
 ## [0.9.0] - 2026-06-11
 
 ### Changed
 
-- The Python venv now ships as three `COPY` layers — torch (~700 MB), the large
-  numeric wheels (opencv/scipy/numpy/onnxruntime/sympy, ~450 MB), and the rest
-  (~360 MB) — instead of one ~1.5 GB layer. A `python.lock` bump that only moves
-  a small dep (the near-daily case) now re-pulls just the light layer; torch and
-  the numeric set dedupe. Sibling to the 0.6.0 model-layer dedupe. Rationale:
-  [ARCHITECTURE.md](ARCHITECTURE.md#build--reproducibility).
+- The Python venv now ships as three `COPY` layers — torch (~700 MB), the large numeric wheels (opencv/scipy/numpy/onnxruntime/sympy, ~450 MB), and the rest (~360 MB) — instead of one ~1.5 GB layer. A `python.lock` bump that only moves a small dep (the near-daily case) now re-pulls just the light layer; torch and the numeric set dedupe. Sibling to the 0.6.0 model-layer dedupe. Rationale: [ARCHITECTURE.md](ARCHITECTURE.md#build--reproducibility).
 
 ## [0.8.0] - 2026-06-10
 
 ### Added
 
-- Egress firewall, **on by default**. The agent container now runs on an
-  isolated Podman network with no direct internet route and reaches the outside
-  only through a sidecar filtering proxy (tinyproxy, run from the same image)
-  that allows just an allow-list: the model providers derived from your merged
-  config, plus `registry.npmjs.org` (the on-demand provider SDK adapters).
-  Shrinks the blast radius of a prompt-injected agent exfiltrating data.
-  `models.dev`, PyPI, and the open web are blocked by default. Extend it per-run
-  with
-  `--allow-host <host>` or permanently via an `allowed_hosts` file in your
-  org/user layer; `--no-firewall` (or `KONRAD_FIREWALL=0`) opts out. Design:
-  [ARCHITECTURE.md](ARCHITECTURE.md#state-secrets--isolation).
+- Egress firewall, **on by default**. The agent container now runs on an isolated Podman network with no direct internet route and reaches the outside only through a sidecar filtering proxy (tinyproxy, run from the same image) that allows just an allow-list: the model providers derived from your merged config, plus `registry.npmjs.org` (the on-demand provider SDK adapters). Shrinks the blast radius of a prompt-injected agent exfiltrating data. `models.dev`, PyPI, and the open web are blocked by default. Extend it per-run with `--allow-host <host>` or permanently via an `allowed_hosts` file in your org/user layer; `--no-firewall` (or `KONRAD_FIREWALL=0`) opts out. Design: [ARCHITECTURE.md](ARCHITECTURE.md#state-secrets--isolation).
 
 ## [0.7.0] - 2026-06-10
 
 ### Added
 
-- Dev-container self-testing now works on macOS hosts too: a `dockerPath` shim
-  ([.devcontainer/podman-vscode.sh](.devcontainer/podman-vscode.sh)) creates the
-  dev container via the podman machine's bundled *rootful* connection (the
-  machine's default connection stays rootless) and swaps the rootless-only
-  keep-id mapping for explicit uid/gid maps; `bin/konrad` does the same for the
-  nested runtime container when it detects that daemon. Contributor-facing;
-  one-time setup in [CONTRIBUTING.md](CONTRIBUTING.md).
-- Self-testing now mounts your real `~/.config/konrad` layer into the runtime
-  container (the dev container binds it in; `bin/konrad` re-mounts it from the
-  daemon-visible host path), so a self-test composes `baked < org < user` and
-  uses your own model / agents / skills exactly like a normal run — instead of
-  running bare baked config. Removes the previous "config layers skipped while
-  self-testing" divergence.
-- `scripts/selftest.sh` — the realistic end-to-end contributor/agent loop: runs
-  the image smoke test, then drives a real `konrad run` through `bin/konrad` and
-  asserts the agent answers. The model defaults to the one in your konrad config
-  (overridable with `--model` / `KONRAD_SELFTEST_MODEL`, any provider); the model
-  stage degrades to a SKIP when no model/credential is usable, so a red result
-  always means the runtime broke.
+- Dev-container self-testing now works on macOS hosts too: a `dockerPath` shim ([.devcontainer/podman-vscode.sh](.devcontainer/podman-vscode.sh)) creates the dev container via the podman machine's bundled *rootful* connection (the machine's default connection stays rootless) and swaps the rootless-only keep-id mapping for explicit uid/gid maps; `bin/konrad` does the same for the nested runtime container when it detects that daemon. Contributor-facing; one-time setup in [CONTRIBUTING.md](CONTRIBUTING.md).
+- Self-testing now mounts your real `~/.config/konrad` layer into the runtime container (the dev container binds it in; `bin/konrad` re-mounts it from the daemon-visible host path), so a self-test composes `baked < org < user` and uses your own model / agents / skills exactly like a normal run — instead of running bare baked config. Removes the previous "config layers skipped while self-testing" divergence.
+- `scripts/selftest.sh` — the realistic end-to-end contributor/agent loop: runs the image smoke test, then drives a real `konrad run` through `bin/konrad` and asserts the agent answers. The model defaults to the one in your konrad config (overridable with `--model` / `KONRAD_SELFTEST_MODEL`, any provider); the model stage degrades to a SKIP when no model/credential is usable, so a red result always means the runtime broke.
 
 ### Fixed
 
-- `scripts/smoke-test.sh` now skips its org-layer-compose check on a remote
-  daemon (dev-container self-testing) instead of failing on an unreachable
-  bind-mount source — matching what `bin/konrad` already does and what
-  [CONTRIBUTING.md](CONTRIBUTING.md) already documented. CI (local daemon) is
-  unaffected.
+- `scripts/smoke-test.sh` now skips its org-layer-compose check on a remote daemon (dev-container self-testing) instead of failing on an unreachable bind-mount source — matching what `bin/konrad` already does and what [CONTRIBUTING.md](CONTRIBUTING.md) already documented. CI (local daemon) is unaffected.
 
 ## [0.6.0] - 2026-06-09
 
 ### Changed
 
-- Docling model layers are now commit-pinned (`image/locks/models.lock`),
-  metadata-stripped, and split one-per-model — so an unrelated lock bump no
-  longer changes their bytes, and an image update re-pulls a model only when
-  that model actually changed, not the whole ~1.1 GB set. The models also move
-  out of `$HOME` to a root-owned `/opt/models`, so the runtime user now owns its
-  entire home (no more permission-denied on first write to a new `$HOME` dir).
-  Rationale: [ARCHITECTURE.md](ARCHITECTURE.md#build--reproducibility).
+- Docling model layers are now commit-pinned (`image/locks/models.lock`), metadata-stripped, and split one-per-model — so an unrelated lock bump no longer changes their bytes, and an image update re-pulls a model only when that model actually changed, not the whole ~1.1 GB set. The models also move out of `$HOME` to a root-owned `/opt/models`, so the runtime user now owns its entire home (no more permission-denied on first write to a new `$HOME` dir). Rationale: [ARCHITECTURE.md](ARCHITECTURE.md#build--reproducibility).
 
 ## [0.5.1] - 2026-06-08
 
 ### Changed
 
-- Licensing now follows the [REUSE](https://reuse.software) specification — every
-  file's copyright + license is declared in `REUSE.toml` / `LICENSES/` (SPDX-clear,
-  `reuse lint`-verified, CI-gated); `NOTICE` retired, its acknowledgements moved
-  into the README.
-- Documentation consolidated to single canonical homes — `ARCHITECTURE.md` (design
-  and the *why*), this `CHANGELOG.md` (replacing ROADMAP's `## Implemented`), and
-  the versioning / dev-release / commit conventions in their canonical docs.
+- Licensing now follows the [REUSE](https://reuse.software) specification — every file's copyright + license is declared in `REUSE.toml` / `LICENSES/` (SPDX-clear, `reuse lint`-verified, CI-gated); `NOTICE` retired, its acknowledgements moved into the README.
+- Documentation consolidated to single canonical homes — `ARCHITECTURE.md` (design and the *why*), this `CHANGELOG.md` (replacing ROADMAP's `## Implemented`), and the versioning / dev-release / commit conventions in their canonical docs.
 
 ## [0.5.0] - 2026-06-08
 
 ### Added
 
-- `konrad run "<prompt>"` — non-interactive one-shot mode: execs `opencode run`
-  instead of the TUI, streams the answer to stdout, propagates the exit code.
-  Everything after `run` passes through to opencode verbatim.
-- `--profile <name>` — isolates a run's opencode state + cache in throwaway
-  `konrad-state-<name>` / `konrad-cache-<name>` volumes (credentials stay
-  shared); `--reset --profile` wipes just that profile.
+- `konrad run "<prompt>"` — non-interactive one-shot mode: execs `opencode run` instead of the TUI, streams the answer to stdout, propagates the exit code. Everything after `run` passes through to opencode verbatim.
+- `--profile <name>` — isolates a run's opencode state + cache in throwaway `konrad-state-<name>` / `konrad-cache-<name>` volumes (credentials stay shared); `--reset --profile` wipes just that profile.
 
 ### Changed
 
@@ -612,31 +310,25 @@ build publishes as `:0.X` (minor line), `:latest`, and an immutable
 
 ### Added
 
-- Dev-container self-testing — drive the host Podman daemon from inside the dev
-  container to exercise the runtime image (Linux hosts). Contributor-facing.
+- Dev-container self-testing — drive the host Podman daemon from inside the dev container to exercise the runtime image (Linux hosts). Contributor-facing.
 
 ## [0.4.0] - 2026-06-02
 
 ### Added
 
-- Org configuration layer — a third config tier merged `baked < org < user`,
-  letting an organization ship fleet-wide defaults (extra models, an internal
-  provider endpoint, house skills/agents, a corporate `AGENTS.md`, fonts)
-  without forking the image or editing each user's config.
+- Org configuration layer — a third config tier merged `baked < org < user`, letting an organization ship fleet-wide defaults (extra models, an internal provider endpoint, house skills/agents, a corporate `AGENTS.md`, fonts) without forking the image or editing each user's config.
 
 ## [0.3.1] - 2026-06-02
 
 ### Fixed
 
-- Keep `/etc/konrad` traversable for the runtime user (`COPY --chmod` was
-  setting the parent-dir mode too strictly).
+- Keep `/etc/konrad` traversable for the runtime user (`COPY --chmod` was setting the parent-dir mode too strictly).
 
 ## [0.3.0] - 2026-06-01
 
 ### Added
 
-- `frontend-design` bundled skill, plus ready-made `grill-me`, `write-a-skill`,
-  and `image-editing`.
+- `frontend-design` bundled skill, plus ready-made `grill-me`, `write-a-skill`, and `image-editing`.
 
 ## [0.2.1] – [0.2.6] - 2026-05-29
 
@@ -644,32 +336,25 @@ A same-day run of CLI and release-plumbing polish.
 
 ### Added
 
-- `konrad --check-updates`; a pull-progress layer counter; `--version` printed
-  at the tail of `--update` / install.
+- `konrad --check-updates`; a pull-progress layer counter; `--version` printed at the tail of `--update` / install.
 
 ### Changed
 
-- Three-segment pre-1.0 versions (`0.X.Y`) with hyphen-separated dated image
-  tags; image rebuilds decoupled from CLI-only `VERSION` bumps; lock-file noise
-  reduced (dropped the npm pin, stripped `python.lock` comments).
+- Three-segment pre-1.0 versions (`0.X.Y`) with hyphen-separated dated image tags; image rebuilds decoupled from CLI-only `VERSION` bumps; lock-file noise reduced (dropped the npm pin, stripped `python.lock` comments).
 
 ### Fixed
 
-- `konrad --update` unbound-variable crash (`REGISTRY_IMAGE` /
-  `INSTALL_REMOTE_URL` expansions).
+- `konrad --update` unbound-variable crash (`REGISTRY_IMAGE` / `INSTALL_REMOTE_URL` expansions).
 
 ## [0.2] - 2026-05-27
 
-First public alpha — the GitLab repo and the GHCR package went public (the
-GitHub mirror stays a private CI surface). The accumulated private-development
-feature set at first public release:
+First public alpha — the GitLab repo and the GHCR package went public (the GitHub mirror stays a private CI surface). The accumulated private-development feature set at first public release:
 
 ### Added
 
 - Sandboxed opencode in a rootless Podman container (`--userns=keep-id`).
 - Host-mergeable configuration layering and a per-user `~/.config/konrad/`.
-- Bundled skills: `pdf`, `spreadsheets`, and `quality-assurance` (the
-  cross-skill visual + language verification cycle every producer skill runs).
+- Bundled skills: `pdf`, `spreadsheets`, and `quality-assurance` (the cross-skill visual + language verification cycle every producer skill runs).
 - A curated SIL OFL font palette plus a user font-overlay path.
 - Multi-arch image (amd64 + arm64) with per-arch native smoke tests.
 - Frictionless `curl … | sh` install (CLI on PATH, no clone needed).
@@ -679,11 +364,8 @@ feature set at first public release:
 
 - Relicensed GPL-3.0 → AGPL-3.0.
 
-> Pre-`0.2` development is summarized here rather than itemized — it predates
-> the public project. The deeper origin story is in the "Day-zero history" of
-> the [versioning](CONTRIBUTING.md#versioning) and the git log.
+> Pre-`0.2` development is summarized here rather than itemized — it predates the public project. The deeper origin story is in the "Day-zero history" of the [versioning](CONTRIBUTING.md#versioning) and the git log.
 
 ## [0.1] - 2026-05-23
 
-Pre-public stabilization line (private): float-everything pinning by digest,
-smoke-gated daily CI on GitHub Actions, and the GHCR publish path went live.
+Pre-public stabilization line (private): float-everything pinning by digest, smoke-gated daily CI on GitHub Actions, and the GHCR publish path went live.
