@@ -166,16 +166,24 @@ else
   _C_BRAND=''; _C_OK=''; _C_GO=''; _C_WARN=''; _C_ERR=''; _C_DIM=''; _C_OFF=''
 fi
 
-# Launch sequence: a "starting konrad" header carrying the CLI + image versions
-# (so every run shows what it's actually running — the image version is the OCI
-# label, read once), then indented phase lines — ✓ for a completed setup phase,
-# → for the handoff to opencode/shell.
+# Launch sequence: a "starting konrad" header carrying the CLI version and the
+# image's provenance — short-sha + build date, the pair that actually identifies
+# what's running (the image's own version label drifts from the CLI on CLI-only
+# patches, so it's surfaced in `--version`, not here) — plus the active engine.
+# The labels are read once, in a single inspect (eng_image_meta). Then indented
+# phase lines — ✓ for a completed setup phase, → for the handoff to opencode.
 brand() {
-  local img_ver
-  img_ver="$(eng_image_label "$IMAGE_NAME" "org.opencontainers.image.version")"
-  [[ -n "$img_ver" ]] || img_ver="?"
-  printf '%sstarting konrad%s  %scli %s · image %s%s\n' \
-    "$_C_BRAND" "$_C_OFF" "$_C_DIM" "$KONRAD_VERSION" "$img_ver" "$_C_OFF" >&2
+  local rev created built img
+  IFS=$'\t' read -r _ rev created <<<"$(eng_image_meta "$IMAGE_NAME")"
+  [[ -n "$rev" ]] || rev="?"
+  built="${created%%T*}"
+  if [[ "$built" == ????-??-?? && "$built" != "1970-01-01" ]]; then
+    img="$rev (built $built)"
+  else
+    img="$rev"
+  fi
+  printf '%sstarting konrad%s  %scli %s · image %s · engine: %s%s\n' \
+    "$_C_BRAND" "$_C_OFF" "$_C_DIM" "$KONRAD_VERSION" "$img" "$KONRAD_ENGINE" "$_C_OFF" >&2
 }
 step()  { printf '  %s✓%s  %s\n' "$_C_OK"  "$_C_OFF" "$*" >&2; }
 go()    { printf '  %s→%s  %s\n' "$_C_GO"  "$_C_OFF" "$*" >&2; }
@@ -471,6 +479,32 @@ eng_image_id() {
       command -v jq >/dev/null 2>&1 || return 0
       container image inspect "$1" 2>/dev/null \
         | jq -r 'first(.. | objects | (.Id? // .id? // .digest?) | select(type=="string")) // empty' 2>/dev/null
+      ;;
+  esac
+  return 0
+}
+
+# The image's provenance labels — version (the CLI version baked at build),
+# revision (git short-sha), created (ISO build date) — read in ONE inspect and
+# returned tab-separated (empty fields on a miss). One call keeps the startup
+# banner cheap on macOS's podman-machine VM, and it's the shared source for both
+# brand() and do_version. Always exits 0 so callers can capture.
+eng_image_meta() {
+  local ref="$1"
+  case "$KONRAD_ENGINE" in
+    podman)
+      podman image inspect "$ref" --format \
+        $'{{index .Labels "org.opencontainers.image.version"}}\t{{index .Labels "org.opencontainers.image.revision"}}\t{{index .Labels "org.opencontainers.image.created"}}' \
+        2>/dev/null
+      ;;
+    container)
+      command -v jq >/dev/null 2>&1 || return 0
+      container image inspect "$ref" 2>/dev/null | jq -r '
+        (([ .. | objects | (.labels? // .Labels?) | objects
+            | select(has("org.opencontainers.image.version")) ] | first) // {})
+        | [ (.["org.opencontainers.image.version"]  // ""),
+            (.["org.opencontainers.image.revision"] // ""),
+            (.["org.opencontainers.image.created"]  // "") ] | @tsv' 2>/dev/null
       ;;
   esac
   return 0
@@ -2138,62 +2172,49 @@ do_org() {
 }
 
 do_version() {
-  # Compact, mirroring the startup banner (brand()): a `cli X · image Y`
-  # headline — CLI and image are DISTINCT versions (a CLI-only patch ships
-  # without an image rebuild, so they legitimately differ), not one overarching
-  # "konrad" number — then one dim detail line carrying the immutable pin
-  # (registry repo : <short-sha> — the handle to pin/rollback), the local tag,
-  # the build date, and the engine. Prints to stdout (the version is
-  # conventionally parseable there, unlike konrad's stderr chatter), so color
-  # gates on a stdout TTY — NOT the global _C_*, which gate on stderr and would
-  # bleed ANSI into `konrad --version | …`.
+  # Three lines to stdout (the version is conventionally parseable there, not in
+  # konrad's stderr chatter, so color gates on a stdout TTY — NOT the global
+  # _C_*, which gate on stderr and would bleed ANSI into `konrad --version | …`):
+  #   headline  konrad
+  #   cli:      <X>
+  #   image:    <short-sha> (built <date>) · cli <ver-at-build> at build
+  #   engine:   <engine>
+  # CLI and image versions legitimately differ — a CLI-only patch ships without
+  # an image rebuild (the release workflow's paths: filter excludes VERSION) — so
+  # the image line reports the short-sha + build date + the CLI it was built
+  # from, the trio that actually identifies the running image, rather than an
+  # image "version" that reads like it should track the CLI but doesn't. No skew
+  # warning by design; "is there something newer in the registry?" is what
+  # `konrad update --check` answers.
   local c_brand='' c_dim='' c_off=''
   if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
     c_brand=$'\033[1;36m'; c_dim=$'\033[2m'; c_off=$'\033[0m'
   fi
 
-  # Resolve the image field (headline) + the dim detail line up front, then
-  # print both in the shared brand-mirror layout once. Labels go through
-  # eng_image_label (best-effort on apple/container — a miss reads "unknown").
-  local img_field detail
+  # eng_image_meta is best-effort (a label miss reads "unknown" on apple/container).
+  local image_value
   if ! command -v "$KONRAD_ENGINE" >/dev/null 2>&1 || ! eng_running; then
-    img_field="?"
-    detail="cannot inspect image — $KONRAD_ENGINE unavailable"
+    image_value="? · cannot inspect ($KONRAD_ENGINE unavailable)"
   elif ! eng_image_exists "$IMAGE_NAME"; then
     local hint
     if is_dev; then hint="konrad-dev rebuild"; else hint="konrad update"; fi
-    img_field="not present"
-    detail="$IMAGE_NAME · run: $hint"
+    image_value="not present · run: $hint"
   else
-    local image_ver image_rev image_created pin
-    image_ver="$(eng_image_label "$IMAGE_NAME" org.opencontainers.image.version)"
-    [[ -z "$image_ver" ]] && image_ver="unknown"
-    image_rev="$(eng_image_label "$IMAGE_NAME" org.opencontainers.image.revision)"
-    [[ -z "$image_rev" ]] && image_rev="unknown"
-    image_created="$(eng_image_label "$IMAGE_NAME" org.opencontainers.image.created)"
-    img_field="$image_ver"
-    # The immutable pin: the revision (git short-sha) hung off the registry repo
-    # (REGISTRY_IMAGE minus its tag). A miss (dev/old image, no revision label)
-    # degrades to the local tag. The local tag is shown in parens only when it
-    # differs from the pin, so the common case stays one clean token.
-    if [[ "$image_rev" != "unknown" ]]; then pin="${REGISTRY_IMAGE%:*}:$image_rev"; else pin="$IMAGE_NAME"; fi
-    detail="$pin"
-    [[ "$pin" != "$IMAGE_NAME" ]] && detail="$detail ($IMAGE_NAME)"
-    [[ -n "${KONRAD_IMAGE:-}" ]] && detail="$detail · KONRAD_IMAGE override"
-    [[ "${image_created%%T*}" == ????-??-?? && "${image_created%%T*}" != "1970-01-01" ]] \
-      && detail="$detail · built ${image_created%%T*}"
-    detail="$detail · engine: $KONRAD_ENGINE"
+    local ver rev created built
+    IFS=$'\t' read -r ver rev created <<<"$(eng_image_meta "$IMAGE_NAME")"
+    [[ -n "$rev" ]] || rev="unknown"
+    [[ -n "$ver" ]] || ver="unknown"
+    built="${created%%T*}"
+    image_value="$rev"
+    [[ "$built" == ????-??-?? && "$built" != "1970-01-01" ]] && image_value="$image_value (built $built)"
+    image_value="$image_value · cli $ver at build"
+    [[ -n "${KONRAD_IMAGE:-}" ]] && image_value="$image_value · KONRAD_IMAGE override"
   fi
 
-  printf '%skonrad%s  %scli %s · image %s%s\n' \
-    "$c_brand" "$c_off" "$c_dim" "$KONRAD_VERSION" "$img_field" "$c_off"
-  printf '  %s%s%s\n' "$c_dim" "$detail" "$c_off"
-  # No CLI-vs-image skew warning by design. CLI-only patches don't trigger an
-  # image rebuild (the workflow's paths: filter excludes VERSION), so a
-  # patch-line drift between CLI and image labels is normal — the contract
-  # between them is thin (env vars + mount paths + `opencode` entrypoint).
-  # "Is there anything new in the registry?" is what `konrad update --check`
-  # answers.
+  printf '%skonrad%s\n'         "$c_brand" "$c_off"
+  printf '  %scli:    %s%s\n'   "$c_dim" "$KONRAD_VERSION" "$c_off"
+  printf '  %simage:  %s%s\n'   "$c_dim" "$image_value" "$c_off"
+  printf '  %sengine: %s%s\n'   "$c_dim" "$KONRAD_ENGINE" "$c_off"
 }
 
 # Probe the registry (CLI source + image label) and report whether an update

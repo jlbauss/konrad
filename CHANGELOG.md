@@ -16,6 +16,16 @@ build publishes as `:0.X` (minor line), `:latest`, and an immutable
 
 ## [Unreleased]
 
+### Changed
+
+- **`konrad --version` and the startup banner now report image *provenance*
+  instead of a misleading image "version".** The image is identified by what
+  actually pins it: `<short-sha> (built <date>) · cli <X> at build`. The startup
+  banner reads `cli <X> · image <short-sha> (built <date>) · <engine>`, and
+  `--version` breaks onto three tidy lines (cli / image / engine). The image's
+  own version label drifts from the CLI on CLI-only patches, so leading with it
+  read like a mismatch; the short-sha + build date + CLI-at-build don't.
+
 ## [0.23.2] - 2026-08-05
 
 ### Fixed
