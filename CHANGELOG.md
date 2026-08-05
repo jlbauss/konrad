@@ -11,6 +11,15 @@ Entries stay terse — the *why* lives in the git commit log and the [ARCHITECTU
 
 ## [Unreleased]
 
+## [0.26.1] - 2026-08-05
+
+### Fixed
+
+- **Linux launcher shows its icon immediately.** The `.desktop` entry now points `Icon=` at the installed SVG's absolute path instead of the theme name `konrad` — a name only resolves once the icon theme is rescanned, so on a first install (where `~/.local/share/icons/hicolor` is created fresh) the entry appeared in the menu with a generic icon until the next login. The SVG still lands in the hicolor tree.
+- **Declining the installer's launcher prompt says so, and `ja` counts as yes.** A non-`y` answer used to skip silently, which was indistinguishable from the launcher failing to install; `j`/`ja` are now accepted alongside `y`/`yes`.
+- **A failed icon download leaves no 0-byte stub** in the icon tree (`curl -o` creates the file before it knows the transfer failed).
+- **The launcher icon loads in GTK at all.** `assets/konrad.svg` carried its SPDX + description header *above* the `<svg>` tag, pushing it to byte 696 — past gdk-pixbuf's 256-byte format-sniffing buffer, so every GTK consumer rejected the file with "Couldn't recognize the image file format". The header now lives inside the element. (`rsvg-convert` never showed this: it skips detection.)
+
 ## [0.26.0] - 2026-08-05
 
 ### Added
