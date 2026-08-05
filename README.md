@@ -148,6 +148,12 @@ for you (or set `KONRAD_DESKTOP=1` to opt in non-interactively). If the launcher
 is ever clicked on a machine where the `konrad` CLI is missing, it offers to
 install it first.
 
+On **macOS**, the app opens Terminal.app by default; point it at another terminal
+with `KONRAD_TERMINAL` (`ghostty`, `alacritty`, or `iterm`) when you create it —
+e.g. `KONRAD_TERMINAL=ghostty konrad install-desktop` (the terminal must be
+installed). On **Linux** the entry uses your desktop's own default terminal, so
+there's nothing to set.
+
 ### Staying current
 
 konrad keeps the **image** and your subscribed **org layers** fresh on its own: at
@@ -324,6 +330,7 @@ Rarely needed — the flags cover day-to-day use. Collected here so the rest of 
 | `KONRAD_INSTALL_DIR` | Installer: where to put the CLI (default `~/.local/bin`). |
 | `KONRAD_NO_PULL=1` | Installer: skip the image pre-pull. |
 | `KONRAD_DESKTOP` | Installer: `1` creates the desktop launcher without asking, `0` skips it. Unset → the installer asks (on a terminal), else prints a hint. See [Desktop launcher](#desktop-launcher). |
+| `KONRAD_TERMINAL` | macOS only: which terminal `konrad install-desktop` makes the launcher open — `terminal` (default), `ghostty`, `alacritty`, or `iterm`. A non-default choice must be installed. |
 | `KONRAD_NO_AUTO_REFRESH=1` | Disable the throttled background refresh (image pull + org sync — see [Staying current](#staying-current)). |
 | `KONRAD_REFRESH_INTERVAL` | Seconds between background refreshes (`0` disables). Default `86400` (daily). |
 | `KONRAD_RETENTION_DAYS` | Days konrad keeps its own growing state — the log dir and scratch workspaces — before pruning untouched entries at launch. `0` disables pruning (keep everything). Default `30`. |

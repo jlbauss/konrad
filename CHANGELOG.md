@@ -16,6 +16,16 @@ build publishes as `:0.X` (minor line), `:latest`, and an immutable
 
 ## [Unreleased]
 
+### Added
+
+- **`KONRAD_TERMINAL` — pick the terminal the macOS launcher opens.**
+  `KONRAD_TERMINAL=ghostty|alacritty|iterm konrad install-desktop` makes
+  `Konrad.app` open that terminal instead of the default Terminal.app (macOS has
+  no OS-level default-terminal setting). A non-default choice is validated
+  against LaunchServices at install, so a typo or an uninstalled terminal fails
+  loudly instead of producing a dead icon. macOS-only; Linux already uses the
+  desktop's default terminal.
+
 ## [0.25.0] - 2026-08-05
 
 ### Added
