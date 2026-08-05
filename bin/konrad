@@ -497,17 +497,29 @@ eng_container_exists() {
   esac
 }
 
+# Wall-clock ceiling for a single network create, so a wedged engine fails fast
+# instead of hanging forever. Applied only when a `timeout` binary is present
+# (GNU coreutils, or Homebrew's `gtimeout`); stock macOS ships neither, so there
+# the create runs unbounded — the orphan sweep in fw_setup is what stops a wedge
+# forming in the first place. KONRAD_NET_TIMEOUT overrides the ceiling (seconds).
+bounded() {
+  local secs="${KONRAD_NET_TIMEOUT:-60}"
+  if   command -v timeout  >/dev/null 2>&1; then timeout  "$secs" "$@"
+  elif command -v gtimeout >/dev/null 2>&1; then gtimeout "$secs" "$@"
+  else "$@"; fi
+}
+
 # Networks. The internal (no-egress) net carries --internal on both engines.
 eng_network_create_internal() {
   case "$KONRAD_ENGINE" in
-    podman)    podman network create --internal "$1" >/dev/null ;;
-    container) container network create --internal "$1" >/dev/null ;;
+    podman)    bounded podman network create --internal "$1" >/dev/null ;;
+    container) bounded container network create --internal "$1" >/dev/null ;;
   esac
 }
 eng_network_create() {
   case "$KONRAD_ENGINE" in
-    podman)    podman network create "$1" >/dev/null ;;
-    container) container network create "$1" >/dev/null ;;
+    podman)    bounded podman network create "$1" >/dev/null ;;
+    container) bounded container network create "$1" >/dev/null ;;
   esac
 }
 eng_network_rm() {  # variadic, best-effort
@@ -515,6 +527,15 @@ eng_network_rm() {  # variadic, best-effort
     podman)    podman network rm "$@" >/dev/null 2>&1 || true ;;
     container) container network delete "$@" >/dev/null 2>&1 || true ;;
   esac
+}
+# Names of this tool's firewall networks the engine currently knows, one per line
+# (best-effort; empty on any failure). Matched to the exact per-run shapes so the
+# orphan sweep can never touch `default`, `agent-net`, or a user's own network.
+eng_network_ls_konrad() {
+  { case "$KONRAD_ENGINE" in
+      podman)    podman network ls --format '{{.Name}}' 2>/dev/null ;;
+      container) container network ls 2>/dev/null | awk 'NR>1 {print $1}' ;;
+    esac ; } | grep -E '^konrad-fw-(net|out)-[0-9]+$' || true
 }
 
 # Named-store backing. On Podman these are real named volumes; on apple/container
@@ -813,6 +834,26 @@ fw_teardown() {
   [[ "$FW_EGRESS_MANAGED" == "1" && -n "$FW_NET_EGRESS" ]] && eng_network_rm "$FW_NET_EGRESS"
 }
 
+# Best-effort sweep of firewall networks left behind by earlier runs that didn't
+# tear down (a hard kill, a crash, an interrupted setup). The trailing token of
+# each name is the owning konrad's PID; if that process is gone the net is a
+# genuine orphan, so we drop its proxy first (a net can't be deleted while a
+# container is attached) and then the net itself. A live PID — a concurrent
+# konrad run — is left untouched. This is what keeps a leak from ever
+# accumulating: critical on apple/container, where every leftover net is a
+# running vmnet service and enough of them wedge `container system start`.
+fw_sweep_orphans() {
+  local net pid
+  while IFS= read -r net; do
+    [[ -n "$net" ]] || continue
+    pid="${net##*-}"
+    kill -0 "$pid" 2>/dev/null && continue   # owner still running → not an orphan
+    dbg "firewall: sweeping orphaned network $net (owner pid $pid gone)"
+    eng_rm_container "konrad-fw-proxy-$pid"
+    eng_network_rm "$net"
+  done < <(eng_network_ls_konrad)
+}
+
 # Block until tinyproxy is accepting connections (it logs the line on start);
 # bail fast with the proxy's own logs if it died (bad config, image mismatch).
 fw_wait_ready() {
@@ -886,6 +927,18 @@ fw_setup() {
                           # Ctrl-C reaches podman, which exits cleanly and lets
                           # this function's caller fall through to teardown.
 
+  # Mark active BEFORE creating anything, so a create that fails or is interrupted
+  # still leaves the EXIT trap a live flag to tear down whatever partial network
+  # the engine registered. (Previously set only after both creates succeeded, so
+  # an interrupted create leaked its network — and on apple/container a pile of
+  # leaked nets, each a live vmnet service, eventually wedged `container system
+  # start`. Teardown is all best-effort, so an over-eager flag costs nothing.)
+  FW_ACTIVE=1
+
+  # Self-heal: drop firewall nets orphaned by earlier runs before adding ours, so
+  # a leak from any cause (hard kill, crash) can never accumulate to a wedge.
+  fw_sweep_orphans
+
   # Defensive: clear any same-named leftovers (PID reuse after a hard kill).
   eng_rm_container "$FW_PROXY_NAME"
   eng_network_rm "$FW_NET_INTERNAL"
@@ -893,12 +946,11 @@ fw_setup() {
 
   dbg "firewall: creating internal network $FW_NET_INTERNAL (egress via $FW_NET_EGRESS)"
   eng_network_create_internal "$FW_NET_INTERNAL" \
-    || die "egress firewall: could not create internal network (--no-firewall to bypass)"
+    || die "egress firewall: could not create the internal network on the $KONRAD_ENGINE engine (it may be unreachable, or overloaded by leftover networks). Bypass with --no-firewall, or switch engines with KONRAD_ENGINE=podman."
   if [[ "$FW_EGRESS_MANAGED" == "1" ]]; then
     eng_network_create "$FW_NET_EGRESS" \
-      || die "egress firewall: could not create egress network (--no-firewall to bypass)"
+      || die "egress firewall: could not create the egress network on the $KONRAD_ENGINE engine. Bypass with --no-firewall, or switch engines with KONRAD_ENGINE=podman."
   fi
-  FW_ACTIVE=1
 
   dbg "egress firewall: starting filtering proxy…"
   # Mount the shared secrets store READ-ONLY (ro_bind → :ro on Podman,

@@ -16,6 +16,17 @@ build publishes as `:0.X` (minor line), `:latest`, and an immutable
 
 ## [Unreleased]
 
+### Fixed
+
+- **Egress firewall no longer leaks networks — and self-heals ones already
+  leaked.** A failed or interrupted network create used to leave its network
+  behind (the teardown flag was set too late); on Apple's `container` engine
+  each orphan is a live `vmnet` service, and a pile of them wedged `container
+  system start`. The flag is now set before the create, every firewall launch
+  sweeps orphaned `konrad-fw-*` nets from dead runs (concurrent runs untouched),
+  and a wedged create fails fast (`--no-firewall` / `KONRAD_ENGINE=podman`
+  named) instead of hanging.
+
 ## [0.23.1] - 2026-08-04
 
 ### Fixed
