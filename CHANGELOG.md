@@ -16,6 +16,8 @@ build publishes as `:0.X` (minor line), `:latest`, and an immutable
 
 ## [Unreleased]
 
+## [0.23.2] - 2026-08-05
+
 ### Fixed
 
 - **Egress firewall no longer leaks networks — and self-heals ones already
