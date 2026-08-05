@@ -16,8 +16,21 @@ build publishes as `:0.X` (minor line), `:latest`, and an immutable
 
 ## [Unreleased]
 
+### Added
+
+- **Ephemeral scratch workspaces for no-project launches.** `konrad scratch`
+  launches the TUI in a fresh throwaway workspace under
+  `~/.local/state/konrad/scratch/`, and running `konrad` straight from your home
+  folder now redirects there instead of refusing. `konrad open` reveals the
+  newest scratch workspace in your file manager (`open` / `xdg-open`). Rationale:
+  [ARCHITECTURE.md](ARCHITECTURE.md#state-secrets--isolation).
+
 ### Changed
 
+- **State retention is one shared knob.** `KONRAD_RETENTION_DAYS` (default 30,
+  `0` disables) prunes both the log dir and the scratch workspaces at launch;
+  the log dir's previous fixed 7-day window is now 30. `konrad reset` also wipes
+  scratch workspaces.
 - **`konrad --version` and the startup banner now report image *provenance*
   instead of a misleading image "version".** The image is identified by what
   actually pins it: `<short-sha> (built <date>) · cli <X> at build`. The startup

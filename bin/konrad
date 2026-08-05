@@ -101,7 +101,7 @@ CONTEXT_CFG_DIR="$KONRAD_CFG_DIR/context"
 # Central log directory on the host (XDG state). Holds opencode's
 # structured log files plus a per-session sidecar that records the host
 # workspace path. Shared across all projects so logs live in one
-# discoverable place; pruned (>7d) before every launch.
+# discoverable place; pruned before every launch (see KONRAD_RETENTION_DAYS).
 KONRAD_LOG_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/konrad/log"
 
 # Background-refresh state (see maybe_background_refresh). Lives beside the log
@@ -116,6 +116,29 @@ KONRAD_REFRESH_STAMP="$KONRAD_STATE_DIR/last-refresh"
 KONRAD_REFRESH_NOTE="$KONRAD_STATE_DIR/refresh-note"
 KONRAD_REFRESH_LOG="$KONRAD_STATE_DIR/refresh.log"
 KONRAD_NOTICES_DIR="$KONRAD_STATE_DIR/notices"
+
+# Ephemeral scratch workspaces. When konrad launches with no project directory
+# — the `scratch` verb, or the interactive TUI started from $HOME where the cwd
+# can't be a workspace (see podman_run's guard) — it mints a fresh timestamped
+# dir here and binds THAT at /workspace. Under konrad's own XDG state so it sits
+# beside the logs, is swept by the same retention prune, and — load-bearing —
+# stays under $HOME, where the macOS Podman VM auto-shares it and apple/container
+# VirtioFS-remaps it (a host /tmp path could NOT be mounted on either). Newest
+# one is revealed by `konrad open`.
+KONRAD_SCRATCH_DIR="$KONRAD_STATE_DIR/scratch"
+
+# Retention for konrad's own state that grows per launch — the log dir and the
+# scratch workspaces. Entries untouched for this many days are pruned before
+# each launch; 0 (or any non-number) disables pruning, keeping everything. The
+# window is shared on purpose, but note the scratch prune deletes AGENT-WRITTEN
+# content, which is exactly why the off switch exists. Default 30.
+KONRAD_RETENTION_DAYS="${KONRAD_RETENTION_DAYS:-30}"
+
+# Selected workspace source for the /workspace bind. Empty → podman_run uses the
+# current directory (the normal case); set by prepare_scratch_workspace to an
+# ephemeral scratch dir. A global so the launch verbs pick the source and
+# podman_run consumes it without re-deriving it.
+KONRAD_WORKSPACE_DIR="${KONRAD_WORKSPACE_DIR:-}"
 
 # Whether an org post-sync hook is running with a member watching (add / sync /
 # update set 1) or unwatched under the background worker (0, the default here).
@@ -782,17 +805,89 @@ require_image() {
   die "registry pull failed (offline? registry unreachable?). Once connectivity is back: konrad update"
 }
 
-# Prune the central log dir of files older than 7 days. Runs host-side
-# before every launch so disk doesn't grow without bound. Silent (the count
-# goes to -v only) — it's housekeeping in konrad's own state dir, not the
-# user's workspace.
+# Configured retention window in whole days, or 0 when pruning is disabled
+# (KONRAD_RETENTION_DAYS=0, or set to anything non-numeric). Read fresh each
+# call so a test / one-off export takes effect without restarting.
+retention_days() {
+  local d="${KONRAD_RETENTION_DAYS:-30}"
+  if [[ "$d" =~ ^[0-9]+$ ]]; then printf '%s' "$d"; else printf '0'; fi
+}
+
+# Prune the central log dir of files older than the retention window. Runs
+# host-side before every launch so disk doesn't grow without bound. Silent (the
+# count goes to -v only) — it's housekeeping in konrad's own state dir, not the
+# user's workspace. Retention 0 disables it.
 prune_log_dir() {
   [[ -d "$KONRAD_LOG_DIR" ]] || return 0
+  local days; days="$(retention_days)"
+  [[ "$days" -gt 0 ]] || return 0
   local pruned
   pruned=$(find "$KONRAD_LOG_DIR" -maxdepth 1 -type f \
              \( -name '*.log' -o -name '*-session.txt' \) \
-             -mtime +7 -print -delete 2>/dev/null | wc -l | tr -d ' ')
+             -mtime +"$days" -print -delete 2>/dev/null | wc -l | tr -d ' ')
   [[ "$pruned" -gt 0 ]] && dbg "pruned $pruned old log file(s) from $KONRAD_LOG_DIR"
+  return 0
+}
+
+# Prune scratch workspaces untouched for the retention window. Unlike the log
+# prune this deletes AGENT-WRITTEN CONTENT (whatever the agent left in an
+# ephemeral workspace), so it's deliberately conservative: whole scratch dirs
+# only, by the dir's own mtime, only under KONRAD_SCRATCH_DIR, and never when
+# retention is disabled. Runs before a fresh scratch dir is minted (in
+# launch_preflight), so the current session's dir is never a candidate.
+prune_scratch_dirs() {
+  [[ -d "$KONRAD_SCRATCH_DIR" ]] || return 0
+  local days; days="$(retention_days)"
+  [[ "$days" -gt 0 ]] || return 0
+  local pruned=0 d
+  while IFS= read -r d; do
+    [[ -n "$d" ]] || continue
+    rm -rf "$d" && pruned=$((pruned + 1))
+  done < <(find "$KONRAD_SCRATCH_DIR" -mindepth 1 -maxdepth 1 -type d \
+             -mtime +"$days" 2>/dev/null)
+  [[ "$pruned" -gt 0 ]] && dbg "pruned $pruned old scratch workspace(s) from $KONRAD_SCRATCH_DIR"
+  return 0
+}
+
+# Mint a fresh, empty scratch workspace and select it as the /workspace bind
+# (KONRAD_WORKSPACE_DIR, read by podman_run). Timestamped for human legibility,
+# mktemp-suffixed so two launches in the same second can't collide. konrad
+# creates only this container dir — it never writes into it, the same invariant
+# it holds for the log/state dirs and the user's real workspace.
+prepare_scratch_workspace() {
+  mkdir -p "$KONRAD_SCRATCH_DIR" \
+    || die "could not create the scratch base directory $KONRAD_SCRATCH_DIR"
+  local dir
+  dir="$(mktemp -d "$KONRAD_SCRATCH_DIR/$(date +%Y%m%d-%H%M%S)-XXXXXX" 2>/dev/null)" \
+    || die "could not create a scratch workspace under $KONRAD_SCRATCH_DIR"
+  KONRAD_WORKSPACE_DIR="$dir"
+  dbg "scratch workspace: $dir"
+}
+
+# True when the current directory IS the user's home dir. konrad can't bind
+# $HOME as the workspace: it hands the agent the entire home, and the mount is
+# refused outright on SELinux hosts (won't relabel $HOME) and the macOS Podman
+# VM (can't traverse ~/.Trash). Callers either redirect to a scratch workspace
+# (the interactive agent TUI) or refuse with the fix (podman_run's guard).
+cwd_is_home() {
+  local cwd home_real
+  cwd="$(pwd -P)"
+  home_real="$(cd "$HOME" 2>/dev/null && pwd -P || printf '%s' "$HOME")"
+  [[ "$cwd" == "$home_real" ]]
+}
+
+# Launch-time notice: where the ephemeral workspace landed and how to reveal it.
+# $1 is "redirect" (auto-fallback from a $HOME launch) or "explicit" (`scratch`).
+scratch_notice() {
+  local why="$1"
+  if [[ "$why" == "redirect" ]]; then
+    info "no project directory here — using a throwaway scratch workspace."
+  else
+    info "throwaway scratch workspace."
+  fi
+  info "→ $KONRAD_WORKSPACE_DIR   (reveal it in your file manager: $SELF open)"
+  [[ "$why" == "redirect" ]] \
+    && info "  cd into a project directory to work on real files instead."
   return 0
 }
 
@@ -1124,26 +1219,28 @@ default_cpus() {
 # All variables are quoted, so paths containing spaces are safe.
 podman_run() {
   local cwd ws_src
-  cwd="$(pwd -P)"
+  # The bind source is the selected scratch workspace when one was minted
+  # (KONRAD_WORKSPACE_DIR), else the current directory — the normal case.
+  cwd="${KONRAD_WORKSPACE_DIR:-$(pwd -P)}"
 
   # Guard: refuse $HOME as the workspace. konrad bind-mounts the current dir into
   # the sandbox as /workspace; from your home folder that hands the agent your
   # entire home, and the mount fails outright on some hosts (SELinux won't relabel
   # $HOME; the macOS Podman VM can't traverse ~/.Trash). Name the fix, don't emit
-  # a raw mount error. (Skipped in remote/self-test mode, where cwd is /workspace.)
-  if [[ -z "${KONRAD_REMOTE_HOST_ROOT:-}" ]]; then
-    local home_real
-    home_real="$(cd "$HOME" 2>/dev/null && pwd -P || printf '%s' "$HOME")"
-    if [[ "$cwd" == "$home_real" ]]; then
-      cat >&2 <<EOF
+  # a raw mount error. Skipped when a scratch workspace is already selected (the
+  # agent TUI redirects there instead of erroring — see do_run) and in
+  # remote/self-test mode, where cwd is /workspace.
+  if [[ -z "${KONRAD_REMOTE_HOST_ROOT:-}" && -z "${KONRAD_WORKSPACE_DIR:-}" ]] \
+     && cwd_is_home; then
+    cat >&2 <<EOF
 konrad: refusing to run with your home directory as the workspace.
 
 konrad mounts the current directory into the sandbox as /workspace; from \$HOME
 that hands the agent your entire home folder, and the mount is refused outright
-on some hosts (SELinux, macOS Podman). cd into a project directory and re-run.
+on some hosts (SELinux, macOS Podman). cd into a project directory, or run
+'$SELF scratch' for a throwaway workspace.
 EOF
-      exit 1
-    fi
+    exit 1
   fi
 
   ws_src="$(remote_host_path "$cwd")"   # rewritten only in remote mode
@@ -1671,6 +1768,7 @@ launch_preflight() {
   require_engine; dbg "engine OK"
   require_image;  dbg "image OK"
   prune_log_dir
+  prune_scratch_dirs       # before any new scratch dir is minted (never the current one)
   warn_old_org_layout      # pre-0.18 flat org/ files would otherwise vanish silently
   notices_flush            # render+drain any news a prior worker or org hook left
   maybe_background_refresh # throttled, detached: pull :latest + re-sync org layers
@@ -1680,6 +1778,18 @@ do_run() {
   local mode="$1"  # "agent" or "shell"
   dbg "do_run start (mode=$mode)"
   launch_preflight
+  # Workspace selection for the agent TUI. Two ways into a scratch workspace,
+  # both agent-only and skipped in remote/self-test mode (KONRAD_REMOTE_HOST_ROOT,
+  # where cwd is already /workspace): an explicit `konrad scratch` (KONRAD_SCRATCH),
+  # or the auto-fallback when the TUI is launched from $HOME — which used to be a
+  # hard refusal. `shell`/`run` keep the explicit guard in podman_run.
+  if [[ "$mode" == "agent" && -z "${KONRAD_REMOTE_HOST_ROOT:-}" ]]; then
+    if [[ "${KONRAD_SCRATCH:-0}" == "1" ]]; then
+      prepare_scratch_workspace; scratch_notice explicit
+    elif cwd_is_home; then
+      prepare_scratch_workspace; scratch_notice redirect
+    fi
+  fi
   brand
   if [[ "$mode" == "shell" ]]; then
     dbg "about to exec $KONRAD_ENGINE run (bash)"
@@ -1688,6 +1798,29 @@ do_run() {
     dbg "about to exec $KONRAD_ENGINE run (opencode)"
     podman_run opencode
   fi
+}
+
+# Reveal the most recent scratch workspace in the host file manager. Pure
+# host-side convenience (the CLI runs on the host; only the agent is sandboxed),
+# so the platform opener is just there — `open` on macOS, `xdg-open` on Linux —
+# and it needs no engine/image, hence no launch_preflight. Newest dir wins:
+# scratch names are timestamped (YYYYMMDD-HHMMSS-…), so a lexical sort is
+# chronological and avoids non-portable `find -printf`/`stat` differences.
+do_open() {
+  dbg "do_open start"
+  local latest=""
+  [[ -d "$KONRAD_SCRATCH_DIR" ]] && latest="$(
+    find "$KONRAD_SCRATCH_DIR" -mindepth 1 -maxdepth 1 -type d 2>/dev/null \
+      | sort | tail -n 1
+  )"
+  [[ -n "$latest" ]] \
+    || die "no scratch workspaces yet — start one with '$SELF scratch' (or just '$SELF' from your home folder)."
+  local opener
+  if [[ "$(uname -s)" == "Darwin" ]]; then opener="open"; else opener="xdg-open"; fi
+  command -v "$opener" >/dev/null 2>&1 \
+    || die "no '$opener' on PATH to open a file manager. Newest scratch workspace: $latest"
+  info "opening $latest"
+  "$opener" "$latest" >/dev/null 2>&1 || die "'$opener' failed to open $latest"
 }
 
 # Non-interactive one-shot: exec `opencode run <args…>` instead of the TUI.
@@ -2459,6 +2592,9 @@ WARNING — reset will permanently delete:
 
   - the central log dir:
       $KONRAD_LOG_DIR
+  - the scratch workspaces (throwaway '$SELF scratch' dirs and whatever the
+    agent wrote in them):
+      $KONRAD_SCRATCH_DIR
   - the shared volumes:
       • $SECRETS_VOLUME  (your provider credentials — you'll need to /connect again)
       • $CACHE_VOLUME    (opencode's cache)
@@ -2479,6 +2615,10 @@ EOF
   if [[ -d "$KONRAD_LOG_DIR" ]]; then
     rm -rf "$KONRAD_LOG_DIR"
     info "removed $KONRAD_LOG_DIR"
+  fi
+  if [[ -d "$KONRAD_SCRATCH_DIR" ]]; then
+    rm -rf "$KONRAD_SCRATCH_DIR"
+    info "removed $KONRAD_SCRATCH_DIR"
   fi
   if command -v "$KONRAD_ENGINE" >/dev/null 2>&1 && eng_running; then
     for vol in "$SECRETS_VOLUME" "$CACHE_VOLUME" "$STATE_VOLUME"; do
@@ -2617,6 +2757,14 @@ Subcommands:
                         Firewall ON, output on stdout. (Provider auth is
                         'connect'; a single prompt is 'run'.)
   $self shell          Open a bash shell in the container instead of the TUI.
+  $self scratch        Launch the TUI in a fresh, throwaway workspace under
+                        ~/.local/state/konrad/scratch/ instead of a project dir —
+                        for when you just want a clean space, not a specific
+                        folder. (Running '$self' straight from your home folder
+                        does this automatically rather than refusing.) Pruned
+                        after KONRAD_RETENTION_DAYS; reveal one with '$self open'.
+  $self open           Reveal the newest scratch workspace in your file manager
+                        (open / xdg-open).
   $self connect [a…]   Authenticate a provider ('opencode auth login') with no
                         agent in the loop — the firewall is off for this step, so
                         an OAuth login (Claude Pro/Max, …) needs no --allow-host.
@@ -2707,6 +2855,9 @@ its install channel — 'konrad update' / brew / curl|sh):
   KONRAD_NO_NOTICES=1 $self          Suppress the launch-time notice queue (kept for a later launch, not lost).
   KONRAD_HOOK_TIMEOUT=120 $self      Seconds an org post-sync hook may run before it's killed. Default 120.
 
+State retention (konrad's own state that grows per launch — logs + scratch workspaces):
+  KONRAD_RETENTION_DAYS=30 $self     Prune logs + scratch dirs untouched this many days. 0 disables (keep all). Default 30.
+
 Files the agent may write in your workspace (konrad does NOT create or
 gitignore these — they appear only if the agent actually uses them):
   .agent/task.md        Current task's plan + outcome (committable).
@@ -2716,7 +2867,9 @@ gitignore these — they appear only if the agent actually uses them):
 
 Files on the host (outside the workspace):
   $KONRAD_LOG_DIR
-                        opencode logs. Pruned >7d on every launch. \`tail -f\` to read.
+                        opencode logs. Pruned per KONRAD_RETENTION_DAYS. \`tail -f\` to read.
+  $KONRAD_SCRATCH_DIR
+                        Throwaway scratch workspaces ('$self scratch' / '$self open'). Same prune.
   $KONRAD_REFRESH_LOG
                         Last background-refresh run (image pull + org sync). Read to debug auto-update.
 
@@ -2777,6 +2930,8 @@ while [[ $# -gt 0 ]]; do
     mcp-auth)   ACTION="mcp-auth";    shift; RUN_ARGS=("$@"); break ;;
     org)        ACTION="org";         shift; RUN_ARGS=("$@"); break ;;
     shell)      ACTION="shell";       shift; reject_post_subcommand_args shell "$@";      break ;;
+    scratch)    ACTION="scratch";     shift; reject_post_subcommand_args scratch "$@";    break ;;
+    open)       ACTION="open";        shift; reject_post_subcommand_args open "$@";       break ;;
     update)
       shift
       case "${1:-}" in
@@ -2826,6 +2981,8 @@ detect_engine
 case "$ACTION" in
   run)           do_run agent ;;
   shell)         do_run shell ;;
+  scratch)       KONRAD_SCRATCH=1; do_run agent ;;
+  open)          do_open ;;
   run-oneshot)   do_run_oneshot ${RUN_ARGS[@]+"${RUN_ARGS[@]}"} ;;
   opencode)      do_opencode ${RUN_ARGS[@]+"${RUN_ARGS[@]}"} ;;
   connect)       do_connect ${RUN_ARGS[@]+"${RUN_ARGS[@]}"} ;;

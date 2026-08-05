@@ -106,6 +106,8 @@ The action verbs are subcommands; `konrad` with no subcommand launches the TUI.
 | `run <args…>`          | Non-interactive: `opencode run <args…>` — one prompt, answer on stdout (pipeable). |
 | `opencode <args…>`     | Pass-through to `opencode <args…>` in the sandbox — the escape hatch for opencode subcommands konrad doesn't wrap (`opencode models`, `agent list`, `session list`, …). |
 | `shell`                | Open a bash shell in the container instead of the TUI.                  |
+| `scratch`              | Launch the TUI in a fresh throwaway workspace under `~/.local/state/konrad/scratch/` — for when you want a clean space, not a specific folder. (Running `konrad` straight from your home folder does this automatically instead of refusing.) |
+| `open`                 | Reveal the newest scratch workspace in your file manager (`open` / `xdg-open`). |
 | `connect [args…]`      | Authenticate a provider (`opencode auth login`) — agent-free, firewall off. `connect --custom [id]` declares a self-hosted endpoint. |
 | `mcp-auth <server>`    | Authenticate a remote MCP server's OAuth; the browser callback is forwarded into the sandbox. |
 | `org add` / `list` / `sync` / `remove` | Manage org config-layer subscriptions — see [For organizations](#for-organizations). |
@@ -305,6 +307,7 @@ Rarely needed — the flags cover day-to-day use. Collected here so the rest of 
 | `KONRAD_NO_PULL=1` | Installer: skip the image pre-pull. |
 | `KONRAD_NO_AUTO_REFRESH=1` | Disable the throttled background refresh (image pull + org sync — see [Staying current](#staying-current)). |
 | `KONRAD_REFRESH_INTERVAL` | Seconds between background refreshes (`0` disables). Default `86400` (daily). |
+| `KONRAD_RETENTION_DAYS` | Days konrad keeps its own growing state — the log dir and scratch workspaces — before pruning untouched entries at launch. `0` disables pruning (keep everything). Default `30`. |
 | `KONRAD_NO_NOTICES=1` | Suppress the launch-time notice queue (background-refresh / org-hook news). For automation — a suppressed notice waits for a later interactive launch rather than being lost. |
 | `KONRAD_HOOK_TIMEOUT` | Seconds an org layer's `post-sync` hook may run before it's killed. Default `120`. |
 | `KONRAD_DEBUG=1` / `KONRAD_TRACE_FETCH=1` | Verbose launch / raw HTTP trace — see [Debugging opencode](#debugging-opencode). |
@@ -318,7 +321,8 @@ One rule: **`.agent/` belongs to the agent.** Framework state (opencode sessions
 | `<workspace>/.agent/task.md` | Current task's plan + outcome | Overwritten next task; committable. |
 | `<workspace>/.agent/artifacts/` | Durable mid-task outputs | Hands-off; committable. |
 | `<workspace>/.agent/scratch/`, `.agent/quality-assurance/` | Agent scripts; verification evidence | Created by the agent on demand; konrad neither creates, prunes, nor gitignores them — they're yours to manage. |
-| `~/.local/state/konrad/log/` | opencode logs | Auto-pruned >7d; `ls -t` / `tail -f`. |
+| `~/.local/state/konrad/log/` | opencode logs | Auto-pruned after `KONRAD_RETENTION_DAYS` (default 30); `ls -t` / `tail -f`. |
+| `~/.local/state/konrad/scratch/` | Throwaway workspaces from `konrad scratch` / a bare-`$HOME` launch | Same prune; `konrad open` reveals the newest; wiped by `konrad reset`. |
 | Named volumes `konrad-secrets` / `-cache` / `-state` | Auth, cache, last-model + UI state | Shared across projects; wiped by `konrad reset`. |
 
 opencode's sessions and conversation DB are **ephemeral** — gone on container exit. Durable task memory is `.agent/task.md`, not the framework's history. Full rationale and the exact mount topology in [state isolation](ARCHITECTURE.md#state-secrets--isolation).
@@ -333,7 +337,7 @@ opencode's sessions and conversation DB are **ephemeral** — gone on container 
 | `cannot reach Apple's container service`                         | Apple `container` not started (macOS)       | `container system start` (or `KONRAD_ENGINE=podman` to use Podman instead)                |
 | A local model errors or never answers                            | Engine not serving, or model not declared   | Start the engine's server on its default port (LM Studio `:1234` via Developer → Start Server, Ollama `:11434`, llama.cpp `:8080`) and declare the loaded model — see [Configuration](#configuration). |
 | Agent can't find the file you mentioned                          | You ran `konrad` in the wrong directory     | The cwd is what gets mounted at `/workspace`. Always `cd` first.                          |
-| `refusing to run with your home directory as the workspace`      | You ran `konrad` straight from `$HOME`      | `cd` into a project directory first — konrad mounts the cwd as `/workspace`, and `$HOME` exposes everything (and fails to mount on SELinux / macOS). |
+| `refusing to run with your home directory as the workspace`      | You ran `konrad shell`/`konrad run` from `$HOME` | `cd` into a project directory, or use `konrad scratch` for a throwaway workspace. (`$HOME` can't be the workspace — it exposes everything and won't mount on SELinux / macOS. The bare `konrad` TUI now auto-redirects to a scratch workspace instead of erroring.) |
 | A command (e.g. `docling`) prints `Killed` with no error         | Container hit its RAM cap (out-of-memory)   | Raise it for the run: `KONRAD_MEMORY=8G konrad` (see [Resource limits](#resource-limits)). |
 | `merge-config: failed to parse …/konrad/user/opencode.jsonc`     | Syntax error in your user override          | `cat` it and check the JSONC syntax. Comments are fine. (Same applies to an org layer's `org/<name>/opencode.jsonc`.) |
 | Want to wipe and start over                                      | —                                           | `konrad reset` (prompts `[y/N]`), then `konrad update`                                |
