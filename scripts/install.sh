@@ -78,7 +78,14 @@ desktop_wanted() {
       "$_C_DIM" "$_C_OFF" >&2
     reply=""
     read -r reply < /dev/tty || reply=""
-    case "$reply" in y|Y|yes|YES) return 0 ;; *) return 1 ;; esac
+    # `j`/`ja` alongside `y`/`yes`: the prompt is English but the install base
+    # isn't, and a German "ja" silently reading as "no" is indistinguishable
+    # from the launcher failing to install. Anything else declines — and says
+    # so, so a decline never looks like a silent bug either.
+    case "$reply" in
+      y|Y|yes|YES|j|J|ja|JA) return 0 ;;
+      *) say "skipping the desktop launcher (add it later: konrad install-desktop)."; return 1 ;;
+    esac
   fi
   chatter "tip: run 'konrad install-desktop' to add a menu/Dock icon."
   return 1

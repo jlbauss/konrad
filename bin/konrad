@@ -1857,8 +1857,14 @@ fetch_asset() {
     return 1
   fi
   command -v curl >/dev/null 2>&1 || return 1
-  curl -fsSL --max-time 15 "$ASSET_BASE_URL/$name" -o "$dest" 2>/dev/null \
-    && [[ -s "$dest" ]]
+  # -o creates $dest even when the transfer fails, so a refusal/offline run
+  # would leave a 0-byte konrad.svg sitting in the icon tree. Clear it.
+  if curl -fsSL --max-time 15 "$ASSET_BASE_URL/$name" -o "$dest" 2>/dev/null \
+     && [[ -s "$dest" ]]; then
+    return 0
+  fi
+  rm -f "$dest"
+  return 1
 }
 
 # Write the shared launcher wrapper to $1 (executable). This is the single
@@ -1960,9 +1966,17 @@ install_desktop_linux() {
     || die "could not create the launcher directories under $data."
   emit_wrapper "$wrapper"
 
+  # Icon= by ABSOLUTE PATH, not by theme name. The spec allows both, but a name
+  # only resolves through the icon theme — and when ~/.local/share/icons/hicolor
+  # is created for the first time (every first install), the running shell has no
+  # file monitor on a tree that didn't exist at login, so `Icon=konrad` stays
+  # unresolved until a re-login: the entry shows up in the menu with a generic
+  # icon. An absolute path bypasses theme lookup entirely and renders at once.
+  # The file still lands in the hicolor tree (standard location, swept by
+  # --remove / uninstall), so name lookup works too once the theme is rescanned.
   local icon_line=""
   if fetch_asset konrad.svg "$icon"; then
-    icon_line="Icon=konrad"
+    icon_line="Icon=$icon"
   else
     warn "launcher icon unavailable (offline?); using a generic icon."
   fi
