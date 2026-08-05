@@ -16,6 +16,8 @@ build publishes as `:0.X` (minor line), `:latest`, and an immutable
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-08-05
+
 ### Added
 
 - **Ephemeral scratch workspaces for no-project launches.** `konrad scratch`
@@ -38,6 +40,12 @@ build publishes as `:0.X` (minor line), `:latest`, and an immutable
   `--version` breaks onto three tidy lines (cli / image / engine). The image's
   own version label drifts from the CLI on CLI-only patches, so leading with it
   read like a mismatch; the short-sha + build date + CLI-at-build don't.
+
+### Fixed
+
+- **Debug/help output names the engine actually in use.** The `-v` launch
+  labels and the `--help` build-manifest example were hardcoded to "podman" and
+  read wrong on the apple/container engine; they now reflect the active engine.
 
 ## [0.23.2] - 2026-08-05
 
