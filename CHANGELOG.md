@@ -16,6 +16,8 @@ build publishes as `:0.X` (minor line), `:latest`, and an immutable
 
 ## [Unreleased]
 
+## [0.26.0] - 2026-08-05
+
 ### Added
 
 - **`KONRAD_TERMINAL` — pick the terminal the macOS launcher opens.**
