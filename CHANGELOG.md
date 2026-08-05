@@ -16,6 +16,17 @@ build publishes as `:0.X` (minor line), `:latest`, and an immutable
 
 ## [Unreleased]
 
+### Added
+
+- **Desktop launcher (`konrad install-desktop`).** Adds a user-scope clickable
+  launcher that opens a scratch session — a Linux application-menu entry or a
+  macOS `~/Applications/Konrad.app` (Dock / Launchpad / Spotlight). No root;
+  `install-desktop --remove` deletes it and `uninstall` sweeps it. The `curl|sh`
+  installer offers to create it (`KONRAD_DESKTOP=1`/`0` to force the choice), and
+  the launcher offers to install the CLI if it's ever clicked without one.
+  Ships konrad's first logo (`assets/konrad.svg`). Rationale:
+  [ARCHITECTURE.md](ARCHITECTURE.md#distribution--updates).
+
 ## [0.24.0] - 2026-08-05
 
 ### Added

@@ -108,6 +108,7 @@ The action verbs are subcommands; `konrad` with no subcommand launches the TUI.
 | `shell`                | Open a bash shell in the container instead of the TUI.                  |
 | `scratch`              | Launch the TUI in a fresh throwaway workspace under `~/.local/state/konrad/scratch/` — for when you want a clean space, not a specific folder. (Running `konrad` straight from your home folder does this automatically instead of refusing.) |
 | `open`                 | Reveal the newest scratch workspace in your file manager (`open` / `xdg-open`). |
+| `install-desktop`      | Add a clickable launcher — a Linux application-menu entry or a macOS `~/Applications/Konrad.app` (Dock / Launchpad / Spotlight) — that opens a scratch session. User-scope, no root; `install-desktop --remove` deletes it (also swept by `uninstall`). The installer offers this too. |
 | `connect [args…]`      | Authenticate a provider (`opencode auth login`) — agent-free, firewall off. `connect --custom [id]` declares a self-hosted endpoint. |
 | `mcp-auth <server>`    | Authenticate a remote MCP server's OAuth; the browser callback is forwarded into the sandbox. |
 | `org add` / `list` / `sync` / `remove` | Manage org config-layer subscriptions — see [For organizations](#for-organizations). |
@@ -129,6 +130,23 @@ Modifiers — pass them **before** the subcommand.
 | `-h`, `--help`           | Show usage.                                                             |
 
 `konrad-dev` is the contributor binary — same surface, except the `rebuild` subcommand replaces `update`. See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+### Desktop launcher
+
+Prefer a clickable icon over the terminal? `konrad install-desktop` adds a
+user-scope launcher that opens a fresh scratch session (a GUI launch has no
+project folder, so a throwaway workspace is the sensible landing spot):
+
+- **Linux** — a `konrad.desktop` entry in your application menu (opens your
+  terminal via `Terminal=true`).
+- **macOS** — a `~/Applications/Konrad.app` for the Dock, Launchpad, and
+  Spotlight.
+
+No root, nothing system-wide; `konrad install-desktop --remove` deletes it, and
+`konrad uninstall` sweeps it too. The `curl | sh` installer offers to create it
+for you (or set `KONRAD_DESKTOP=1` to opt in non-interactively). If the launcher
+is ever clicked on a machine where the `konrad` CLI is missing, it offers to
+install it first.
 
 ### Staying current
 
@@ -305,6 +323,7 @@ Rarely needed — the flags cover day-to-day use. Collected here so the rest of 
 | `KONRAD_MEMORY` / `KONRAD_CPUS` / `KONRAD_PIDS_LIMIT` | Pin or disable the resource caps — see [Resource limits](#resource-limits). |
 | `KONRAD_INSTALL_DIR` | Installer: where to put the CLI (default `~/.local/bin`). |
 | `KONRAD_NO_PULL=1` | Installer: skip the image pre-pull. |
+| `KONRAD_DESKTOP` | Installer: `1` creates the desktop launcher without asking, `0` skips it. Unset → the installer asks (on a terminal), else prints a hint. See [Desktop launcher](#desktop-launcher). |
 | `KONRAD_NO_AUTO_REFRESH=1` | Disable the throttled background refresh (image pull + org sync — see [Staying current](#staying-current)). |
 | `KONRAD_REFRESH_INTERVAL` | Seconds between background refreshes (`0` disables). Default `86400` (daily). |
 | `KONRAD_RETENTION_DAYS` | Days konrad keeps its own growing state — the log dir and scratch workspaces — before pruning untouched entries at launch. `0` disables pruning (keep everything). Default `30`. |

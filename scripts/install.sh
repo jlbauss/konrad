@@ -57,6 +57,33 @@ go()   { printf '  %s→%s  %s\n'                "$_C_GO"  "$_C_OFF" "$*" >&2; }
 # said "refreshing CLI"). Honors KONRAD_QUIET_INSTALL=1.
 chatter() { [ "${KONRAD_QUIET_INSTALL:-0}" = "1" ] || say "$@"; }
 
+# Decide whether to create a desktop launcher (a GUI menu/Dock icon that opens a
+# scratch session). Opt-in — a desktop entry is a visible change to the user's
+# environment. KONRAD_DESKTOP forces the answer for non-interactive installs
+# (1 = yes, 0 = no); otherwise we ASK. The ask reads from /dev/tty, not stdin:
+# in the `curl | sh` path stdin IS the piped script, so a plain `read` can't
+# reach the user — /dev/tty is the controlling terminal, which is present even
+# then. No tty and no knob → print a one-line hint and skip. Skipped up front on
+# a clearly headless Linux box (no display server); macOS always has a GUI.
+desktop_wanted() {
+  case "${KONRAD_DESKTOP:-}" in
+    1) return 0 ;;
+    0) return 1 ;;
+  esac
+  if [ "$(uname -s)" = "Linux" ] && [ -z "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]; then
+    return 1
+  fi
+  if [ -e /dev/tty ] && [ -r /dev/tty ]; then
+    printf '%skonrad%s create a desktop launcher (menu/Dock icon)? [y/N] ' \
+      "$_C_DIM" "$_C_OFF" >&2
+    reply=""
+    read -r reply < /dev/tty || reply=""
+    case "$reply" in y|Y|yes|YES) return 0 ;; *) return 1 ;; esac
+  fi
+  chatter "tip: run 'konrad install-desktop' to add a menu/Dock icon."
+  return 1
+}
+
 # --- Pick a download tool ----------------------------------------------------
 if command -v curl >/dev/null 2>&1; then
   fetch() { curl -fsSL "$1"; }
@@ -169,11 +196,17 @@ fi
 # and will pull on first run, so we note it and exit 0.
 if [ "${KONRAD_NO_PULL:-0}" = "1" ]; then
   chatter "skipping image pre-pull (KONRAD_NO_PULL=1). Run 'konrad update' when ready."
-  exit 0
+else
+  if ! "$TARGET" pull-image; then
+    warn "image pre-pull didn't complete; konrad will pull it on first run."
+  fi
 fi
 
-if ! "$TARGET" pull-image; then
-  warn "image pre-pull didn't complete; konrad will pull it on first run."
+# Offer a clickable launcher (see desktop_wanted). Non-fatal — the CLI is
+# already in place, so a failure here just means no icon, not a broken install.
+if desktop_wanted; then
+  "$TARGET" install-desktop \
+    || warn "couldn't create the desktop launcher; run 'konrad install-desktop' later."
 fi
 
 printf '\n' >&2

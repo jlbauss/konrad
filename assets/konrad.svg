@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+SPDX-FileCopyrightText: 2026 Jan-Luca Bauß
+SPDX-License-Identifier: AGPL-3.0-or-later
+
+Konrad's mark: a lowercase "k" (JetBrains Mono Bold, outlined to a path — the
+same family konrad bundles) in the agent's green (#3f7a57) on a charcoal tile
+(#1e1e1e), echoing the agent's color on a dark-mode terminal. Single source of
+truth for every launcher icon — installed verbatim as the Linux hicolor scalable
+icon, and rasterized (assets/konrad-1024.png → sips/iconutil) into the macOS
+.icns. Two layers (background tile / foreground glyph), flat and self-contained,
+so it feeds Apple's Icon Composer for a future adaptive .icon without a redraw.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024"
+     viewBox="0 0 1024 1024" version="1.1">
+  <g id="background">
+    <rect width="1024" height="1024" rx="200" ry="200" fill="#1e1e1e"/>
+  </g>
+  <g id="foreground" fill="#3f7a57">
+    <path transform="translate(512 512) scale(0.821918 -0.821918) translate(-326.5000 -365.0000)" d="M82 0V730H207V334H295L426 550H565L402 284L571 0H429L295 228H207V0Z"/>
+  </g>
+</svg>
