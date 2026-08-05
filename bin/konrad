@@ -1648,10 +1648,10 @@ do_run() {
   launch_preflight
   brand
   if [[ "$mode" == "shell" ]]; then
-    dbg "about to exec podman run (bash)"
+    dbg "about to exec $KONRAD_ENGINE run (bash)"
     podman_run bash
   else
-    dbg "about to exec podman run (opencode)"
+    dbg "about to exec $KONRAD_ENGINE run (opencode)"
     podman_run opencode
   fi
 }
@@ -1668,7 +1668,7 @@ do_run_oneshot() {
   launch_preflight
   KONRAD_NONINTERACTIVE=1   # read by podman_run to drop the pseudo-tty
   brand
-  dbg "about to exec podman run (opencode run)"
+  dbg "about to exec $KONRAD_ENGINE run (opencode run)"
   podman_run opencode run "$@"
 }
 
@@ -1683,7 +1683,7 @@ do_opencode() {
   launch_preflight
   KONRAD_NONINTERACTIVE=1   # clean, pipeable stdout — same as run
   brand
-  dbg "about to exec podman run (opencode $*)"
+  dbg "about to exec $KONRAD_ENGINE run (opencode $*)"
   podman_run opencode "$@"
 }
 
@@ -1720,7 +1720,7 @@ do_connect() {
   fi
   KONRAD_FIREWALL=0   # pure auth, no agent → no injection surface → safe unfiltered
   brand
-  dbg "about to exec podman run (opencode auth login)"
+  dbg "about to exec $KONRAD_ENGINE run (opencode auth login)"
   podman_run opencode auth login "$@"
 }
 
@@ -1850,7 +1850,7 @@ EOF
   KONRAD_FIREWALL=0
   KONRAD_PUBLISH_PORT="$KONRAD_MCP_AUTH_PORT"
   brand
-  dbg "about to exec podman run (opencode mcp auth)"
+  dbg "about to exec $KONRAD_ENGINE run (opencode mcp auth)"
   podman_run opencode mcp auth "$@"
 }
 
@@ -2713,7 +2713,7 @@ README → Configuration → "For organizations".
 
 Occasional maintenance (one-liners, not built into the CLI):
   Edit your override:   \$EDITOR ~/.config/konrad/user/opencode.jsonc
-  Build-manifest dump:  podman run --rm --entrypoint cat $IMAGE_DEFAULT \\
+  Build-manifest dump:  $KONRAD_ENGINE run --rm --entrypoint cat $IMAGE_DEFAULT \\
                           /etc/konrad/build-manifest.json | jq .
 EOF
 }
