@@ -11,6 +11,12 @@ Entries stay terse — the *why* lives in the git commit log and the [ARCHITECTU
 
 ## [Unreleased]
 
+## [0.27.1] - 2026-08-06
+
+### Fixed
+
+- **`konrad update` works again.** The installer identified an existing `~/.local/bin/konrad` by a *prose* line in the file, and 0.27.0's lowercase rebrand rewrote that line — so every 0.27.0 install failed its own identity check and `konrad update` refused to overwrite it ("doesn't look like a previous konrad install"). The marker is now the structural `KONRAD_VERSION_BAKED` hook, which no rebrand can move. Unrelated files are still protected.
+
 ## [0.27.0] - 2026-08-06
 
 ### Changed
