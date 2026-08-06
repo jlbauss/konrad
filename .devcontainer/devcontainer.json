@@ -5,7 +5,7 @@
   // Distinct from the planned consumer path: a `konrad init-devcontainer`
   // subcommand will scaffold a Dev Container into a *user's* own project
   // (ROADMAP.md). That config lives in the user's tree, never here — this
-  // .devcontainer/ only ever configures Konrad's own repo.
+  // .devcontainer/ only ever configures konrad's own repo.
   "name": "konrad-claude-dev",
   "build": {
     "dockerfile": "Dockerfile"

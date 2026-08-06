@@ -5,7 +5,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 # CLAUDE.md
 
-Guidance for AI agents working on Konrad's source. (Konrad's *runtime* agent behavior lives in `image/opencode/`, not here.) Canonical homes for everything else — link, don't restate: [README.md](README.md) (users) · [CONTRIBUTING.md](CONTRIBUTING.md) (dev + release process) · [ARCHITECTURE.md](ARCHITECTURE.md) (design + *why*) · [ROADMAP.md](ROADMAP.md) (backlog) · [CHANGELOG.md](CHANGELOG.md) (released changes).
+Guidance for AI agents working on konrad's source. (konrad's *runtime* agent behavior lives in `image/opencode/`, not here.) Canonical homes for everything else — link, don't restate: [README.md](README.md) (users) · [CONTRIBUTING.md](CONTRIBUTING.md) (dev + release process) · [ARCHITECTURE.md](ARCHITECTURE.md) (design + *why*) · [ROADMAP.md](ROADMAP.md) (backlog) · [CHANGELOG.md](CHANGELOG.md) (released changes).
 
 Very important: ALWAYS read the README, ROADMAP, CONTRIBUTING and ARCHITECTURE docs once before you start planning or building, so they are in your context and you are able to follow the instructions they give.
 
@@ -39,7 +39,9 @@ Durable rules for every agent in this repo — written here (not just in per-ses
 
 ### Naming & terminology
 
-- "Konrad" the product, `konrad` the code: capitalized name in prose; lowercase in every command / path / image / package (`bin/konrad`, `~/.config/konrad/`, `ghcr.io/jlbauss/konrad`) — never recapitalize those.
+- **`konrad` is always lowercase — everywhere, no exceptions**: prose, sentence starts, headings, titles, CLI messages, commands, paths, image, package. It styles itself like `opencode` and `npm` (never capitalized, even at the start of a sentence). This is a self-enforcing rule precisely because there's no judgment call — if you typed `Konrad`, it's wrong. **The one deliberate exception is the macOS app bundle `Konrad.app`** (and its `CFBundle*` identifiers / `Contents/MacOS/Konrad` executable), which follows the Dock/Launchpad/Spotlight capitalization convention.
+- **Canonical short description / tagline: "the sandboxed coworking agent."** Reuse it verbatim wherever konrad needs a one-liner (README subtitle, `.desktop` `Comment`, `--help` blurb, OCI image label, forge/registry "About") rather than inventing a new phrasing each time.
+- **Colour: konrad green (`#3f7a57`, the logo/agent green) is the only brand accent.** If a message uses colour, it's this green (the brand header, success `✓`, positive hints). It's emitted as **24-bit truecolor when the terminal advertises `COLORTERM`**, with a plain-green (`32m`) fallback for non-truecolor terminals (e.g. macOS Terminal.app). Arrows/secondary markers ride the dim/gray body colour; **yellow and red stay reserved for warning/error *status*** (universal semantics, not brand accent — a green "warning:" would mislead). Palette lives in two mirrored blocks — [bin/konrad](bin/konrad) and [image/entrypoint.sh](image/entrypoint.sh) — and the host **forwards `COLORTERM`/`NO_COLOR` into the container** so both blocks paint the identical green.
 - Say "quality assurance," not "QA," in prose under `image/opencode/`. Files kebab-case (`quality-assurance.md`), Python identifiers snake_case (`quality_assurance_helpers.py`).
 
 ### Docs

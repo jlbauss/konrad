@@ -52,10 +52,10 @@ it idempotent: it runs on every sync, changed or not. The example hook just
 stamps a marker file so you can watch the mechanism; replace or delete it.
 
 Because the dominant sync path is now the **unwatched** background refresh, a
-hook's `echo` no longer reaches a human. Konrad exports `KONRAD_NOTICE_DIR` (plus
+hook's `echo` no longer reaches a human. konrad exports `KONRAD_NOTICE_DIR` (plus
 `KONRAD_LAYER_NAME` and `KONRAD_HOOK_INTERACTIVE`) so the hook can drop a
 `key: value` notice — `severity: info|warn|blocked`, `summary:`, optional
-`detail:`/`fix:` — that Konrad renders (attributed to your layer, sanitized) at
+`detail:`/`fix:` — that konrad renders (attributed to your layer, sanitized) at
 the member's next launch. The example hook sketches the high-value case: telling
 a member, in your own words, when their forge sign-in has expired and frozen the
 mirror. See [ARCHITECTURE.md → Distribution & updates](../../ARCHITECTURE.md#distribution--updates).
@@ -67,7 +67,7 @@ mirror. See [ARCHITECTURE.md → Distribution & updates](../../ARCHITECTURE.md#d
   `{env:VAR}` placeholders. This merges *under* each user's
   `user/opencode.jsonc`, so a user can still override or add on top.
 - **`instructions/*.md`** — your house rules. Every `.md` here loads additively
-  on the system instructions channel (precedence: Konrad's `environment.md` →
+  on the system instructions channel (precedence: konrad's `environment.md` →
   **org** → user `AGENTS.md` → project `AGENTS.md`). Split rules across files,
   or have the hook generate one. (A single `AGENTS.md` at the layer root still
   works as a back-compat alias.)

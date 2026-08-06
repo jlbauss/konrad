@@ -4,7 +4,7 @@
 # Claude dev container — for working ON konrad.
 #
 # Distinct from devcontainer/ (no dot, at repo root), which is the
-# dormant "Konrad-as-devcontainer" consumption path (see ROADMAP.md,
+# dormant "konrad-as-devcontainer" consumption path (see ROADMAP.md,
 # Future features).
 #
 # Same base as konrad's own runtime image (image/Dockerfile) so the

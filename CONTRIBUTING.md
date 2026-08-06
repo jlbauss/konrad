@@ -1,6 +1,6 @@
 # Contributing to konrad
 
-Thanks for your interest. Konrad is beta software — the runtime and the daily-rebuild CI are solid, but the pre-1.0 surface area is still moving and the docs can lag the code in spots. Contributions of all sizes are welcome, especially the ones that surface gaps before more users do.
+Thanks for your interest. konrad is beta software — the runtime and the daily-rebuild CI are solid, but the pre-1.0 surface area is still moving and the docs can lag the code in spots. Contributions of all sizes are welcome, especially the ones that surface gaps before more users do.
 
 ## Before you start
 
@@ -22,7 +22,7 @@ What does *not* need an issue first:
 
 ## What you're agreeing to
 
-By submitting a PR you agree your contributions are licensed under **AGPL-3.0-or-later** (see [LICENSE](LICENSE)). Konrad is strong-copyleft on purpose — anyone running it (including over a network) has to publish their source. If that's incompatible with your situation, please don't submit.
+By submitting a PR you agree your contributions are licensed under **AGPL-3.0-or-later** (see [LICENSE](LICENSE)). konrad is strong-copyleft on purpose — anyone running it (including over a network) has to publish their source. If that's incompatible with your situation, please don't submit.
 
 No CLA, no DCO. The license terms attach automatically.
 
@@ -37,7 +37,7 @@ Vendored third-party files keep their *upstream* `SPDX-FileCopyrightText` + lice
 
 ## First-time setup
 
-Konrad keeps the user CLI and the dev CLI as separate binaries on `PATH`, so you can hack on the source without disturbing your day-to-day stable `konrad`:
+konrad keeps the user CLI and the dev CLI as separate binaries on `PATH`, so you can hack on the source without disturbing your day-to-day stable `konrad`:
 
 | Binary       | Source of CLI                  | Default image  | Refresh with                |
 | ------------ | ------------------------------ | -------------- | --------------------------- |

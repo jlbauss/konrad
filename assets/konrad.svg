@@ -15,7 +15,7 @@ declaration plus the <svg> tag are the whole budget; everything else lives
 here, below them. REUSE scans the whole file for SPDX tags, so this is still
 compliant.
 
-Konrad's mark: a lowercase "k" (JetBrains Mono Bold, outlined to a path — the
+konrad's mark: a lowercase "k" (JetBrains Mono Bold, outlined to a path — the
 same family konrad bundles) in the agent's green (#3f7a57) on a charcoal tile
 (#1e1e1e), echoing the agent's color on a dark-mode terminal. Single source of
 truth for every launcher icon — installed verbatim as the Linux hicolor scalable

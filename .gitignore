@@ -4,7 +4,7 @@
 .agent/opencode/
 
 # Skill-eval workspaces: bulky test artifacts (inputs, outputs,
-# transcripts, grading) from iterating on Konrad's opencode skills.
+# transcripts, grading) from iterating on konrad's opencode skills.
 # Kept out of git because they regenerate on every eval pass.
 .skill-eval/
 

@@ -1,8 +1,10 @@
 <div align="center">
 
-# Konrad
+<img src="assets/konrad-1024.png" alt="konrad" width="140">
 
-**An open-source AI coworker that runs on your machine and your models — so even your most sensitive files stay yours.**
+# konrad
+
+<strong>the sandboxed coworking agent</strong>
 
 [![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
 [![version](https://img.shields.io/badge/dynamic/yaml?url=https://gitlab.git.nrw/jbauss2/konrad/-/raw/main/VERSION&query=$&label=version&color=informational)](CHANGELOG.md)
@@ -11,11 +13,11 @@
 
 </div>
 
-Konrad is a coworking agent that lives on your computer. Like cloud coworking agents it reads, writes, and acts on real files for you — but it runs **your** models (a trustworthy API, or fully local) against your files inside a sandboxed container, so your most private data never leaves machines you trust. That opens up work the cloud agents can't touch: filling forms with sensitive personal details, processing private notes, handling regulated data.
+konrad is a coworking agent that lives on your computer. Like cloud coworking agents it reads, writes, and acts on real files for you — but it runs **your** models (a trustworthy API, or fully local) against your files inside a sandboxed container, so your most private data never leaves machines you trust. That opens up work the cloud agents can't touch: filling forms with sensitive personal details, processing private notes, handling regulated data.
 
 Under the hood it's a thin wrapper around [opencode](https://github.com/sst/opencode): one container image with the agent and all its tools inside, and a small `konrad` CLI to run it.
 
-## Why Konrad
+## Why konrad
 
 - **Your data stays yours.** Run local models or a trustworthy API — handle the forms, private notes, and regulated data you'd never paste into a cloud chatbot.
 - **Sandboxed by default.** The agent works inside a container that can't touch anything outside the workspace, and an egress firewall (on by default) restricts its network to an allow-list — your model providers plus a small trusted set — so a prompt-injected agent can't quietly ship your data off the box.
@@ -34,14 +36,14 @@ What ships in the box:
 
 ## Who it's for
 
-Konrad is for someone who wants an AI agent to work on **their own files, on their own machine, with their own models** — especially when the data is too sensitive to send to a hosted service.
+konrad is for someone who wants an AI agent to work on **their own files, on their own machine, with their own models** — especially when the data is too sensitive to send to a hosted service.
 
 **It's probably not for you if you want:**
 
-- **Coding / software development** — use Claude Code, Cursor, and the like; Konrad isn't tuned as a coding agent.
-- **Research or web-heavy work** — deep-research and browsing agents do this better. Konrad has no browsing stack, and its default-on egress firewall deliberately narrows network access — it's built to stay on a leash, not to roam.
+- **Coding / software development** — use Claude Code, Cursor, and the like; konrad isn't tuned as a coding agent.
+- **Research or web-heavy work** — deep-research and browsing agents do this better. konrad has no browsing stack, and its default-on egress firewall deliberately narrows network access — it's built to stay on a leash, not to roam.
 - **Production, hosted, or multi-user deployment** — it's a single-user local sandbox, not a deployable service.
-- **A zero-config cloud agent** — if you just want a hosted frontier model with no setup, a first-party app is less friction. Konrad's payoff is local + your-files + sandbox.
+- **A zero-config cloud agent** — if you just want a hosted frontier model with no setup, a first-party app is less friction. konrad's payoff is local + your-files + sandbox.
 
 ## Quick start
 
@@ -49,7 +51,7 @@ Prerequisites once, then three steps: install, connect a model, run.
 
 ### Prerequisites
 
-You need a container engine — Konrad auto-selects the right one for your OS:
+You need a container engine — konrad auto-selects the right one for your OS:
 
 | OS | Engine | One-time setup |
 | --- | --- | --- |
@@ -81,7 +83,7 @@ konrad connect
 
 Prefer a **local model**? [LM Studio](https://lmstudio.ai/) (`:1234`), [Ollama](https://ollama.com/) (`:11434`), and [llama.cpp](https://github.com/ggerganov/llama.cpp) (`:8080`) are pre-wired at their default ports — start the server, and konrad discovers the loaded models into the picker automatically. Recipe in [Set up a model provider](#set-up-a-model-provider).
 
-**Recommended model class.** Konrad's skills and prompts are tuned for a **30B-class open-weight model with strong agentic ability** — we test against [`qwen/qwen3.6-27b`](https://huggingface.co/Qwen). Models should have **native vision**, a context window **≥ 256k**, and agentic strength at least on par with Qwen3.6 27B ([Artificial Analysis Agentic Index](https://artificialanalysis.ai/models/capabilities/agentic)); stronger models only help.
+**Recommended model class.** konrad's skills and prompts are tuned for a **30B-class open-weight model with strong agentic ability** — we test against [`qwen/qwen3.6-27b`](https://huggingface.co/Qwen). Models should have **native vision**, a context window **≥ 256k**, and agentic strength at least on par with Qwen3.6 27B ([Artificial Analysis Agentic Index](https://artificialanalysis.ai/models/capabilities/agentic)); stronger models only help.
 
 ### Run it
 
@@ -92,7 +94,7 @@ konrad
 
 That's the whole UX: the current directory is mounted at `/workspace` inside the container, opencode starts pointing at your configured model, and you go.
 
-Working on Konrad itself? See [CONTRIBUTING.md](CONTRIBUTING.md) for the parallel `konrad-dev` CLI that tracks your checkout.
+Working on konrad itself? See [CONTRIBUTING.md](CONTRIBUTING.md) for the parallel `konrad-dev` CLI that tracks your checkout.
 
 ## Everyday use
 
@@ -150,16 +152,16 @@ konrad keeps the **image** and your subscribed **org layers** fresh on its own: 
 
 ## Status
 
-**Beta.** Konrad works day-to-day and the build/publish pipeline is solid, but the surface area is still pre-1.0 — and the agent edits real files, so keep backups of anything irreplaceable. What that means today:
+**Beta.** konrad works day-to-day and the build/publish pipeline is solid, but the surface area is still pre-1.0 — and the agent edits real files, so keep backups of anything irreplaceable. What that means today:
 
-- **Linux and macOS only, no Docker support yet.** Podman is the default; on macOS 26+ with Apple's [`container`](https://github.com/apple/container) CLI installed, Konrad uses that native engine instead — no `podman machine` VM. Docker support is on the roadmap, untested. No Windows support — WSL is at your own discretion and untested.
-- **Pre-1.0: expect churn, but versioned.** Konrad uses [semantic versioning](CONTRIBUTING.md#versioning) — pre-1.0 that's `0.X.Y` (`X`/minor = new functionality or any user-visible change, `Y`/patch = fixes). The leading `0.` means config shapes, flags, and image internals can still change without a migration path; no stability promise until 1.0.
+- **Linux and macOS only, no Docker support yet.** Podman is the default; on macOS 26+ with Apple's [`container`](https://github.com/apple/container) CLI installed, konrad uses that native engine instead — no `podman machine` VM. Docker support is on the roadmap, untested. No Windows support — WSL is at your own discretion and untested.
+- **Pre-1.0: expect churn, but versioned.** konrad uses [semantic versioning](CONTRIBUTING.md#versioning) — pre-1.0 that's `0.X.Y` (`X`/minor = new functionality or any user-visible change, `Y`/patch = fixes). The leading `0.` means config shapes, flags, and image internals can still change without a migration path; no stability promise until 1.0.
 - **No unit-test suite.** Every published image passes a CI smoke gate (binaries, Python deps, baked content, a docling round-trip) and an end-to-end self-test exists for contributors, but there's no unit coverage — regressions on less-traveled paths can still slip through.
 - **Local-model UX is still rough.** Tool-call parsing, context overflow, and model switching have known edges — the "works flawlessly on local models" shakedown is still a roadmap item.
 
 ## Configuration
 
-Konrad composes opencode's runtime config from up to four layers at container start. **You only override what you want to change**; everything else stays inherited.
+konrad composes opencode's runtime config from up to four layers at container start. **You only override what you want to change**; everything else stays inherited.
 
 ```text
 Layer 1 — Baked defaults     /etc/konrad/opencode-defaults.jsonc   (in the image)
@@ -178,14 +180,14 @@ Each org layer and your user layer are symmetric — a directory with up to six 
 │   ├── opencode.jsonc  Deep-merged with the baked default (and any org layer) at start.
 │   ├── agents/         Your own primary agents, layered in.
 │   ├── skills/         Your own opencode skills, layered in.
-│   ├── instructions/   Any *.md here loads on top of Konrad's base instructions.
-│   ├── AGENTS.md       Personal model instructions, loaded on top of Konrad's base.
+│   ├── instructions/   Any *.md here loads on top of konrad's base instructions.
+│   ├── AGENTS.md       Personal model instructions, loaded on top of konrad's base.
 │   ├── fonts/          .ttf / .otf / .ttc dropped here load on top of the baked palette.
 │   └── allowed_hosts   Extra egress-firewall hosts, one per line (see Egress firewall).
 └── context/            Optional. Read-only reference material (see "Reference material").
 ```
 
-(The first five are opencode config, deep-merged at start. `allowed_hosts` is the one Konrad-specific extra — it feeds the egress firewall, not opencode. `context/` is separate again — not config, just files the agent reads; see [Reference material](#reference-material-the-context-mount).)
+(The first five are opencode config, deep-merged at start. `allowed_hosts` is the one konrad-specific extra — it feeds the egress firewall, not opencode. `context/` is separate again — not config, just files the agent reads; see [Reference material](#reference-material-the-context-mount).)
 
 The merge of `opencode.jsonc` is deep and ordered **baked < org₁ < … < user** (org layers in alphabetical name order; last writer wins): **objects merge recursively, the later layer's keys win on conflict, new keys from any layer come through, arrays replace.** That last one matters — see [the AGENTS.md convention](#adding-your-own-model-instructions).
 
@@ -267,7 +269,7 @@ All three local engines are pre-wired at their default ports (LM Studio `:1234`,
 
 ### Adding your own model instructions
 
-Two additive ways, both loaded *on top of* Konrad's base:
+Two additive ways, both loaded *on top of* konrad's base:
 
 - **`AGENTS.md`** — auto-discovered: `~/.config/konrad/user/AGENTS.md` (your rules, global) or `<workspace>/AGENTS.md` (per-project).
 - **`~/.config/konrad/user/instructions/*.md`** — every `.md` here is appended to the system instructions (org layers have the same `instructions/` slot).
@@ -276,19 +278,19 @@ Don't set the `instructions` array in your `opencode.jsonc` — arrays **replace
 
 ### Reference material (the `context/` mount)
 
-Drop reference material — a mirrored wiki, internal docs, lookup tables — into `~/.config/konrad/context/<name>/` and Konrad bind-mounts `context/` **read-only** at `/context` inside the sandbox: the agent can `grep` it while it works, with no network and no stored secret. It's not a config layer, just files the agent reads; the mount appears only when the directory exists, and `konrad reset`/`uninstall` leave it alone. To make the agent actually *reach* for a corpus, name it in your `AGENTS.md` ("ASG processes are documented in `/context/asg-wiki/`").
+Drop reference material — a mirrored wiki, internal docs, lookup tables — into `~/.config/konrad/context/<name>/` and konrad bind-mounts `context/` **read-only** at `/context` inside the sandbox: the agent can `grep` it while it works, with no network and no stored secret. It's not a config layer, just files the agent reads; the mount appears only when the directory exists, and `konrad reset`/`uninstall` leave it alone. To make the agent actually *reach* for a corpus, name it in your `AGENTS.md` ("ASG processes are documented in `/context/asg-wiki/`").
 
 ### For organizations
 
-If you run a fleet of Konrad installs, an **org layer** lets you ship defaults every user inherits — model declarations, an internal provider endpoint, house skills and instructions — without forking the image or hand-editing each user's config. An org layer is simply **a git repository whose tree is the layer** (the same pieces as `user/`, merging between the baked defaults and each user's own overrides); each member subscribes once:
+If you run a fleet of konrad installs, an **org layer** lets you ship defaults every user inherits — model declarations, an internal provider endpoint, house skills and instructions — without forking the image or hand-editing each user's config. An org layer is simply **a git repository whose tree is the layer** (the same pieces as `user/`, merging between the baked defaults and each user's own overrides); each member subscribes once:
 
 ```sh
 konrad org add https://git.example.com/acme/konrad-org
 ```
 
-Konrad re-syncs it in the background (fetch + hard reset — **local edits inside the layer are clobbered**; personal overrides belong in `user/`, which always merges on top), or on demand with `konrad org sync`, so shipping a change to the fleet is just `git push`. Two things to know before subscribing:
+konrad re-syncs it in the background (fetch + hard reset — **local edits inside the layer are clobbered**; personal overrides belong in `user/`, which always merges on top), or on demand with `konrad org sync`, so shipping a change to the fleet is just `git push`. Two things to know before subscribing:
 
-- **Subscribing is trusting.** A layer may ship a `hooks/post-sync` script that Konrad runs *on your machine* after every sync (the escape hatch for jobs plain config can't express, like mirroring a wiki into `context/`). Only subscribe to repos you trust, exactly as with any `curl | sh` internal tooling. The hook can also reach its own members through Konrad's **notice queue** — the background sync is unwatched, so a hook that drops a `key: value` file into `$KONRAD_NOTICE_DIR` gets it rendered (attributed to the layer, sanitized) at the member's next launch; see [ARCHITECTURE.md → Configuration & instructions](ARCHITECTURE.md#configuration--instructions).
+- **Subscribing is trusting.** A layer may ship a `hooks/post-sync` script that konrad runs *on your machine* after every sync (the escape hatch for jobs plain config can't express, like mirroring a wiki into `context/`). Only subscribe to repos you trust, exactly as with any `curl | sh` internal tooling. The hook can also reach its own members through konrad's **notice queue** — the background sync is unwatched, so a hook that drops a `key: value` file into `$KONRAD_NOTICE_DIR` gets it rendered (attributed to the layer, sanitized) at the member's next launch; see [ARCHITECTURE.md → Configuration & instructions](ARCHITECTURE.md#configuration--instructions).
 - **It's a defaults mechanism, not policy enforcement.** The layer is files in the user's own home directory — users can stack overrides on top or unsubscribe.
 
 A ready-to-publish starter repo — sample config, instructions, a house skill, an example hook — lives in [`examples/org-package/`](examples/org-package/). The full mechanics (multiple layers and precedence, tag pinning, private repos via your host `git`, the instructions channel) and the design rationale are in [ARCHITECTURE.md → Configuration & instructions](ARCHITECTURE.md#configuration--instructions).
@@ -332,7 +334,7 @@ opencode's sessions and conversation DB are **ephemeral** — gone on container 
 
 ## Troubleshooting
 
-> **These docs are deliberately short — your AI assistant fills the gap.** For any question they don't answer, ask your regular web-enabled assistant (Claude, ChatGPT, …) and point it at this repository (`https://gitlab.git.nrw/jbauss2/konrad`): the README, [ARCHITECTURE.md](ARCHITECTURE.md), and the source together answer most setup, configuration, and behavior questions. Don't ask Konrad's own agent about Konrad — it's firewalled off the web and tuned for document work, not self-support.
+> **These docs are deliberately short — your AI assistant fills the gap.** For any question they don't answer, ask your regular web-enabled assistant (Claude, ChatGPT, …) and point it at this repository (`https://gitlab.git.nrw/jbauss2/konrad`): the README, [ARCHITECTURE.md](ARCHITECTURE.md), and the source together answer most setup, configuration, and behavior questions. Don't ask konrad's own agent about konrad — it's firewalled off the web and tuned for document work, not self-support.
 
 | Symptom                                                          | Likely cause                                | Fix                                                                                       |
 | ---------------------------------------------------------------- | ------------------------------------------- | ----------------------------------------------------------------------------------------- |
@@ -349,7 +351,7 @@ If a problem isn't listed here, run `konrad shell` to poke around inside the con
 
 ### Debugging opencode
 
-opencode writes a fresh, timestamped log on every launch; Konrad bind-mounts it to **`~/.local/state/konrad/log/`** (standard XDG state).
+opencode writes a fresh, timestamped log on every launch; konrad bind-mounts it to **`~/.local/state/konrad/log/`** (standard XDG state).
 
 ```sh
 ls -t ~/.local/state/konrad/log/                                  # newest first
@@ -360,14 +362,14 @@ For deeper digging, pass `-v` / `--verbose`: per-phase timestamps plus a pointer
 
 ## Internals
 
-How Konrad is built and why — the design and its rationale live in [ARCHITECTURE.md](ARCHITECTURE.md); repo layout, dev loop, versioning, and how to contribute in [CONTRIBUTING.md](CONTRIBUTING.md). Development happens at [gitlab.git.nrw/jbauss2/konrad](https://gitlab.git.nrw/jbauss2/konrad) — the GitHub repo is a public mirror (CI + releases); issues and contributions go to GitLab.
+How konrad is built and why — the design and its rationale live in [ARCHITECTURE.md](ARCHITECTURE.md); repo layout, dev loop, versioning, and how to contribute in [CONTRIBUTING.md](CONTRIBUTING.md). Development happens at [gitlab.git.nrw/jbauss2/konrad](https://gitlab.git.nrw/jbauss2/konrad) — the GitHub repo is a public mirror (CI + releases); issues and contributions go to GitLab.
 
 ## License and attribution
 
-Konrad is released under the [GNU Affero General Public License v3.0 or later](LICENSE). The combined work is AGPL-3.0-or-later; bundled third-party components keep their own (AGPL-compatible) licenses, declared per file following the [REUSE](https://reuse.software) specification — see [`REUSE.toml`](REUSE.toml) and [`LICENSES/`](LICENSES/) (`reuse lint`-verified).
+konrad is released under the [GNU Affero General Public License v3.0 or later](LICENSE). The combined work is AGPL-3.0-or-later; bundled third-party components keep their own (AGPL-compatible) licenses, declared per file following the [REUSE](https://reuse.software) specification — see [`REUSE.toml`](REUSE.toml) and [`LICENSES/`](LICENSES/) (`reuse lint`-verified).
 
-**Acknowledgements.** Konrad is built on [opencode](https://github.com/sst/opencode) (MIT) and tuned for [Qwen3.6](https://huggingface.co/Qwen) (used via your provider, not bundled here). The agent prompt adapts patterns from [OpenAgentsControl](https://github.com/darrenhinde/OpenAgentsControl) and [opencode-froggy](https://github.com/smartfrog/opencode-froggy); the `pdf` skill's EXTRACT route builds on [docling](https://github.com/docling-project/docling); the bundled skills adapt work by [Anthropic](https://github.com/anthropics/skills) and [Matt Pocock](https://github.com/mattpocock) (see each skill's header for its license).
+**Acknowledgements.** konrad is built on [opencode](https://github.com/sst/opencode) (MIT) and tuned for [Qwen3.6](https://huggingface.co/Qwen) (used via your provider, not bundled here). The agent prompt adapts patterns from [OpenAgentsControl](https://github.com/darrenhinde/OpenAgentsControl) and [opencode-froggy](https://github.com/smartfrog/opencode-froggy); the `pdf` skill's EXTRACT route builds on [docling](https://github.com/docling-project/docling); the bundled skills adapt work by [Anthropic](https://github.com/anthropics/skills) and [Matt Pocock](https://github.com/mattpocock) (see each skill's header for its license).
 
 ---
 
-<sub>The project is **Konrad** (it's a name); the command, image, and paths are `konrad`, lowercase — that's code.</sub>
+<sub>konrad is always written lowercase — the name, the command, the image, the paths — the way `opencode` and `npm` style themselves. The one exception is the macOS `Konrad.app` bundle, which follows the Dock/Launchpad convention.</sub>
