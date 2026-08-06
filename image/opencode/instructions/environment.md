@@ -1,4 +1,4 @@
-# Konrad runtime environment
+# konrad runtime environment
 
 You run as `node` (uid 1000) in a sandboxed Debian container. The tools
 listed below are pre-installed — don't probe to check whether they exist.

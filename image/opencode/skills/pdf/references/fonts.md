@@ -81,7 +81,7 @@ LibreOffice).
 ## Script coverage
 
 The curated palette covers Latin / Latin Extended / Cyrillic / Greek
-(plus Vietnamese in Inter and Fraunces). Konrad also installs
+(plus Vietnamese in Inter and Fraunces). konrad also installs
 `fonts-noto-core` from Debian, which adds broad Unicode fallback for
 Arabic, Hebrew, Devanagari, Bengali, Tamil, Thai, Tibetan, Ethiopic,
 Khmer, Lao, Myanmar, and more. fontconfig handles fallback automatically

@@ -168,7 +168,7 @@ RUN set -eux; \
 FROM ${BASE_IMAGE}
 
 LABEL org.opencontainers.image.title="konrad" \
-    org.opencontainers.image.description="Sandboxed opencode for local agent models, preloaded with instructions and a curated tool set." \
+    org.opencontainers.image.description="the sandboxed coworking agent — opencode preloaded with a curated tool set and skills." \
     org.opencontainers.image.licenses="AGPL-3.0-only" \
     org.opencontainers.image.source="https://gitlab.git.nrw/jbauss2/konrad"
 
@@ -353,7 +353,7 @@ RUN mkdir -p \
     /home/node/.opencode-secrets \
     && chown -R node:node /home/node /workspace
 
-# ── Konrad system files (root-owned — node user can't tamper) ───────────────
+# ── konrad system files (root-owned — node user can't tamper) ───────────────
 # Ordered rarest-to-change first so that editing these files invalidates as
 # few downstream layers as possible. environment.md is NOT here — it lives
 # in opencode/instructions/ below so edits to it never touch the npm layer.

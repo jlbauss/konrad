@@ -81,7 +81,7 @@ Use the result to decide whether one subagent can handle it, or whether you need
 | 30 000 – 80 000 | Dispatch directly. Mention the size in the dispatch prompt so the subagent knows it has a tight budget for working room. |
 | > 80 000 | Split the input externally — by year, section, file, or any natural boundary — and dispatch one subagent per chunk. Concatenate results and re-verify cardinality across the whole. |
 
-These are absolute bounds, not percentages. opencode does not surface the subagent's remaining budget to you or to the subagent, so we treat ~128 000 tokens as the typical local-model context window and reserve ~48 000 for working room, output, and the quality-assurance artifacts. Konrad targets 30B-class local models — these bounds are conservative for that class.
+These are absolute bounds, not percentages. opencode does not surface the subagent's remaining budget to you or to the subagent, so we treat ~128 000 tokens as the typical local-model context window and reserve ~48 000 for working room, output, and the quality-assurance artifacts. konrad targets 30B-class local models — these bounds are conservative for that class.
 
 ### Step 3 — Dispatch the `manual-transformer` subagent
 
