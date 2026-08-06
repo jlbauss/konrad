@@ -11,6 +11,14 @@ Entries stay terse — the *why* lives in the git commit log and the [ARCHITECTU
 
 ## [Unreleased]
 
+## [0.27.0] - 2026-08-06
+
+### Changed
+
+- **konrad is now styled lowercase everywhere** — the wordmark, prose, CLI messages, and the Linux launcher all use `konrad`, matching the lowercase-`k` icon and `opencode`. The macOS `Konrad.app` bundle keeps its capitalized name (Dock/Launchpad convention). Standing tagline: *the sandboxed coworking agent*, now used across the README, `--help`, the launcher, and the image label.
+- **konrad green (`#3f7a57`) is the only accent colour in CLI output.** The launch header and success markers use the logo's green — 24-bit where the terminal supports it, plain green otherwise; arrows and secondary text are dimmed; yellow and red stay reserved for warnings and errors. The host forwards `COLORTERM`/`NO_COLOR` into the container so host and in-container output match.
+- **The desktop launcher is categorised `Office;Utility;`** (was `Utility;Development;`) with a product description instead of a mechanic, and the README now leads with the konrad logo.
+
 ## [0.26.1] - 2026-08-05
 
 ### Fixed
@@ -170,7 +178,7 @@ Entries stay terse — the *why* lives in the git commit log and the [ARCHITECTU
 
 ### Added
 
-- **Read-only `context/` mount.** Drop reference material (a mirrored wiki, internal docs) into `~/.config/konrad/context/<name>/` and Konrad bind-mounts it read-only at `/context/<name>` so the agent can `grep` it with no network and no stored secret. Not a config layer — see [Reference material](README.md#reference-material-the-context-mount) and [ARCHITECTURE](ARCHITECTURE.md#state-secrets--isolation).
+- **Read-only `context/` mount.** Drop reference material (a mirrored wiki, internal docs) into `~/.config/konrad/context/<name>/` and konrad bind-mounts it read-only at `/context/<name>` so the agent can `grep` it with no network and no stored secret. Not a config layer — see [Reference material](README.md#reference-material-the-context-mount) and [ARCHITECTURE](ARCHITECTURE.md#state-secrets--isolation).
 
 ## [0.14.1] - 2026-06-21
 
@@ -216,11 +224,11 @@ Entries stay terse — the *why* lives in the git commit log and the [ARCHITECTU
 
 ### Added
 
-- **Apple `container` engine support (Apple-Silicon macOS).** On macOS 26+ with Apple's [`container`](https://github.com/apple/container) CLI installed, Konrad uses it as the native engine instead of Podman — no `podman machine` VM to start. Podman stays the default everywhere else (Linux, the dev container, and Macs without `container`); pin the choice with `KONRAD_ENGINE=podman|container`. The egress firewall ports across unchanged — the agent reaches the dual-homed proxy by IP (DNS is dead on an `--internal` net there, and the proxy egresses via the built-in `default` net), and mount-option suffixes / userns mapping are dropped (VirtioFS maps UIDs; the persistent stores become host-dir binds). apple/container's isolated network is "host-only" (its gateway sits on the Mac), so the agent's direct route to the host is **sealed** — a privileged prelude blackholes that gateway, then drops to the unprivileged, capability-less `node` user — bringing it to parity with rootless Podman: the host is reachable only through the proxy, at the allow-listed `host.containers.internal`. Local models keep working over that same path. See [ARCHITECTURE → Egress firewall](ARCHITECTURE.md#egress-firewall).
+- **Apple `container` engine support (Apple-Silicon macOS).** On macOS 26+ with Apple's [`container`](https://github.com/apple/container) CLI installed, konrad uses it as the native engine instead of Podman — no `podman machine` VM to start. Podman stays the default everywhere else (Linux, the dev container, and Macs without `container`); pin the choice with `KONRAD_ENGINE=podman|container`. The egress firewall ports across unchanged — the agent reaches the dual-homed proxy by IP (DNS is dead on an `--internal` net there, and the proxy egresses via the built-in `default` net), and mount-option suffixes / userns mapping are dropped (VirtioFS maps UIDs; the persistent stores become host-dir binds). apple/container's isolated network is "host-only" (its gateway sits on the Mac), so the agent's direct route to the host is **sealed** — a privileged prelude blackholes that gateway, then drops to the unprivileged, capability-less `node` user — bringing it to parity with rootless Podman: the host is reachable only through the proxy, at the allow-listed `host.containers.internal`. Local models keep working over that same path. See [ARCHITECTURE → Egress firewall](ARCHITECTURE.md#egress-firewall).
 
 ### Changed
 
-- Image pulls now show each engine's **native** progress (Podman's per-layer bars on Linux, Apple `container`'s on macOS) instead of Konrad's custom `[N/M]` layer counter, which had to pipe `podman pull` and so suppressed its native bars. The registry probe that powers `konrad --check-updates` is unchanged.
+- Image pulls now show each engine's **native** progress (Podman's per-layer bars on Linux, Apple `container`'s on macOS) instead of konrad's custom `[N/M]` layer counter, which had to pipe `podman pull` and so suppressed its native bars. The registry probe that powers `konrad --check-updates` is unchanged.
 
 ## [0.11.0] - 2026-06-16
 
