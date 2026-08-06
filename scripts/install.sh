@@ -155,10 +155,15 @@ fi
 # --- Refuse to clobber unrelated files --------------------------------------
 # If $TARGET already exists, allow overwrite only if it looks like a
 # previous konrad install (or a dangling symlink — those are safe to nuke).
+# The marker is the KONRAD_VERSION_BAKED hook — *structural*, present in every
+# konrad ever shipped (the installer already requires it in the fetched CLI
+# above), and not something a rebrand can move. It used to be the prose header
+# line, which 0.27.0's lowercase rebrand rewrote: every 0.27.0 install then
+# failed its own identity check and `konrad update` refused to overwrite it.
 if [ -L "$TARGET" ] && [ ! -e "$TARGET" ]; then
   : # dangling symlink, fine to replace
 elif [ -e "$TARGET" ]; then
-  if ! grep -q 'konrad — sandboxed opencode' "$TARGET" 2>/dev/null; then
+  if ! grep -q 'KONRAD_VERSION_BAKED=' "$TARGET" 2>/dev/null; then
     die "refusing to overwrite $TARGET (exists, doesn't look like a previous konrad install). Set KONRAD_INSTALL_DIR or remove it manually."
   fi
 fi
