@@ -31,13 +31,20 @@ KONRAD_HOST_LOG_DIR="${KONRAD_HOST_LOG_DIR:-(unknown — KONRAD_HOST_LOG_DIR not
 # indented ✓/→ steps under it. Color is gated on an interactive stderr (a TTY)
 # with NO_COLOR unset, so `konrad run` / piped / proxy-log output stays plain.
 if [ -t 2 ] && [ -z "${NO_COLOR:-}" ]; then
-  _C_OK=$'\033[32m'; _C_GO=$'\033[36m'; _C_WARN=$'\033[33m'
+  # konrad green (#3f7a57) is the only accent (mirrors bin/konrad); 24-bit where
+  # the terminal advertises truecolor (COLORTERM forwarded by the host), else a
+  # plain-green fallback. Arrows ride _C_DIM; warn/error keep yellow/red.
+  case "${COLORTERM:-}" in
+    truecolor|24bit) _C_OK=$'\033[38;2;63;122;87m' ;;
+    *)               _C_OK=$'\033[32m' ;;
+  esac
+  _C_WARN=$'\033[33m'
   _C_ERR=$'\033[31m'; _C_DIM=$'\033[2m'; _C_OFF=$'\033[0m'
 else
-  _C_OK=''; _C_GO=''; _C_WARN=''; _C_ERR=''; _C_DIM=''; _C_OFF=''
+  _C_OK=''; _C_WARN=''; _C_ERR=''; _C_DIM=''; _C_OFF=''
 fi
 step()  { printf '  %s✓%s  %s\n'        "$_C_OK"  "$_C_OFF" "$*" >&2; }
-go()    { printf '  %s→%s  %s\n'        "$_C_GO"  "$_C_OFF" "$*" >&2; }
+go()    { printf '  %s→%s  %s\n'        "$_C_DIM" "$_C_OFF" "$*" >&2; }
 say()   { printf '%skonrad%s %s\n'      "$_C_DIM" "$_C_OFF" "$*" >&2; }
 warn()  { printf '%skonrad%s %swarning:%s %s\n' "$_C_DIM" "$_C_OFF" "$_C_WARN" "$_C_OFF" "$*" >&2; }
 fatal() { printf '%skonrad%s %serror:%s %s\n'   "$_C_DIM" "$_C_OFF" "$_C_ERR" "$_C_OFF" "$*" >&2; exit 1; }

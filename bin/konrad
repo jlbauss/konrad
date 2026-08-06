@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # SPDX-FileCopyrightText: 2026 Jan-Luca Bauß
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# konrad — sandboxed opencode in a Podman container. See `konrad --help`.
+# konrad — the sandboxed coworking agent. Runs opencode in a rootless container.
+# See `konrad --help`.
 set -euo pipefail
 
 # Image tags. Two distinct surfaces:
@@ -200,8 +201,18 @@ fi
 # block (it's a separate process in a separate file; not worth a shared lib for
 # six lines), so a konrad launch reads as one continuous styled sequence.
 if [ -t 2 ] && [ -z "${NO_COLOR:-}" ]; then
-  _C_BRAND=$'\033[1;36m'; _C_OK=$'\033[32m'; _C_GO=$'\033[36m'
-  _C_WARN=$'\033[33m';    _C_ERR=$'\033[31m'; _C_DIM=$'\033[2m'; _C_OFF=$'\033[0m'
+  # konrad green (the logo/agent green, #3f7a57) is the only accent — brand
+  # header + success + positive hints. Exact 24-bit truecolor where the terminal
+  # advertises it (COLORTERM), else a plain-green fallback (Terminal.app and
+  # other non-truecolor terminals paint their theme green — still "green", just
+  # not the exact brand hue). Arrows/secondary ride _C_DIM (gray); yellow/red
+  # stay reserved for warn/error *status* (universal semantics, not brand).
+  case "${COLORTERM:-}" in
+    truecolor|24bit) _kg=$'\033[38;2;63;122;87m' ;;
+    *)               _kg=$'\033[32m' ;;
+  esac
+  _C_BRAND=$'\033[1m'"$_kg"; _C_OK="$_kg"; _C_GO="$_kg"
+  _C_WARN=$'\033[33m'; _C_ERR=$'\033[31m'; _C_DIM=$'\033[2m'; _C_OFF=$'\033[0m'
 else
   _C_BRAND=''; _C_OK=''; _C_GO=''; _C_WARN=''; _C_ERR=''; _C_DIM=''; _C_OFF=''
 fi
@@ -226,7 +237,7 @@ brand() {
     "$_C_BRAND" "$_C_OFF" "$_C_DIM" "$KONRAD_VERSION" "$img" "$KONRAD_ENGINE" "$_C_OFF" >&2
 }
 step()  { printf '  %s✓%s  %s\n' "$_C_OK"  "$_C_OFF" "$*" >&2; }
-go()    { printf '  %s→%s  %s\n' "$_C_GO"  "$_C_OFF" "$*" >&2; }
+go()    { printf '  %s→%s  %s\n' "$_C_DIM" "$_C_OFF" "$*" >&2; }
 
 # General messages (non-launch): a dim "konrad" prefix, with a colored tag on
 # warnings/errors.
@@ -284,7 +295,7 @@ KONRAD_CPUS="${KONRAD_CPUS:-}"
 # apple/container the per-container VM already bounds this at its own kernel.
 KONRAD_PIDS_LIMIT="${KONRAD_PIDS_LIMIT:-1024}"
 
-# Container engine. Konrad runs on Podman everywhere, with one exception: on
+# Container engine. konrad runs on Podman everywhere, with one exception: on
 # Apple-Silicon macOS where Apple's `container` CLI (apple/container, macOS 26+)
 # is installed, that native engine is preferred — it drops the `podman machine`
 # VM entirely. Empty here → detect_engine() picks one at startup. Pin explicitly
@@ -1297,6 +1308,14 @@ EOF
     if [[ -t 0 ]]; then tty_flags=(); else tty_flags=(-i); fi
   fi
 
+  # Forward the terminal's colour capability so the in-container entrypoint
+  # paints the SAME konrad green as the host header — 24-bit #3f7a57 when the
+  # terminal advertises truecolor via COLORTERM, the plain-green fallback
+  # otherwise. NO_COLOR rides along so a no-colour host stays no-colour inside.
+  local -a color_env=()
+  [[ -n "${COLORTERM:-}" ]] && color_env+=(-e "COLORTERM=${COLORTERM}")
+  [[ -n "${NO_COLOR:-}" ]]  && color_env+=(-e "NO_COLOR=${NO_COLOR}")
+
   # Host-home bind mounts. The central log dir and the org/user config layers
   # live under $HOME. Against a LOCAL daemon they bind straight off this
   # filesystem. Against a REMOTE daemon (dev-container self-testing) the daemon
@@ -1497,6 +1516,7 @@ EOF
     ${KR_HARDEN_FLAGS[@]+"${KR_HARDEN_FLAGS[@]}"}
     ${omp_flags[@]+"${omp_flags[@]}"}
     ${proxy_env[@]+"${proxy_env[@]}"}
+    ${color_env[@]+"${color_env[@]}"}
     -e "KONRAD_DEBUG=${KONRAD_DEBUG}"
     -e "KONRAD_TRACE_FETCH=${KONRAD_TRACE_FETCH:-0}"
     -e "KONRAD_NO_DISCOVERY=${KONRAD_NO_DISCOVERY:-0}"
@@ -1907,7 +1927,7 @@ pause() { printf '\nPress Enter to close this window… '; read -r _ || true; }
 
 konrad_bin="$(find_konrad || true)"
 if [[ -z "$konrad_bin" ]]; then
-  printf 'Konrad does not seem to be installed on this machine.\n'
+  printf 'konrad does not seem to be installed on this machine.\n'
   printf 'Install it now (downloads from gitlab.git.nrw)? [y/N] '
   read -r ans || ans=""
   case "$ans" in
@@ -1919,7 +1939,7 @@ if [[ -z "$konrad_bin" ]]; then
       ;;
   esac
   if [[ -z "$konrad_bin" ]]; then
-    printf 'Konrad is not available; nothing to launch.\n'; pause; exit 1
+    printf 'konrad is not available; nothing to launch.\n'; pause; exit 1
   fi
 fi
 
@@ -1985,13 +2005,13 @@ install_desktop_linux() {
 [Desktop Entry]
 Type=Application
 Version=1.0
-Name=Konrad
-GenericName=AI coworker
-Comment=Open a Konrad scratch session
+Name=konrad
+GenericName=Coworking agent
+Comment=the sandboxed coworking agent
 Exec=$wrapper
 Terminal=true
 $icon_line
-Categories=Utility;Development;
+Categories=Office;Utility;
 Keywords=konrad;ai;agent;opencode;assistant;
 StartupNotify=false
 EOF
@@ -2004,7 +2024,7 @@ EOF
     gtk-update-icon-cache -qtf "$data/icons/hicolor" >/dev/null 2>&1 || true
   fi
 
-  info "installed the Konrad launcher → $desktop"
+  info "installed the konrad launcher → $desktop"
   info "  it should appear in your application menu (may need a re-login)."
   [[ -n "${KONRAD_TERMINAL:-}" ]] \
     && info "  (KONRAD_TERMINAL is macOS-only; on Linux the entry uses your desktop's default terminal via Terminal=true.)"
@@ -2229,8 +2249,8 @@ do_connect() {
 }
 
 # Guided custom / self-hosted provider flow. Two halves: the DECLARATION
-# (baseURL + models) goes into the user config layer — Konrad owns that — and the
-# CREDENTIAL goes to opencode's auth.json via `opencode auth login`, which Konrad
+# (baseURL + models) goes into the user config layer — konrad owns that — and the
+# CREDENTIAL goes to opencode's auth.json via `opencode auth login`, which konrad
 # never touches (the "keys never leak into konrad" invariant). opencode's auth
 # login only accepts custom ids through its interactive "Other" path (it rejects
 # `-p <non-catalog-id>`), so the key step is a guided hand-off, not a drive.
@@ -2241,7 +2261,7 @@ do_connect() {
 # layers since 0.18, walked in the same sorted order the entrypoint composes) plus
 # the user layer are the whole story. jq can't parse JSONC, so a layer that carries
 # comments is treated as "unknown" and we fall back to one y/N — never an unsafe //
-# strip (that would maul a https:// URL). Plain-JSON layers (what Konrad writes)
+# strip (that would maul a https:// URL). Plain-JSON layers (what konrad writes)
 # auto-detect; a commented org layer (common for git-subscribed ones) keeps the y/N.
 do_connect_custom() {
   local id="$1" baseurl model block userfile merged ans declared="" unknown=0 f
@@ -2348,7 +2368,7 @@ do_mcp_auth() {
   info "authenticating MCP server '$1' (firewall off — safe, no agent runs)."
   cat >&2 <<'EOF'
   A URL prints below — open it in your browser and approve. You'll be redirected
-  to localhost; Konrad forwards that callback into the sandbox, so it completes
+  to localhost; konrad forwards that callback into the sandbox, so it completes
   on its own. The token is saved and reused automatically on later runs.
 EOF
   KONRAD_FIREWALL=0
@@ -2658,7 +2678,11 @@ do_version() {
   # `konrad update --check` answers.
   local c_brand='' c_dim='' c_off=''
   if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
-    c_brand=$'\033[1;36m'; c_dim=$'\033[2m'; c_off=$'\033[0m'
+    case "${COLORTERM:-}" in
+      truecolor|24bit) c_brand=$'\033[1;38;2;63;122;87m' ;;
+      *)               c_brand=$'\033[1;32m' ;;
+    esac
+    c_dim=$'\033[2m'; c_off=$'\033[0m'
   fi
 
   # eng_image_meta is best-effort (a label miss reads "unknown" on apple/container).
@@ -3081,7 +3105,7 @@ this binary on PATH and pulls konrad:latest from ghcr.io ('konrad update' to ref
   else
     refresh_cmd="  $self update         Pull the latest image AND refresh the CLI itself.
   $self update --check Compare local vs registry; print 'up to date' or 'update available'."
-    variant_blurb="konrad — sandboxed opencode in a Podman container."
+    variant_blurb="konrad — the sandboxed coworking agent. Runs opencode in a rootless container."
     cross_pointer="Working on konrad itself? Install the contributor variant 'konrad-dev'
 alongside this stable CLI — see CONTRIBUTING.md."
   fi
