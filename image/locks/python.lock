@@ -14,7 +14,7 @@ cryptography==50.0.0
 defusedxml==0.7.1
 dill==0.4.1
 doclang==0.7.3
-docling-core==2.90.0
+docling-core==2.91.0
 docling-ibm-models==3.13.3
 docling-parse==7.10.0
 docling-slim==2.118.0
@@ -28,7 +28,7 @@ h11==0.16.0
 hf-xet==1.6.0
 httpcore==1.0.9
 httpx==0.28.1
-huggingface-hub==1.26.0
+huggingface-hub==1.26.1
 idna==3.18
 jinja2==3.1.6
 jsonlines==4.0.0
@@ -69,7 +69,7 @@ pydantic-core==2.46.4
 pydantic-settings==2.14.2
 pygments==2.20.0
 pylatexenc==2.11
-pypdf==6.14.2
+pypdf==6.15.0
 pypdfium2==5.12.1
 python-dateutil==2.9.0.post0
 python-docx==1.2.0
