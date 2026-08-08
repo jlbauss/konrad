@@ -16,8 +16,8 @@ dill==0.4.1
 doclang==0.7.3
 docling-core==2.91.0
 docling-ibm-models==3.13.3
-docling-parse==7.10.0
-docling-slim==2.118.0
+docling-parse==7.11.0
+docling-slim==2.118.1
 et-xmlfile==2.0.0
 faker==40.36.0
 filelock==3.32.2
@@ -28,7 +28,7 @@ h11==0.16.0
 hf-xet==1.6.0
 httpcore==1.0.9
 httpx==0.28.1
-huggingface-hub==1.26.1
+huggingface-hub==1.27.0
 idna==3.18
 jinja2==3.1.6
 jsonlines==4.0.0
@@ -66,7 +66,7 @@ pyclipper==1.4.0
 pycparser==3.0
 pydantic==2.13.4
 pydantic-core==2.46.4
-pydantic-settings==2.14.2
+pydantic-settings==2.15.0
 pygments==2.20.0
 pylatexenc==2.11
 pypdf==6.15.0
@@ -91,7 +91,7 @@ setuptools==83.0.0
 shapely==2.1.2
 shellingham==1.5.4
 six==1.17.0
-soupsieve==2.9.1
+soupsieve==2.9.2
 sympy==1.14.0
 tabulate==0.10.0
 tokenizers==0.22.2
