@@ -28,6 +28,7 @@
   "cloudferro-sherlock": "api-sherlock.cloudferro.com",
   "cloudflare-workers-ai": "api.cloudflare.com",
   "cohere": "api.cohere.com",
+  "coralbricks": "inference.coralbricks.ai",
   "cortecs": "api.cortecs.ai",
   "crof": "crof.ai",
   "crossmodel": "api.crossmodel.ai",
