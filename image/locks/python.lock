@@ -7,7 +7,7 @@ attrs==26.1.0
 beautifulsoup4==4.15.0
 certifi==2026.7.22
 cffi==2.1.1
-charset-normalizer==3.4.9
+charset-normalizer==3.5.0
 click==8.4.2
 colorlog==6.12.0
 cryptography==50.0.0
@@ -16,7 +16,7 @@ dill==0.4.1
 doclang==0.7.3
 docling-core==2.91.0
 docling-ibm-models==3.14.0
-docling-parse==7.12.0
+docling-parse==7.12.1
 docling-slim==2.119.0
 et-xmlfile==2.0.0
 faker==40.36.0
@@ -37,9 +37,9 @@ jsonschema==4.26.0
 jsonschema-specifications==2025.9.1
 latex2mathml==3.81.0
 lxml==6.1.1
-mail-parser==4.6.0
+mail-parser==4.6.2
 markdown-it-py==4.2.0
-marko==2.2.3
+marko==2.2.4
 markupsafe==3.0.3
 mdurl==0.1.2
 mpire==2.10.2
@@ -108,7 +108,7 @@ tree-sitter-python==0.25.0
 tree-sitter-typescript==0.23.2
 typer==0.26.8
 typing-extensions==4.16.0
-typing-inspection==0.4.3
+typing-inspection==0.4.4
 urllib3==2.7.0
 websockets==16.1.1
 xlsxwriter==3.2.9
