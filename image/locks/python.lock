@@ -14,7 +14,7 @@ cryptography==50.0.0
 defusedxml==0.7.1
 dill==0.4.1
 doclang==0.7.3
-docling-core==2.91.0
+docling-core==2.92.0
 docling-ibm-models==3.14.0
 docling-parse==7.14.0
 docling-slim==2.120.3
@@ -36,8 +36,8 @@ jsonref==1.1.0
 jsonschema==4.26.0
 jsonschema-specifications==2025.9.1
 latex2mathml==3.81.0
-lxml==6.1.1
-mail-parser==4.6.2
+lxml==6.1.2
+mail-parser==4.6.3
 markdown-it-py==4.2.0
 marko==2.2.4
 markupsafe==3.0.3
@@ -100,7 +100,7 @@ tokenizers==0.22.2
 torch==2.13.0+cpu
 torchvision==0.28.0+cpu
 tqdm==4.70.0
-transformers==5.15.0
+transformers==5.15.1
 tree-sitter==0.26.0
 tree-sitter-c==0.24.2
 tree-sitter-javascript==0.25.0
