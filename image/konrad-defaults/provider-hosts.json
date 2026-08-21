@@ -79,6 +79,7 @@
   "lilac": "api.getlilac.com",
   "llama": "api.llama.com",
   "llmgateway": "api.llmgateway.io",
+  "llmgateway-providers": "api.llmgateway.io",
   "llmtr": "llmtr.com",
   "lmstudio": "127.0.0.1",
   "longcat": "api.longcat.chat",
