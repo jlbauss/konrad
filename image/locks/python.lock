@@ -19,7 +19,7 @@ docling-ibm-models==3.14.0
 docling-parse==7.15.0
 docling-slim==2.121.0
 et-xmlfile==2.0.0
-faker==40.36.0
+faker==40.37.0
 filelock==3.32.3
 filetype==1.2.0
 flatbuffers==25.12.19
@@ -37,7 +37,7 @@ jsonschema==4.26.0
 jsonschema-specifications==2025.9.1
 latex2mathml==3.81.0
 lxml==6.1.2
-mail-parser==4.6.3
+mail-parser==4.6.4
 markdown-it-py==4.2.0
 marko==2.2.4
 markupsafe==3.0.3
@@ -87,7 +87,7 @@ rich==15.0.0
 rpds-py==2026.6.3
 rtree==1.4.1
 safetensors==0.8.0
-scipy==1.18.0
+scipy==1.18.1
 semchunk==3.2.5
 setuptools==84.0.0
 shapely==2.1.2
