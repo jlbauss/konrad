@@ -11,6 +11,18 @@ Entries stay terse — the *why* lives in the git commit log and the [ARCHITECTU
 
 ## [Unreleased]
 
+## [0.28.0] - 2026-09-07
+
+### Fixed
+
+- **The desktop-launcher question is asked once, on a first install — not on every update.** `konrad update` re-runs the installer, which had no notion of "already installed", so it re-offered the launcher every single time. The offer is now gated on a genuinely fresh install; an update never asks. Declining stays declined (add one later with `konrad install-desktop`), and `KONRAD_DESKTOP=1`/`0` still force the answer at any time.
+- **Your macOS terminal choice now sticks.** `KONRAD_TERMINAL` only ever existed as an install-time variable, so any regeneration without it — clicking through an update, or just re-running `konrad install-desktop` — silently reset a Ghostty/Alacritty/iTerm launcher back to Terminal.app. The launcher now records its own choice and keeps it; pass `KONRAD_TERMINAL` again only when you want to change it. Launchers created by earlier versions are recognised too, so upgrading doesn't reset yours on the way in. A recorded terminal that's since been uninstalled warns and falls back instead of failing the run.
+- **An update keeps an existing launcher current instead of leaving it stale.** The wrapper script and the macOS bundle are generated, so fixes to them now reach launchers already on disk via the new `konrad install-desktop --refresh` — which regenerates only what's already installed and is a silent no-op otherwise. A refresh can no longer *downgrade* a working launcher either: an offline icon fetch keeps the installed icon rather than replacing it with a generic one.
+
+### Added
+
+- **`konrad install-desktop --refresh`** — re-generate an already-installed launcher in place, preserving its settings; does nothing if none is installed. Mainly what `konrad update` rides.
+
 ## [0.27.1] - 2026-08-06
 
 ### Fixed
