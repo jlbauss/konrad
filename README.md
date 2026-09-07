@@ -110,7 +110,7 @@ The action verbs are subcommands; `konrad` with no subcommand launches the TUI.
 | `shell`                | Open a bash shell in the container instead of the TUI.                  |
 | `scratch`              | Launch the TUI in a fresh throwaway workspace under `~/.local/state/konrad/scratch/` — for when you want a clean space, not a specific folder. (Running `konrad` straight from your home folder does this automatically instead of refusing.) |
 | `open`                 | Reveal the newest scratch workspace in your file manager (`open` / `xdg-open`). |
-| `install-desktop`      | Add a clickable launcher — a Linux application-menu entry or a macOS `~/Applications/Konrad.app` (Dock / Launchpad / Spotlight) — that opens a scratch session. User-scope, no root; `install-desktop --remove` deletes it (also swept by `uninstall`). The installer offers this too. |
+| `install-desktop`      | Add a clickable launcher — a Linux application-menu entry or a macOS `~/Applications/Konrad.app` (Dock / Launchpad / Spotlight) — that opens a scratch session. User-scope, no root; `install-desktop --remove` deletes it (also swept by `uninstall`). The installer offers this on a first install only. |
 | `connect [args…]`      | Authenticate a provider (`opencode auth login`) — agent-free, firewall off. `connect --custom [id]` declares a self-hosted endpoint. |
 | `mcp-auth <server>`    | Authenticate a remote MCP server's OAuth; the browser callback is forwarded into the sandbox. |
 | `org add` / `list` / `sync` / `remove` | Manage org config-layer subscriptions — see [For organizations](#for-organizations). |
@@ -140,9 +140,11 @@ Prefer a clickable icon over the terminal? `konrad install-desktop` adds a user-
 - **Linux** — a `konrad.desktop` entry in your application menu (opens your terminal via `Terminal=true`).
 - **macOS** — a `~/Applications/Konrad.app` for the Dock, Launchpad, and Spotlight.
 
-No root, nothing system-wide; `konrad install-desktop --remove` deletes it, and `konrad uninstall` sweeps it too. The `curl | sh` installer offers to create it for you (or set `KONRAD_DESKTOP=1` to opt in non-interactively). If the launcher is ever clicked on a machine where the `konrad` CLI is missing, it offers to install it first.
+No root, nothing system-wide; `konrad install-desktop --remove` deletes it, and `konrad uninstall` sweeps it too. If the launcher is ever clicked on a machine where the `konrad` CLI is missing, it offers to install it first.
 
-On **macOS**, the app opens Terminal.app by default; point it at another terminal with `KONRAD_TERMINAL` (`ghostty`, `alacritty`, or `iterm`) when you create it — e.g. `KONRAD_TERMINAL=ghostty konrad install-desktop` (the terminal must be installed). On **Linux** the entry uses your desktop's own default terminal, so there's nothing to set.
+The `curl | sh` installer offers to create it **on a first install only** — never again on an update, since `konrad update` re-runs that same installer. If you already have a launcher, an update quietly re-generates it in place (the wrapper and the macOS bundle are generated code, so fixes have to reach launchers already on disk) and keeps your settings; if you declined, or removed it, an update leaves you alone and you can add one later with `konrad install-desktop`. `KONRAD_DESKTOP=1` opts in non-interactively at any time, `0` never asks.
+
+On **macOS**, the app opens Terminal.app by default; point it at another terminal with `KONRAD_TERMINAL` (`ghostty`, `alacritty`, or `iterm`) when you create it — e.g. `KONRAD_TERMINAL=ghostty konrad install-desktop` (the terminal must be installed). **The choice sticks**: the launcher records it, so updates and later `konrad install-desktop` re-runs keep your terminal unless you pass `KONRAD_TERMINAL` again to change it. On **Linux** the entry uses your desktop's own default terminal, so there's nothing to set.
 
 ### Staying current
 
@@ -308,8 +310,8 @@ Rarely needed — the flags cover day-to-day use. Collected here so the rest of 
 | `KONRAD_MEMORY` / `KONRAD_CPUS` / `KONRAD_PIDS_LIMIT` | Pin or disable the resource caps — see [Resource limits](#resource-limits). |
 | `KONRAD_INSTALL_DIR` | Installer: where to put the CLI (default `~/.local/bin`). |
 | `KONRAD_NO_PULL=1` | Installer: skip the image pre-pull. |
-| `KONRAD_DESKTOP` | Installer: `1` creates the desktop launcher without asking, `0` skips it. Unset → the installer asks (on a terminal), else prints a hint. See [Desktop launcher](#desktop-launcher). |
-| `KONRAD_TERMINAL` | macOS only: which terminal `konrad install-desktop` makes the launcher open — `terminal` (default), `ghostty`, `alacritty`, or `iterm`. A non-default choice must be installed. |
+| `KONRAD_DESKTOP` | Installer: `1` creates the desktop launcher without asking, `0` skips it. Unset → the installer asks on a **first install** (on a terminal), else prints a hint; an update never asks. See [Desktop launcher](#desktop-launcher). |
+| `KONRAD_TERMINAL` | macOS only: which terminal `konrad install-desktop` makes the launcher open — `terminal` (default), `ghostty`, `alacritty`, or `iterm`. A non-default choice must be installed. Remembered by the launcher, so you only pass it when you want to change it. |
 | `KONRAD_NO_AUTO_REFRESH=1` | Disable the throttled background refresh (image pull + org sync — see [Staying current](#staying-current)). |
 | `KONRAD_REFRESH_INTERVAL` | Seconds between background refreshes (`0` disables). Default `86400` (daily). |
 | `KONRAD_RETENTION_DAYS` | Days konrad keeps its own growing state — the log dir and scratch workspaces — before pruning untouched entries at launch. `0` disables pruning (keep everything). Default `30`. |

@@ -60,16 +60,30 @@ chatter() { [ "${KONRAD_QUIET_INSTALL:-0}" = "1" ] || say "$@"; }
 # Decide whether to create a desktop launcher (a GUI menu/Dock icon that opens a
 # scratch session). Opt-in — a desktop entry is a visible change to the user's
 # environment. KONRAD_DESKTOP forces the answer for non-interactive installs
-# (1 = yes, 0 = no); otherwise we ASK. The ask reads from /dev/tty, not stdin:
-# in the `curl | sh` path stdin IS the piped script, so a plain `read` can't
-# reach the user — /dev/tty is the controlling terminal, which is present even
-# then. No tty and no knob → print a one-line hint and skip. Skipped up front on
-# a clearly headless Linux box (no display server); macOS always has a GUI.
+# (1 = yes, 0 = no); otherwise we ASK, but only on a FIRST install.
+#
+# "Only on a first install" is the whole point: this installer is also the CLI's
+# update channel (`konrad update` re-runs it), so an unconditional ask meant
+# every single update re-litigated the launcher — and the natural "just hit
+# Enter" answer both declined the icon AND, when a launcher already existed,
+# regenerated it from a bare environment, resetting a chosen KONRAD_TERMINAL
+# back to Terminal.app. FRESH_INSTALL (computed at the clobber check below, off
+# whether a konrad was already on disk) is the discriminator; an already-
+# installed launcher is instead kept current via `install-desktop --refresh`,
+# which asks nothing and preserves the terminal choice. A user who declined
+# once opts in later with `konrad install-desktop`, as the decline message says.
+#
+# The ask reads from /dev/tty, not stdin: in the `curl | sh` path stdin IS the
+# piped script, so a plain `read` can't reach the user — /dev/tty is the
+# controlling terminal, which is present even then. No tty and no knob → print a
+# one-line hint and skip. Skipped up front on a clearly headless Linux box (no
+# display server); macOS always has a GUI.
 desktop_wanted() {
   case "${KONRAD_DESKTOP:-}" in
     1) return 0 ;;
     0) return 1 ;;
   esac
+  [ "${FRESH_INSTALL:-1}" = "1" ] || return 1
   if [ "$(uname -s)" = "Linux" ] && [ -z "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]; then
     return 1
   fi
@@ -153,6 +167,11 @@ if ! grep -q "^KONRAD_VERSION_BAKED=\"${VER}\"" "$TMP.baked"; then
 fi
 
 # --- Refuse to clobber unrelated files --------------------------------------
+# Doubles as the fresh-install-vs-upgrade discriminator: a konrad already on
+# disk at $TARGET means this run is an upgrade (this is also the path
+# `konrad update` takes), which is what gates the desktop-launcher ask — see
+# desktop_wanted. A dangling symlink counts as fresh; there's nothing there.
+#
 # If $TARGET already exists, allow overwrite only if it looks like a
 # previous konrad install (or a dangling symlink — those are safe to nuke).
 # The marker is the KONRAD_VERSION_BAKED hook — *structural*, present in every
@@ -160,12 +179,14 @@ fi
 # above), and not something a rebrand can move. It used to be the prose header
 # line, which 0.27.0's lowercase rebrand rewrote: every 0.27.0 install then
 # failed its own identity check and `konrad update` refused to overwrite it.
+FRESH_INSTALL=1
 if [ -L "$TARGET" ] && [ ! -e "$TARGET" ]; then
   : # dangling symlink, fine to replace
 elif [ -e "$TARGET" ]; then
   if ! grep -q 'KONRAD_VERSION_BAKED=' "$TARGET" 2>/dev/null; then
     die "refusing to overwrite $TARGET (exists, doesn't look like a previous konrad install). Set KONRAD_INSTALL_DIR or remove it manually."
   fi
+  FRESH_INSTALL=0
 fi
 
 install -m 0755 "$TMP.baked" "$TARGET" 2>/dev/null \
@@ -214,11 +235,19 @@ else
   fi
 fi
 
-# Offer a clickable launcher (see desktop_wanted). Non-fatal — the CLI is
-# already in place, so a failure here just means no icon, not a broken install.
+# Offer a clickable launcher (see desktop_wanted) — first install only. Any
+# other run instead REFRESHES a launcher that's already there: the wrapper and
+# the .app are generated code, so a fix in this version has to reach launchers
+# already on disk, and the refresh keeps the recorded terminal choice and icon.
+# It's a silent no-op when nothing is installed, so a user who declined (or
+# never had one) is left alone. Non-fatal either way — the CLI is already in
+# place, so a failure here just means no icon, not a broken install.
 if desktop_wanted; then
   "$TARGET" install-desktop \
     || warn "couldn't create the desktop launcher; run 'konrad install-desktop' later."
+else
+  "$TARGET" install-desktop --refresh \
+    || warn "couldn't refresh the desktop launcher; run 'konrad install-desktop' to rebuild it."
 fi
 
 printf '\n' >&2
