@@ -1966,18 +1966,25 @@ desktop_terminal_present() {
 # Linux: a freedesktop .desktop entry + a hicolor scalable-SVG icon + the shared
 # wrapper. User-scope (no root): everything under $XDG_DATA_HOME (~/.local/share).
 install_desktop_linux() {
-  local remove="$1"
+  local mode="$1"
   local data="${XDG_DATA_HOME:-$HOME/.local/share}"
   local desktop="$data/applications/konrad.desktop"
   local icon="$data/icons/hicolor/scalable/apps/konrad.svg"
   local wrapper="$KONRAD_DATA_DIR/launch.sh"
 
-  if [[ "$remove" == "1" ]]; then
+  if [[ "$mode" == "remove" ]]; then
     rm -f "$desktop" "$icon" "$wrapper"
     if command -v update-desktop-database >/dev/null 2>&1; then
       update-desktop-database "$data/applications" >/dev/null 2>&1 || true
     fi
     info "removed the desktop launcher (entry, icon, wrapper)."
+    return 0
+  fi
+
+  # refresh = "keep what's there current, never create". The .desktop entry is
+  # the presence marker (the wrapper alone could be a leftover).
+  if [[ "$mode" == "refresh" && ! -e "$desktop" ]]; then
+    dbg "install-desktop --refresh: no launcher at $desktop; nothing to do"
     return 0
   fi
 
@@ -1994,12 +2001,22 @@ install_desktop_linux() {
   # icon. An absolute path bypasses theme lookup entirely and renders at once.
   # The file still lands in the hicolor tree (standard location, swept by
   # --remove / uninstall), so name lookup works too once the theme is rescanned.
-  local icon_line=""
-  if fetch_asset konrad.svg "$icon"; then
+  #
+  # A re-run must never DOWNGRADE a working launcher, so the asset lands in a
+  # temp first and only replaces the installed icon once it's really there: an
+  # offline refresh (fetch_asset deletes its destination on failure) would
+  # otherwise delete a perfectly good icon and rewrite the entry without one.
+  local icon_line="" icon_tmp
+  icon_tmp="$(mktemp 2>/dev/null || mktemp -t konrad-svg)"
+  if fetch_asset konrad.svg "$icon_tmp" && mv -f "$icon_tmp" "$icon"; then
+    chmod 0644 "$icon" 2>/dev/null || true   # mktemp makes it 0600
     icon_line="Icon=$icon"
+  elif [[ -s "$icon" ]]; then
+    icon_line="Icon=$icon"                   # keep the one already installed
   else
     warn "launcher icon unavailable (offline?); using a generic icon."
   fi
+  rm -f "$icon_tmp"
 
   cat > "$desktop" <<EOF
 [Desktop Entry]
@@ -2024,6 +2041,11 @@ EOF
     gtk-update-icon-cache -qtf "$data/icons/hicolor" >/dev/null 2>&1 || true
   fi
 
+  if [[ "$mode" == "refresh" ]]; then
+    info "refreshed the desktop launcher → $desktop"
+    return 0
+  fi
+
   info "installed the konrad launcher → $desktop"
   info "  it should appear in your application menu (may need a re-login)."
   [[ -n "${KONRAD_TERMINAL:-}" ]] \
@@ -2035,30 +2057,81 @@ EOF
   return 0
 }
 
-# Resolve KONRAD_TERMINAL (macOS) → the terminal app + how to run a command in
-# it, baked into the .app's executable at install time. Default is the built-in
-# Terminal.app. Only a known set is accepted — each terminal needs a *specific*
-# launch mechanism (an `-e` flag vs. its own AppleScript), so an arbitrary app
-# name can't be supported blindly. A non-default choice is validated against
-# LaunchServices, so a typo or an uninstalled terminal fails loudly at install
-# rather than producing a dead icon. Sets MAC_TERM_APP / MAC_TERM_MECH.
+# Resolve the terminal the macOS launcher opens → the app + how to run a command
+# in it, baked into the .app's executable at install time. Only a known set is
+# accepted — each terminal needs a *specific* launch mechanism (an `-e` flag vs.
+# its own AppleScript), so an arbitrary app name can't be supported blindly. A
+# non-default choice is validated against LaunchServices, so a typo or an
+# uninstalled terminal fails loudly at install rather than producing a dead icon.
+#
+# Precedence: an explicit KONRAD_TERMINAL for this run > the choice the INSTALLED
+# launcher already records > Terminal.app. That middle rung is what makes the
+# choice stick: it used to live only in the install-time env var, so any
+# regeneration without it (a `konrad update`, or a plain `install-desktop`
+# re-run) silently reset every launcher back to Terminal.app. The generated
+# bundle exec records its own `TERM_ID`, so the launcher IS the state — nothing
+# extra to write, migrate, or leave behind after `--remove`. Reading it back is
+# keyed on that structural assignment; the one exception is the back-compat
+# branch below, which reads pre-`TERM_ID` bundles by their recorded app name so
+# upgrading doesn't reset them once (and retires itself on first write).
+#
+# Sets MAC_TERM_ID / MAC_TERM_APP / MAC_TERM_MECH.
+MAC_TERM_ID=""
 MAC_TERM_APP=""
 MAC_TERM_MECH=""
 resolve_mac_terminal() {
-  local id="${KONRAD_TERMINAL:-terminal}"
+  local installed_exec="${1:-}" id="${KONRAD_TERMINAL:-}" from_env=1
+  if [[ -z "$id" ]]; then
+    from_env=0
+    if [[ -r "$installed_exec" ]]; then
+      id="$(sed -n 's/^TERM_ID="\(.*\)"$/\1/p' "$installed_exec" 2>/dev/null | head -1)"
+      # Back-compat: launchers written before TERM_ID existed record only the
+      # resolved app. Without this, the very first refresh after upgrading would
+      # reset every pre-existing non-default launcher to Terminal.app once —
+      # exactly the reset this whole mechanism exists to stop. Derived from a
+      # value konrad itself generated out of the fixed enum below (not free
+      # text), and it self-retires: the regeneration writes a TERM_ID.
+      if [[ -z "$id" ]]; then
+        case "$(sed -n 's/^TERM_APP="\(.*\)"$/\1/p' "$installed_exec" 2>/dev/null | head -1)" in
+          iTerm)     id="iterm" ;;
+          Ghostty)   id="ghostty" ;;
+          Alacritty) id="alacritty" ;;
+        esac
+      fi
+      [[ -n "$id" ]] && dbg "install-desktop: keeping the launcher's terminal '$id'"
+    fi
+  fi
+  [[ -n "$id" ]] || id="terminal"
   case "$id" in
-    terminal|Terminal)         MAC_TERM_APP="Terminal";  MAC_TERM_MECH="terminal" ;;
-    iterm|iterm2|iTerm|iTerm2) MAC_TERM_APP="iTerm";     MAC_TERM_MECH="iterm" ;;
-    ghostty|Ghostty)           MAC_TERM_APP="Ghostty";   MAC_TERM_MECH="open-e" ;;
-    alacritty|Alacritty)       MAC_TERM_APP="Alacritty"; MAC_TERM_MECH="open-e" ;;
-    *) die "KONRAD_TERMINAL='$id' is not supported. Choose one of: terminal (default), iterm, ghostty, alacritty." ;;
+    terminal|Terminal)         MAC_TERM_ID="terminal";  MAC_TERM_APP="Terminal";  MAC_TERM_MECH="terminal" ;;
+    iterm|iterm2|iTerm|iTerm2) MAC_TERM_ID="iterm";     MAC_TERM_APP="iTerm";     MAC_TERM_MECH="iterm" ;;
+    ghostty|Ghostty)           MAC_TERM_ID="ghostty";   MAC_TERM_APP="Ghostty";   MAC_TERM_MECH="open-e" ;;
+    alacritty|Alacritty)       MAC_TERM_ID="alacritty"; MAC_TERM_APP="Alacritty"; MAC_TERM_MECH="open-e" ;;
+    *)
+      # An unsupported value from the env is the user's typo → fail loudly. The
+      # same value read back off disk means a *previous* konrad supported a
+      # terminal this one doesn't; that's not the user's mistake to be blocked
+      # on, so fall back to the default and say so.
+      if [[ "$from_env" == "1" ]]; then
+        die "KONRAD_TERMINAL='$id' is not supported. Choose one of: terminal (default), iterm, ghostty, alacritty."
+      fi
+      warn "the installed launcher records an unsupported terminal ('$id'); falling back to Terminal.app. Set KONRAD_TERMINAL to pick another."
+      MAC_TERM_ID="terminal"; MAC_TERM_APP="Terminal"; MAC_TERM_MECH="terminal"
+      ;;
   esac
   # Terminal.app is a system app — always present, skip the check. For anything
   # else, confirm it's installed (LaunchServices finds it wherever it lives, with
   # no side effect — unlike guessing a /Applications path).
   if [[ "$MAC_TERM_APP" != "Terminal" ]]; then
     if ! osascript -e "id of app \"$MAC_TERM_APP\"" >/dev/null 2>&1; then
-      die "KONRAD_TERMINAL='$id' → '$MAC_TERM_APP.app' isn't installed (LaunchServices can't find it). Install it, unset KONRAD_TERMINAL for the built-in Terminal, or pick another."
+      if [[ "$from_env" == "1" ]]; then
+        die "KONRAD_TERMINAL='$id' → '$MAC_TERM_APP.app' isn't installed (LaunchServices can't find it). Install it, unset KONRAD_TERMINAL for the built-in Terminal, or pick another."
+      fi
+      # Read back off disk: the terminal the user chose has since been
+      # uninstalled. Don't abort a refresh over it — the launcher would stay
+      # dead either way; fall back so the icon keeps working.
+      warn "the launcher's terminal ('$MAC_TERM_APP.app') is no longer installed; falling back to Terminal.app."
+      MAC_TERM_ID="terminal"; MAC_TERM_APP="Terminal"; MAC_TERM_MECH="terminal"
     fi
   fi
 }
@@ -2069,18 +2142,26 @@ resolve_mac_terminal() {
 # built at install time from the committed PNG master with the preinstalled sips
 # + iconutil — no third-party tooling.
 install_desktop_macos() {
-  local remove="$1"
+  local mode="$1"
   local app="$HOME/Applications/Konrad.app"
 
-  if [[ "$remove" == "1" ]]; then
+  if [[ "$mode" == "remove" ]]; then
     rm -rf "$app"
     info "removed $app"
     return 0
   fi
 
-  resolve_mac_terminal   # sets MAC_TERM_APP / MAC_TERM_MECH (or dies)
+  # refresh = "keep what's there current, never create".
+  if [[ "$mode" == "refresh" && ! -d "$app" ]]; then
+    dbg "install-desktop --refresh: no bundle at $app; nothing to do"
+    return 0
+  fi
 
   local contents="$app/Contents" macos="$app/Contents/MacOS" res="$app/Contents/Resources"
+  # Read the terminal choice out of the bundle we're about to overwrite, so a
+  # regeneration keeps it (see resolve_mac_terminal).
+  resolve_mac_terminal "$macos/Konrad"   # sets MAC_TERM_ID/_APP/_MECH (or dies)
+
   mkdir -p "$macos" "$res" || die "could not create the app bundle under $HOME/Applications."
   emit_wrapper "$res/launch.sh"
 
@@ -2088,10 +2169,13 @@ install_desktop_macos() {
   # parts — a short head that injects the resolved app + mechanism, then a fixed
   # single-quoted body where $here/$res (and the osascript quoting) stay literal,
   # resolving when the user clicks, not now. The `-e` family (ghostty/alacritty)
-  # takes a command flag; Terminal/iTerm need their own AppleScript.
+  # takes a command flag; Terminal/iTerm need their own AppleScript. TERM_ID is
+  # unused at click time — it's the record resolve_mac_terminal reads back so a
+  # later regeneration keeps this choice.
   cat > "$macos/Konrad" <<EOF
 #!/bin/bash
 # GENERATED by \`konrad install-desktop\` — do not edit; re-run the verb.
+TERM_ID="$MAC_TERM_ID"
 TERM_APP="$MAC_TERM_APP"
 TERM_MECH="$MAC_TERM_MECH"
 EOF
@@ -2113,6 +2197,12 @@ EXECSH
 
   # Icon: fetch the PNG master, downscale into an .iconset with sips, pack with
   # iconutil. Any missing piece → generic icon (the .app still works).
+  #
+  # Like the Linux icon, a re-run must never downgrade a working launcher: the
+  # .icns is packed into the temp dir and only moved in on success, and a failure
+  # keeps the bundle's existing icon (mkdir -p above leaves it in place) instead
+  # of dropping CFBundleIconFile from a rewritten Info.plist.
+  local icns_key='  <key>CFBundleIconFile</key><string>konrad</string>'
   local icon_key="" tmp_png tmp_dir iconset
   tmp_png="$(mktemp -t konrad-icon 2>/dev/null || mktemp)"
   tmp_dir="$(mktemp -d 2>/dev/null || true)"
@@ -2128,11 +2218,16 @@ EXECSH
       sips -z "$size" "$size" "$tmp_png" --out "$iconset/icon_${label}.png" \
         >/dev/null 2>&1 || true
     done
-    if iconutil -c icns "$iconset" -o "$res/konrad.icns" >/dev/null 2>&1; then
-      icon_key='  <key>CFBundleIconFile</key><string>konrad</string>'
+    if iconutil -c icns "$iconset" -o "$tmp_dir/konrad.icns" >/dev/null 2>&1 \
+       && mv -f "$tmp_dir/konrad.icns" "$res/konrad.icns"; then
+      icon_key="$icns_key"
+    elif [[ -s "$res/konrad.icns" ]]; then
+      icon_key="$icns_key"            # keep the one already in the bundle
     else
       warn "could not build the .icns (iconutil failed); using a generic icon."
     fi
+  elif [[ -s "$res/konrad.icns" ]]; then
+    icon_key="$icns_key"              # keep the one already in the bundle
   else
     warn "launcher icon unavailable (offline, or sips/iconutil missing); using a generic icon."
   fi
@@ -2163,20 +2258,42 @@ EOF
   local lsreg="/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister"
   if [[ -x "$lsreg" ]]; then "$lsreg" -f "$app" >/dev/null 2>&1 || true; fi
 
-  info "installed $app"
+  if [[ "$mode" == "refresh" ]]; then
+    info "refreshed $app (opens in $MAC_TERM_APP)"
+    return 0
+  fi
+
+  info "installed $app (opens in $MAC_TERM_APP)"
   info "  find it in Launchpad / Spotlight (search for Konrad), or drag it to your Dock."
   return 0
 }
 
-# `install-desktop` [--remove]. Host-side; picks the platform back-end.
+# `install-desktop` [--remove|--refresh]. Host-side; picks the platform back-end.
+# Three modes:
+#   install (default) — create or overwrite the launcher, then say where it went.
+#   --remove          — delete it.
+#   --refresh         — regenerate ONLY if a launcher is already installed;
+#                       a silent no-op otherwise.
+# --refresh is what the installer rides on an UPGRADE: it keeps an existing
+# launcher's generated wrapper/bundle current (they're generated code, so a fix
+# here has to reach launchers already on disk) without ever creating one the
+# user didn't ask for, and without re-asking. The regeneration is
+# choice-preserving by construction — see resolve_mac_terminal and the two icon
+# blocks, both of which read the installed launcher rather than reset it.
 do_install_desktop() {
   dbg "do_install_desktop start"
-  local remove=0
-  [[ "${1:-}" == "--remove" ]] && remove=1
+  local mode="install"
+  case "${1:-}" in
+    --remove)  mode="remove" ;;
+    --refresh) mode="refresh" ;;
+  esac
   case "$(uname -s)" in
-    Darwin) install_desktop_macos "$remove" ;;
-    Linux)  install_desktop_linux "$remove" ;;
-    *)      die "install-desktop supports Linux and macOS only (got '$(uname -s)')." ;;
+    Darwin) install_desktop_macos "$mode" ;;
+    Linux)  install_desktop_linux "$mode" ;;
+    *)      # A refresh on an unsupported OS has nothing to keep current, so it
+            # stays a no-op rather than failing an otherwise-fine update.
+            if [[ "$mode" == "refresh" ]]; then return 0; fi
+            die "install-desktop supports Linux and macOS only (got '$(uname -s)')." ;;
   esac
 }
 
@@ -3144,9 +3261,14 @@ Subcommands:
                         or a macOS ~/Applications/Konrad.app (Dock/Launchpad/
                         Spotlight) — that opens a scratch session. User-scope, no
                         root. '--remove' deletes it again (also swept by
-                        'uninstall'). The curl|sh installer offers this too.
+                        'uninstall'); '--refresh' re-generates one that's already
+                        installed and is a no-op otherwise (what an update
+                        rides). The curl|sh installer offers this on a FIRST
+                        install only — never again on an update.
                         macOS: KONRAD_TERMINAL=ghostty|alacritty|iterm|terminal
                         picks which terminal the app opens (default: terminal).
+                        The choice is remembered — a later re-run or update keeps
+                        it unless you pass KONRAD_TERMINAL again.
   $self connect [a…]   Authenticate a provider ('opencode auth login') with no
                         agent in the loop — the firewall is off for this step, so
                         an OAuth login (Claude Pro/Max, …) needs no --allow-host.
@@ -3317,9 +3439,10 @@ while [[ $# -gt 0 ]]; do
     install-desktop)
       shift
       case "${1:-}" in
-        --remove) RUN_ARGS=(--remove) ;;
-        "")       RUN_ARGS=() ;;
-        *)        die "install-desktop: unknown argument '$1' (only --remove is accepted)" ;;
+        --remove)  RUN_ARGS=(--remove) ;;
+        --refresh) RUN_ARGS=(--refresh) ;;
+        "")        RUN_ARGS=() ;;
+        *)         die "install-desktop: unknown argument '$1' (only --remove and --refresh are accepted)" ;;
       esac
       ACTION="install-desktop"; break ;;
     update)
