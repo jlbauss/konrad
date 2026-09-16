@@ -14,9 +14,9 @@ cryptography==50.0.1
 defusedxml==0.7.1
 dill==0.4.1
 doclang==0.7.3
-docling-core==2.96.0
+docling-core==2.96.1
 docling-ibm-models==4.0.2
-docling-parse==7.19.1
+docling-parse==7.20.0
 docling-slim==2.127.0
 et-xmlfile==2.0.0
 faker==40.39.0
@@ -109,6 +109,6 @@ tree-sitter-typescript==0.23.2
 typer==0.26.8
 typing-extensions==4.16.0
 typing-inspection==0.4.4
-urllib3==2.7.0
+urllib3==2.8.0
 websockets==16.1.1
 xlsxwriter==3.2.9
