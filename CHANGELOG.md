@@ -11,6 +11,8 @@ Entries stay terse — the *why* lives in the git commit log and the [ARCHITECTU
 
 ## [Unreleased]
 
+## [0.29.0] - 2026-09-29
+
 ### Security
 
 - **Workspace guard: the agent can no longer plant code your host runs later.** `.git`, `.githooks`, `.husky`, `.vscode`, `.devcontainer`, `.claude`, and `.mcp.json` are mounted read-only in the sandbox when present (folders only on Apple's `container` engine, which can't mount single files), so a prompt-injected agent can't add a git hook, a `core.fsmonitor` command, a VS Code task, or an MCP server that would run on your machine after the session. Your files stay fully editable and git history stays readable.
