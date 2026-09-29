@@ -20,7 +20,7 @@ Under the hood it's a thin wrapper around [opencode](https://github.com/sst/open
 ## Why konrad
 
 - **Your data stays yours.** Run local models or a trustworthy API — handle the forms, private notes, and regulated data you'd never paste into a cloud chatbot.
-- **Sandboxed by default.** The agent works inside a container that can't touch anything outside the workspace, and an egress firewall (on by default) restricts its network to an allow-list — your model providers plus a small trusted set — so a prompt-injected agent can't quietly ship your data off the box.
+- **Sandboxed by default.** The agent works inside a container that can't touch anything outside the workspace — nor plant code your host later runs from it, like a git hook ([workspace guard](#workspace-guard)) — and an egress firewall (on by default) restricts its network to an allow-list — your model providers plus a small trusted set — so a prompt-injected agent can't quietly ship your data off the box.
 - **Your models, your choice.** Local engines (LM Studio / Ollama / llama.cpp) or any opencode-supported API provider — never locked to one vendor.
 - **Batteries included.** One container image ships the agent's tools (ripgrep, fd, jq, pandoc, poppler, Python 3 + a system venv, Typst, LibreOffice) and a curated skill set already wired together: no venv, no pip, no host setup.
 - **Fully open source.** AGPL-3.0, no telemetry, nothing proprietary.
@@ -220,6 +220,12 @@ It's **on by default**; `konrad --no-firewall` turns it off for a run. Full desi
 
 **The firewall is the containment boundary — not a secret read-gate.** Your provider credential lives on-disk in the `konrad-secrets` volume, and a prompt-injected agent can read it or copy it into `/workspace`; what stops it *leaving the box* is this default-deny firewall, not a read restriction. So `--no-firewall` (or opening `--allow-host` to a host you don't trust) removes that containment for the run — use it only when you trust the agent and the task.
 
+### Workspace guard
+
+The agent can't reach your host — but your host runs things *from* the workspace after the agent is done: `git status` can run a command configured in `.git/config`, a git hook fires on commit or fetch, VS Code runs `.vscode` tasks in a trusted folder, Claude Code reads `.claude/` and `.mcp.json`. So konrad mounts those entries **read-only** inside the sandbox: `.git`, `.githooks`, `.husky`, `.vscode`, `.devcontainer`, `.claude`, and `.mcp.json`, whichever exist at the top of the workspace. The agent still edits your files normally and can read git history (`git status`, `log`, `diff`), but it can't commit or change git config. Need a commit from the agent? Run `KONRAD_WORKSPACE_GUARD=0 konrad` for that session.
+
+What it can't cover: an entry that doesn't exist yet when you launch (the agent could create a `.vscode/` or `git init` a folder that had no repo), a nested repository below the top level, single files like `.mcp.json` on Apple's `container` engine (it can only protect folders), and anything you run yourself — a `Makefile`, a script, `npm run`. **Review what the agent changed before you run it.** Rationale: [ARCHITECTURE.md → State, secrets & isolation](ARCHITECTURE.md#state-secrets--isolation).
+
 ### Resource limits
 
 Each run caps the agent container's RAM and CPU at a ceiling **auto-scaled to your machine** (up to `8 GB` / `8` cores) — bounding a runaway agent and leaving headroom for a co-resident local model. `konrad --help` prints the values computed for your host. Pin explicit values (or opt out with `0`) per run:
@@ -308,6 +314,7 @@ Rarely needed — the flags cover day-to-day use. Collected here so the rest of 
 | `KONRAD_IMAGE` | Run a specific image tag (e.g. a PR test build) instead of the default. |
 | `KONRAD_REGISTRY_IMAGE` | Advanced: override the pull *source* for updates/refresh (vs. `KONRAD_IMAGE`, which sets what *runs*) — e.g. rehearse a `:pr-<num>` candidate or a local registry. |
 | `KONRAD_MEMORY` / `KONRAD_CPUS` / `KONRAD_PIDS_LIMIT` | Pin or disable the resource caps — see [Resource limits](#resource-limits). |
+| `KONRAD_WORKSPACE_GUARD=0` | Make `.git`, `.vscode`, `.claude`, … writable to the agent for this run (e.g. to let it commit) — see [Workspace guard](#workspace-guard). |
 | `KONRAD_INSTALL_DIR` | Installer: where to put the CLI (default `~/.local/bin`). |
 | `KONRAD_NO_PULL=1` | Installer: skip the image pre-pull. |
 | `KONRAD_DESKTOP` | Installer: `1` creates the desktop launcher without asking, `0` skips it. Unset → the installer asks on a **first install** (on a terminal), else prints a hint; an update never asks. See [Desktop launcher](#desktop-launcher). |

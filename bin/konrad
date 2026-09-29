@@ -295,6 +295,14 @@ KONRAD_CPUS="${KONRAD_CPUS:-}"
 # apple/container the per-container VM already bounds this at its own kernel.
 KONRAD_PIDS_LIMIT="${KONRAD_PIDS_LIMIT:-1024}"
 
+# Workspace guard: workspace entries the HOST later executes from (git config +
+# hooks, editor/agent/devcontainer config), overlaid read-only on top of the
+# writable /workspace bind so a prompt-injected agent can't plant code the host
+# runs after the sandbox exits (see workspace_guard_mounts). 0 disables the guard
+# for a run — needed only when the user wants the agent to `git commit`.
+KONRAD_WORKSPACE_GUARD="${KONRAD_WORKSPACE_GUARD:-1}"
+WORKSPACE_GUARD_ENTRIES=(.git .githooks .husky .vscode .devcontainer .claude .mcp.json)
+
 # Container engine. konrad runs on Podman everywhere, with one exception: on
 # Apple-Silicon macOS where Apple's `container` CLI (apple/container, macOS 26+)
 # is installed, that native engine is preferred — it drops the `podman machine`
@@ -666,6 +674,37 @@ ro_bind() {
   else
     RO_BIND=(-v "$1:$2:ro")
   fi
+}
+
+# Set the global WS_GUARD array to read-only overlays for every guarded entry
+# (WORKSPACE_GUARD_ENTRIES) that exists at the root of workspace $1, bound from
+# host source root $2 (differs from $1 only in remote mode). Deferred escape is
+# the threat: the agent can't reach the host, but the host runs what the agent
+# leaves behind — `git status` runs core.fsmonitor, a fetch fires hooks, a
+# trusted VS Code runs .vscode tasks, a devcontainer reopen runs initializeCommand.
+# Two rules make this a boundary rather than a speed-bump, both probe-verified:
+#   - Only TOP-LEVEL entries, each overlaid WHOLE. A mountpoint can't be renamed
+#     or removed (EBUSY), but a directory that merely CONTAINS one can be — so a
+#     `.git/config` overlay is defeated by `mv .git x` + a fresh `.git`, while a
+#     `.git` overlay directly under the bind root can't be moved aside.
+#   - Only entries that already EXIST, never symlinks. Overlaying an absent path
+#     would make the engine create a mountpoint in the user's tree (breaking "konrad
+#     doesn't touch the workspace"); a symlink would bind whatever it points at,
+#     possibly outside the workspace. Both stay documented residual gaps.
+# apple/container binds directories only (a file source fails the whole launch:
+# "path … is not a directory", verified 2026-09-29), so there file entries —
+# .mcp.json, and a .git FILE (worktree/submodule) — are skipped, a documented gap.
+WS_GUARD=()
+workspace_guard_mounts() {
+  local ws="$1" src="$2" e
+  WS_GUARD=()
+  [[ "$KONRAD_WORKSPACE_GUARD" == 0 ]] && return 0
+  for e in "${WORKSPACE_GUARD_ENTRIES[@]}"; do
+    [[ -e "$ws/$e" && ! -L "$ws/$e" ]] || continue
+    [[ "$KONRAD_ENGINE" == "container" && ! -d "$ws/$e" ]] && continue
+    ro_bind "$src/$e" "/workspace/$e"
+    WS_GUARD+=("${RO_BIND[@]}")
+  done
 }
 
 # Print container $1's IPv4 address on network $2 (empty on failure). Podman
@@ -1272,6 +1311,7 @@ EOF
   fi
 
   ws_src="$(remote_host_path "$cwd")"   # rewritten only in remote mode
+  workspace_guard_mounts "$cwd" "$ws_src"
 
   # Profile-suffixed state + cache volumes (secrets stays shared — see
   # KONRAD_PROFILE above). No profile → the base names, unchanged.
@@ -1525,6 +1565,7 @@ EOF
     -e "KONRAD_HOST_LOG_DIR=${KONRAD_LOG_DIR}"
     -e "KONRAD_ALLOWED_HOSTS=${KONRAD_ALLOW_HOST}"
     -v "${ws_src}:/workspace${vol_relabel}"
+    ${WS_GUARD[@]+"${WS_GUARD[@]}"}
     -v "$(eng_volume_source "$SECRETS_VOLUME"):/home/node/.opencode-secrets${vol_chown}"
     -v "$(eng_volume_source "$cache_vol"):/home/node/.cache/opencode${vol_chown}"
     -v "$(eng_volume_source "$state_vol"):/home/node/.local/state/opencode${vol_chown}"
@@ -3351,6 +3392,10 @@ bounds runaway use and lifts Apple container's tight 1G default that OOM-kills d
   KONRAD_MEMORY=0 $self              Drop the RAM cap (Podman's old unbounded run).
   KONRAD_CPUS=8 $self                Pin the CPU-core cap (also docling/torch's thread budget).
   KONRAD_PIDS_LIMIT=4096 $self       Raise the task/thread cap (Podman; 0 disables). Default 1024.
+
+Workspace guard (.git, .vscode, .claude, .mcp.json, … are read-only to the agent,
+so it can't plant code your host runs later — e.g. a git hook):
+  KONRAD_WORKSPACE_GUARD=0 $self     Make them writable for this run (e.g. to let the agent git commit).
 
 Background auto-update (keeps the image + org layers fresh; the CLI updates via
 its install channel — 'konrad update' / brew / curl|sh):

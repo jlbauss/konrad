@@ -9,6 +9,7 @@ listed below are pre-installed — don't probe to check whether they exist.
 |---|---|
 | `/workspace` | User's project, bind-mounted. Default cwd. |
 | `/workspace/.agent/` | Your durable working memory (`task.md`, `scratch/`, `artifacts/`, `quality-assurance/` — see agent prompt). |
+| `/workspace/.git`, `.vscode`, `.claude`, `.mcp.json`, `.devcontainer`, `.husky`, `.githooks` | **Read-only** when present (the workspace guard). Reading works — `git status`/`log`/`diff` are fine — but `git commit`, `git config`, and edits there fail by design. Don't work around it; if the user wants a commit, tell them to re-run with `KONRAD_WORKSPACE_GUARD=0`. |
 | `/opt/venv` | Python venv, active via `PATH`. Read-only; use `uv pip install --user` for session adds. |
 | `/home/node/.config/opencode/` | opencode runtime config (agents, skills, this file). |
 | `/home/node/.config/konrad/` | Optional user overlays bind-mounted from the host. |
