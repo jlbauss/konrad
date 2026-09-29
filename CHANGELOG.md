@@ -11,6 +11,10 @@ Entries stay terse — the *why* lives in the git commit log and the [ARCHITECTU
 
 ## [Unreleased]
 
+### Added
+
+- **`konrad code <git-url>` — run Claude Code sealed off from your machine.** A second mode for software work: the agent gets open internet but no route to your computer or local network, and nothing from your disk is mounted — the repo is cloned into its own volume, and work comes back only as a branch + merge request pushed with a project access token. Claude Code is installed on first use (you accept Anthropic's terms) and your login is kept. See [README → Coding agents](README.md#coding-agents-konrad-code).
+
 ## [0.29.0] - 2026-09-29
 
 ### Security

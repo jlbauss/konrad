@@ -40,7 +40,7 @@ konrad is for someone who wants an AI agent to work on **their own files, on the
 
 **It's probably not for you if you want:**
 
-- **Coding / software development** — use Claude Code, Cursor, and the like; konrad isn't tuned as a coding agent.
+- **Coding / software development** — use Claude Code, Cursor, and the like; konrad isn't tuned as a coding agent. (konrad can still *host* one: [`konrad code`](#coding-agents-konrad-code) runs Claude Code sealed off from your machine.)
 - **Research or web-heavy work** — deep-research and browsing agents do this better. konrad has no browsing stack, and its default-on egress firewall deliberately narrows network access — it's built to stay on a leash, not to roam.
 - **Production, hosted, or multi-user deployment** — it's a single-user local sandbox, not a deployable service.
 - **A zero-config cloud agent** — if you just want a hosted frontier model with no setup, a first-party app is less friction. konrad's payoff is local + your-files + sandbox.
@@ -113,6 +113,7 @@ The action verbs are subcommands; `konrad` with no subcommand launches the TUI.
 | `install-desktop`      | Add a clickable launcher — a Linux application-menu entry or a macOS `~/Applications/Konrad.app` (Dock / Launchpad / Spotlight) — that opens a scratch session. User-scope, no root; `install-desktop --remove` deletes it (also swept by `uninstall`). The installer offers this on a first install only. |
 | `connect [args…]`      | Authenticate a provider (`opencode auth login`) — agent-free, firewall off. `connect --custom [id]` declares a self-hosted endpoint. |
 | `mcp-auth <server>`    | Authenticate a remote MCP server's OAuth; the browser callback is forwarded into the sandbox. |
+| `code [--shell] <git-url> [args…]` | Run Claude Code on a clone of a forge repo, with open internet but no access to your machine — see [Coding agents](#coding-agents-konrad-code). |
 | `org add` / `list` / `sync` / `remove` | Manage org config-layer subscriptions — see [For organizations](#for-organizations). |
 | `update`               | Refresh the CLI itself, pull the latest image from `ghcr.io/jlbauss/konrad:latest`, and re-sync subscribed org layers. `update --check` compares without pulling. |
 | `reset`                | Wipe shared volumes + log dir. Prompts `[y/N]`; affects all workspaces. |
@@ -145,6 +146,22 @@ No root, nothing system-wide; `konrad install-desktop --remove` deletes it, and 
 The `curl | sh` installer offers to create it **on a first install only** — never again on an update, since `konrad update` re-runs that same installer. If you already have a launcher, an update quietly re-generates it in place (the wrapper and the macOS bundle are generated code, so fixes have to reach launchers already on disk) and keeps your settings; if you declined, or removed it, an update leaves you alone and you can add one later with `konrad install-desktop`. `KONRAD_DESKTOP=1` opts in non-interactively at any time, `0` never asks.
 
 On **macOS**, the app opens Terminal.app by default; point it at another terminal with `KONRAD_TERMINAL` (`ghostty`, `alacritty`, or `iterm`) when you create it — e.g. `KONRAD_TERMINAL=ghostty konrad install-desktop` (the terminal must be installed). **The choice sticks**: the launcher records it, so updates and later `konrad install-desktop` re-runs keep your terminal unless you pass `KONRAD_TERMINAL` again to change it. On **Linux** the entry uses your desktop's own default terminal, so there's nothing to set.
+
+### Coding agents (`konrad code`)
+
+`konrad` gives its agent your files and keeps it off the internet. `konrad code` is the opposite trade-off for software work: the agent gets the internet and **nothing from your machine** — an agent gets your data or the internet, never both.
+
+```sh
+konrad code https://gitlab.example.com/you/project
+```
+
+- **No host mounts.** Only the URL crosses into the container. The repo is cloned into a volume of its own (`konrad-code-<host>-<path>`) on the first run and fetched on later runs; the agent sees only what's pushed, and nothing it writes lands on your disk.
+- **Git is the only way back.** On the first run konrad asks for a GitLab **project access token** (role Developer, scopes `read_repository` + `write_repository`), typed inside the container and stored in that repo's volume. Protect `main` on the forge: the agent then pushes a feature branch and opens a merge request, you review it in the web UI, CI runs, you merge, and only then does the code reach your machine — through a normal `git pull`.
+- **Open internet, sealed host and LAN.** Package registries, docs, and APIs just work (the agent installs what the project needs at runtime with `uv`, `npm`, …), but your computer, your local network, and link-local addresses (cloud metadata) are unreachable. There's no allow-list to maintain.
+- **Claude Code is installed on first use, never shipped.** konrad asks, then runs Anthropic's official installer into a shared volume — installing it means you accept Anthropic's terms. Log in once inside the container (Claude prints a URL, you paste the code back); a subscription login works as well as an API key. It runs as `claude --dangerously-skip-permissions`, with a short note about the git workflow added to its prompt; the repo's own `CLAUDE.md` / `AGENTS.md` apply as usual.
+- `konrad code --shell <git-url>` opens bash in the same sealed clone instead (e.g. to delete a token: `rm /workspace/.git-credentials`). Arguments after the URL go to `claude`.
+
+**What it can't protect.** The agent can read the repo and the token, and the internet is open, so both can leak — fine for your own code with a single-project, revocable token and a protected `main`; **don't use it on repos that contain secrets.** All repos share the agent's install and login volumes, so a compromised session could tamper with them for the next repo's session. "LAN" means private address space (`10/8`, `172.16/12`, `192.168/16`, CGNAT, link-local), the container's own subnet, and your machine's own networks (so a university LAN on public addresses is covered too) — a forge inside one of those is unreachable. GitLab first; GitHub (fine-grained tokens) and running it from a local checkout come later. Design: [ARCHITECTURE.md → konrad code](ARCHITECTURE.md#konrad-code).
 
 ### Staying current
 
@@ -338,6 +355,7 @@ One rule: **`.agent/` belongs to the agent.** Framework state (opencode sessions
 | `~/.local/state/konrad/log/` | opencode logs | Auto-pruned after `KONRAD_RETENTION_DAYS` (default 30); `ls -t` / `tail -f`. |
 | `~/.local/state/konrad/scratch/` | Throwaway workspaces from `konrad scratch` / a bare-`$HOME` launch | Same prune; `konrad open` reveals the newest; wiped by `konrad reset`. |
 | Named volumes `konrad-secrets` / `-cache` / `-state` | Auth, cache, last-model + UI state | Shared across projects; wiped by `konrad reset`. |
+| Named volumes `konrad-code-<host>-<path>` / `konrad-code-tools` / `konrad-code-config` | `konrad code`: each repo's clone + token; the coding agent's install; its login + settings | Kept until you remove them (`podman volume rm …`) — a repo volume can hold unpushed work, so `konrad reset` leaves them alone. |
 
 opencode's sessions and conversation DB are **ephemeral** — gone on container exit. Durable task memory is `.agent/task.md`, not the framework's history. Full rationale and the exact mount topology in [state isolation](ARCHITECTURE.md#state-secrets--isolation).
 

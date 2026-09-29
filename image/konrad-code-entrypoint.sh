@@ -1,0 +1,231 @@
+#!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2026 Jan-Luca Bauß
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# konrad code entrypoint — the sealed coding-agent mode (`konrad code <git-url>`).
+# bin/konrad starts the image with THIS as --entrypoint (not konrad-entrypoint:
+# no opencode config, no layers, no context). The opposite trade-off to `konrad`:
+# the container sees only a clone of a repo that already lives on the forge, so
+# egress is open to the internet — minus the host, the LAN and link-local, which
+# the root prelude below seals at the IP level before anything else runs.
+#
+# Mounts (all named volumes, nothing from the host filesystem):
+#   /workspace        konrad-code-<repo>  the clone + its forge token
+#   /home/node/.local konrad-code-tools   the agent binary (installed on first use)
+#   /home/node/.config konrad-code-config the agent's login + settings
+#
+# Two stages in one file: as root, install the seal and drop to node with every
+# capability gone; as node, set up git, clone or fetch, install the agent if
+# missing, and exec it. See ARCHITECTURE → konrad code.
+set -euo pipefail
+
+KONRAD_CODE_URL="${KONRAD_CODE_URL:-}"
+KONRAD_DEBUG="${KONRAD_DEBUG:-0}"
+WORK=/workspace
+CREDS="$WORK/.git-credentials"
+SEAL_TABLE=100
+
+# Output style mirrors image/entrypoint.sh (a launch reads as one sequence).
+if [ -t 2 ] && [ -z "${NO_COLOR:-}" ]; then
+  case "${COLORTERM:-}" in
+    truecolor|24bit) _C_OK=$'\033[38;2;63;122;87m' ;;
+    *)               _C_OK=$'\033[32m' ;;
+  esac
+  _C_WARN=$'\033[33m'; _C_ERR=$'\033[31m'; _C_DIM=$'\033[2m'; _C_OFF=$'\033[0m'
+else
+  _C_OK=''; _C_WARN=''; _C_ERR=''; _C_DIM=''; _C_OFF=''
+fi
+step()  { printf '  %s✓%s  %s\n' "$_C_OK"  "$_C_OFF" "$*" >&2; }
+go()    { printf '  %s→%s  %s\n' "$_C_DIM" "$_C_OFF" "$*" >&2; }
+say()   { printf '%skonrad%s %s\n' "$_C_DIM" "$_C_OFF" "$*" >&2; }
+warn()  { printf '%skonrad%s %swarning:%s %s\n' "$_C_DIM" "$_C_OFF" "$_C_WARN" "$_C_OFF" "$*" >&2; }
+fatal() { printf '%skonrad%s %serror:%s %s\n'   "$_C_DIM" "$_C_OFF" "$_C_ERR" "$_C_OFF" "$*" >&2; exit 1; }
+dbg()   { [[ "$KONRAD_DEBUG" == "1" ]] && printf '[konrad code debug] %s\n' "$*" >&2; return 0; }
+
+# shellcheck source=konrad-privdrop.sh
+. /usr/local/lib/konrad-privdrop.sh \
+  || fatal "missing /usr/local/lib/konrad-privdrop.sh (broken image)"
+
+# ── Stage 1 (root): seal host / LAN / link-local, then drop ───────────────────
+# The destinations are refused by `unreachable` routes in a dedicated table that
+# a policy rule consults BEFORE main, so they win even over a connected route
+# (the container's own subnet, the gateway). One exemption, port-scoped: DNS to
+# the engine's resolvers in resolv.conf — they sit in private space on every
+# engine (gvproxy 192.168.127.1, pasta 169.254.1.1, apple/container's gateway)
+# and at least gvproxy serves an API on other ports of the same address, so a
+# whole-address exemption would reopen the host. Public destinations miss the
+# table and fall through to main's default route. Routes and rules are netns
+# state; the dropped node user has no CAP_NET_ADMIN, so it can't remove them.
+# Fail CLOSED: any failed step aborts the run before the agent starts.
+seal_v4=(0.0.0.0/8 10.0.0.0/8 100.64.0.0/10 169.254.0.0/16 172.16.0.0/12
+         192.0.0.0/24 192.168.0.0/16 198.18.0.0/15 224.0.0.0/4 240.0.0.0/4)
+seal_v6=(::/128 ::ffff:0:0/96 64:ff9b::/96 64:ff9b:1::/48 fc00::/7 fe80::/10 ff00::/8)
+
+seal_family() {  # $1 = -4|-6, rest = ranges
+  local fam="$1" net r p; shift
+  for net in "$@"; do
+    ip "$fam" route add unreachable "$net" table "$SEAL_TABLE" \
+      || fatal "egress seal: could not install the route for $net"
+  done
+  # The container's own connected subnets too, private or not: on rootless
+  # Podman (pasta) the interface copies the host's address, so this is the host's
+  # real LAN even when it's publicly addressed. `replace` tolerates overlap with
+  # a range already listed above.
+  while read -r net _; do
+    [[ "$net" == */* ]] || continue
+    ip "$fam" route replace unreachable "$net" table "$SEAL_TABLE" \
+      || fatal "egress seal: could not install the route for connected $net"
+  done < <(ip "$fam" route show table main proto kernel 2>/dev/null)
+  # The host's own networks, handed over by bin/konrad (KONRAD_CODE_HOST_NETS):
+  # on a publicly addressed LAN the private list above misses both the host and
+  # its neighbours. Normalized (and validated) by ipaddress; junk is skipped.
+  while read -r net; do
+    [[ -n "$net" ]] || continue
+    ip "$fam" route replace unreachable "$net" table "$SEAL_TABLE" \
+      || fatal "egress seal: could not install the route for host network $net"
+  done < <(python3 - "$fam" "${KONRAD_CODE_HOST_NETS:-}" <<'PY'
+import ipaddress, sys
+want = 4 if sys.argv[1] == "-4" else 6
+for a in sys.argv[2].split():
+    try:
+        n = ipaddress.ip_network(a, strict=False)
+    except ValueError:
+        continue
+    if n.version == want:
+        print(n)
+PY
+)
+  while read -r r; do
+    for p in udp tcp; do
+      ip "$fam" rule add to "$r" ipproto "$p" dport 53 lookup main pref 100 \
+        || fatal "egress seal: could not exempt DNS to $r (kernel lacks ip rule dport?)"
+    done
+  done < <(awk '$1 == "nameserver" {print $2}' /etc/resolv.conf \
+             | if [[ "$fam" == -6 ]]; then grep ':' ; else grep -v ':'; fi || true)
+  ip "$fam" rule add lookup "$SEAL_TABLE" pref 200 \
+    || fatal "egress seal: could not install the policy rule"
+}
+
+if [[ "$(id -u)" == "0" ]]; then
+  seal_family -4 "${seal_v4[@]}"
+  # IPv6: seal whenever the stack exists at all; a v6-less kernel has no v6
+  # route to leak through.
+  if [[ -e /proc/net/if_inet6 ]]; then
+    seal_family -6 "${seal_v6[@]}"
+  fi
+  # Self-check: the host's gateway and a LAN address must no longer route
+  # (`ip route get` fails with "No route to host" on an unreachable route).
+  for probe in 10.0.0.1 192.168.1.1 "$(ip -4 route show default | awk '{print $3; exit}')"; do
+    [[ -n "$probe" ]] || continue
+    if ip -4 route get "$probe" >/dev/null 2>&1; then
+      fatal "egress seal: self-check failed ($probe still routable) — refusing to run"
+    fi
+  done
+  # Reverse-path filtering must be off (bin/konrad sets it on Podman): with
+  # private space unreachable it drops inbound packets and large downloads stall.
+  # Not a security property, so warn rather than refuse.
+  dev="$(ip -4 route show default | awk '{for (i = 1; i < NF; i++) if ($i == "dev") {print $(i + 1); exit}}')"
+  if [[ -n "$dev" && -r "/proc/sys/net/ipv4/conf/$dev/rp_filter" ]] \
+     && [[ "$(cat "/proc/sys/net/ipv4/conf/$dev/rp_filter")" != 0 \
+           || "$(cat /proc/sys/net/ipv4/conf/all/rp_filter)" != 0 ]]; then
+    warn "reverse-path filtering is on for $dev — large downloads may stall"
+  fi
+  dbg "$(ip -4 rule; ip -4 route show table "$SEAL_TABLE")"
+  step "egress · open, host + LAN sealed"
+  exec_as_node "$0" "$@"
+fi
+
+# ── Stage 2 (node): git, clone/fetch, agent install, launch ──────────────────
+[[ -n "$KONRAD_CODE_URL" ]] || fatal "KONRAD_CODE_URL not set (start this through 'konrad code <git-url>')"
+[[ -t 0 ]] || fatal "konrad code needs an interactive terminal"
+ip -4 rule 2>/dev/null | grep -q "lookup $SEAL_TABLE" \
+  || fatal "egress seal missing — konrad code must start as root so it can seal the host (start it through 'konrad code')"
+
+repo_host="${KONRAD_CODE_URL#https://}"; repo_host="${repo_host%%/*}"
+repo_path="${KONRAD_CODE_URL#https://*/}"; repo_path="${repo_path%.git}"
+repo_dir="$WORK/${repo_path##*/}"
+
+# Git config lives in the ephemeral home (rewritten each run); the token lives
+# in the repo's own volume, so it never follows the user to another repo.
+git config --global credential.helper "store --file=$CREDS"
+git config --global push.autoSetupRemote true
+git config --global init.defaultBranch main
+[[ -n "${KONRAD_GIT_NAME:-}" ]]  && git config --global user.name  "$KONRAD_GIT_NAME"
+[[ -n "${KONRAD_GIT_EMAIL:-}" ]] && git config --global user.email "$KONRAD_GIT_EMAIL"
+
+# First run: ask for a project access token, typed here so it never touches the
+# host. Empty → anonymous (a public repo clones; pushes will fail).
+if [[ ! -f "$CREDS" ]]; then
+  cat >&2 <<EOF
+
+  ${_C_OK}First run for $repo_host/$repo_path.${_C_OFF} The agent pushes through a project
+  access token scoped to this one repository:
+
+    https://$repo_host/$repo_path/-/settings/access_tokens
+      role: Developer   scopes: read_repository, write_repository
+
+  Protect 'main' on the forge (Settings → Repository → Protected branches) so
+  the agent can open merge requests but never land code by itself.
+
+EOF
+  read -r -s -p "  Paste the token (input hidden; Enter to skip for a public repo): " token </dev/tty
+  printf '\n' >&2
+  if [[ -n "$token" ]]; then
+    ( umask 077; printf 'https://oauth2:%s@%s\n' "$token" "$repo_host" > "$CREDS" )
+    step "token stored in this repo's volume"
+  else
+    : > "$CREDS"   # remember the choice; delete the file to be asked again
+    warn "no token — cloning anonymously; pushes will fail"
+  fi
+  unset token
+fi
+
+if [[ -d "$repo_dir/.git" ]]; then
+  # Fetch only — never touch the working tree, which may hold unpushed work.
+  if git -C "$repo_dir" fetch --prune --quiet origin; then
+    step "fetched · on $(git -C "$repo_dir" branch --show-current 2>/dev/null || echo '?')"
+  else
+    warn "git fetch failed — continuing with the existing clone"
+  fi
+else
+  git clone "$KONRAD_CODE_URL" "$repo_dir" \
+    || fatal "git clone failed — check the URL and the token (delete it via 'konrad code --shell <url>': rm $CREDS)"
+  step "cloned $repo_path"
+fi
+cd "$repo_dir"
+
+default_branch="$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null || true)"
+default_branch="${default_branch#origin/}"; default_branch="${default_branch:-main}"
+
+if [[ "${KONRAD_CODE_SHELL:-0}" == "1" ]]; then
+  go "shell"
+  exec bash
+fi
+
+# The agent is installed on first use, never shipped: its license lets the user
+# install it, not konrad redistribute it. The official installer drops it into
+# ~/.local (the konrad-code-tools volume), where it also self-updates.
+if ! command -v claude >/dev/null 2>&1; then
+  cat >&2 <<'EOF'
+
+  Claude Code isn't installed yet. konrad will run Anthropic's official installer
+  (curl -fsSL https://claude.ai/install.sh | bash) into a volume shared by all
+  your konrad code repos. Claude Code is Anthropic's software under Anthropic's
+  terms (https://www.anthropic.com/legal) — installing it means you
+  accept them.
+
+EOF
+  read -r -p "  Install Claude Code now? [y/N] " ans </dev/tty
+  [[ "$ans" =~ ^[Yy] ]] || fatal "not installed — nothing to run"
+  curl -fsSL https://claude.ai/install.sh | bash \
+    || fatal "Claude Code install failed"
+  command -v claude >/dev/null 2>&1 || fatal "installer finished but 'claude' is not on PATH"
+  step "Claude Code installed"
+fi
+
+# A short environment note on top of the agent's own prompts: the facts it can't
+# discover by itself (the git-only way back, the sealed LAN). Nothing else.
+note="You are running inside konrad code: a disposable container with open internet access but no route to the user's machine or local network. The working directory is a fresh clone of $KONRAD_CODE_URL; nothing you do here reaches the user except through the forge. '$default_branch' is protected, so work on a feature branch, commit, and open a merge request with: git push -u origin <branch> -o merge_request.create -o merge_request.target=$default_branch. The user reviews and merges it in the forge web UI. Install project tooling you need at runtime (uv, npm, …)."
+
+go "claude · $repo_path"
+exec claude --dangerously-skip-permissions --append-system-prompt "$note" "$@"

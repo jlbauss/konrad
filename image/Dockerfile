@@ -387,6 +387,11 @@ COPY --chmod=0755 entrypoint.sh /usr/local/bin/konrad-entrypoint
 # logic. provider-hosts.json lands here via the konrad-defaults/ COPY below. See
 # bin/konrad and scripts/resolve-provider-hosts.sh.
 COPY --chmod=0755 konrad-proxy-entrypoint.sh /usr/local/bin/konrad-proxy
+# `konrad code` runs THIS image with konrad-code as its --entrypoint: it seals
+# host/LAN/link-local at the IP level as root, drops to node, clones the repo
+# into its volume and launches the (user-installed) coding agent. Root-owned so
+# the node runtime user can't tamper with the seal. See bin/konrad do_code.
+COPY --chmod=0755 konrad-code-entrypoint.sh /usr/local/bin/konrad-code
 COPY --chmod=0755 konrad-defaults/ /etc/konrad/
 
 # NODE_DISABLE_COMPILE_CACHE / NPM_CONFIG_* keep npm and node from writing

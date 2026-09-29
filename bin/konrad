@@ -64,6 +64,11 @@ ASSET_BASE_URL="https://gitlab.git.nrw/jbauss2/konrad/-/raw/main/assets"
 SECRETS_VOLUME="konrad-secrets"
 CACHE_VOLUME="konrad-cache"
 STATE_VOLUME="konrad-state"
+# `konrad code` volumes: the coding agent's binary (installed on first use) and
+# its login/settings, shared across repos; each repo's clone + token lives in
+# its own konrad-code-<slug> volume (see code_volume_name).
+CODE_TOOLS_VOLUME="konrad-code-tools"
+CODE_CONFIG_VOLUME="konrad-code-config"
 
 # Where the three stores above live when the engine is apple/container. Podman
 # uses real named volumes (chowned to the runtime user via the :U mount option);
@@ -235,6 +240,12 @@ brand() {
   fi
   printf '%sstarting konrad%s  %scli %s · image %s · engine: %s%s\n' \
     "$_C_BRAND" "$_C_OFF" "$_C_DIM" "$KONRAD_VERSION" "$img" "$KONRAD_ENGINE" "$_C_OFF" >&2
+}
+# konrad code's header: the repo and its volume instead of the image provenance
+# (the image is the same one; what identifies the session is the repo).
+code_brand() {
+  printf '%sstarting konrad code%s  %s%s · volume %s · engine: %s%s\n' \
+    "$_C_BRAND" "$_C_OFF" "$_C_DIM" "$1" "$2" "$KONRAD_ENGINE" "$_C_OFF" >&2
 }
 step()  { printf '  %s✓%s  %s\n' "$_C_OK"  "$_C_OFF" "$*" >&2; }
 go()    { printf '  %s→%s  %s\n' "$_C_DIM" "$_C_OFF" "$*" >&2; }
@@ -2536,6 +2547,168 @@ EOF
   podman_run opencode mcp auth "$@"
 }
 
+# --- konrad code (sealed coding-agent mode) ----------------------------------
+# The opposite trade-off to `konrad`: an agent gets your data or the internet,
+# never both. `konrad code <git-url>` mounts NOTHING from the host — only the URL
+# string crosses over — so the agent can't plant anything the host later runs;
+# the repo is cloned into a per-repo volume and work comes back only as a pushed
+# branch + merge request on the forge. Egress is open, minus host / LAN /
+# link-local, sealed by image/konrad-code-entrypoint.sh's root prelude (so no
+# proxy sidecar and no extra networks). See ARCHITECTURE → konrad code.
+
+# Normalize a forge URL to the https form the token authenticates. Accepts
+# https://host/path and the ssh spellings (git@host:path, ssh://git@host/path);
+# refuses embedded credentials (a token in a URL would land in shell history and
+# the engine's process list — it's typed inside the container instead).
+code_normalize_url() {
+  local u="$1" h
+  case "$u" in
+    git@*:*)       u="${u#git@}"; u="https://${u/://}" ;;
+    ssh://git@*)   u="${u#ssh://git@}"; h="${u%%/*}"; u="https://${h%%:*}/${u#*/}" ;;  # an ssh port isn't https's
+  esac
+  u="${u%/}"
+  [[ "$u" =~ ^https://[A-Za-z0-9.-]+(:[0-9]+)?/[A-Za-z0-9._~-]+(/[A-Za-z0-9._~-]+)+$ ]] \
+    || die "konrad code needs an https or ssh git URL without credentials, e.g. https://gitlab.example.com/group/repo (got '$1')"
+  printf '%s' "$u"
+}
+
+# Volume name for a repo URL: konrad-code-<host>-<path…>, lowercased, .git and
+# non-[a-z0-9.-] characters folded, so each repo (not just each basename) gets
+# its own clone + token.
+code_volume_name() {
+  local s="${1#https://}"
+  s="${s%.git}"
+  s="$(printf '%s' "$s" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9.\n-' '-')"
+  printf 'konrad-code-%s' "$s"
+}
+
+# The host's own networks as CIDRs (address/prefix, one per line; loopback and
+# link-local skipped — the seal covers those). Handed to the seal so it also
+# blocks the host's LAN when that LAN is on PUBLIC addresses (common on
+# university networks), which the private-range list alone would miss — the
+# host would otherwise be reachable at its own public IP. Addresses only, no
+# host file crosses over. Linux `ip`, macOS `ifconfig` (hex netmask → prefix).
+# Best-effort: empty on a miss, and the seal still covers private space.
+host_ip_cidrs() {
+  if command -v ip >/dev/null 2>&1; then
+    ip -o addr show scope global 2>/dev/null | awk '{print $4}'
+  elif command -v ifconfig >/dev/null 2>&1; then
+    ifconfig 2>/dev/null | awk '
+      function bits(h,   i, n, c) { n = 0; h = tolower(substr(h, 3))
+        for (i = 1; i <= length(h); i++) { c = index("0123456789abcdef", substr(h, i, 1)) - 1
+          n += (c >= 8) + (c % 8 >= 4) + (c % 4 >= 2) + (c % 2) }
+        return n }
+      $1 == "inet"  && $2 !~ /^(127|169\.254)\./ && $4 ~ /^0x/ { print $2 "/" bits($4) }
+      $1 == "inet6" && $2 !~ /^(fe80|::1)/ { a = $2; sub(/%.*/, "", a)
+        for (i = 3; i < NF; i++) if ($i == "prefixlen") print a "/" $(i + 1) }'
+  fi
+  return 0
+}
+
+do_code() {
+  dbg "do_code start"
+  local shell=0
+  while [[ "${1:-}" == --* ]]; do
+    case "$1" in
+      --shell) shell=1; shift ;;
+      --)      shift; break ;;
+      *)       break ;;
+    esac
+  done
+  [[ $# -ge 1 ]] \
+    || die "usage: $SELF code [--shell] <git-url> [claude args…]   (e.g. $SELF code https://gitlab.example.com/me/repo)"
+  local url vol
+  url="$(code_normalize_url "$1")"; shift
+  vol="$(code_volume_name "$url")"
+  [[ -t 0 && -t 1 ]] || die "konrad code is interactive — run it from a terminal."
+  if [[ "$KONRAD_FIREWALL" != 1 || -n "$KONRAD_ALLOW_HOST" || -n "$KONRAD_PROFILE" ]]; then
+    warn "--no-firewall / --allow-host / --profile don't apply to konrad code (its egress is open, minus host and LAN)."
+  fi
+  launch_preflight
+  code_brand "$url" "$vol"
+
+  # Seal privileges: the entrypoint starts as root ONLY to install the host/LAN
+  # routes, then drops to node with the bounding set cleared (exec_as_node). On
+  # Podman everything else stays dropped: NET_ADMIN for the routes, SETUID/SETGID
+  # for the drop, SETPCAP to clear the bounding set. apple/container runs each
+  # container in its own VM and takes no cap-drop, like the existing seal.
+  local -a priv_flags=(--user 0)
+  if [[ "$KONRAD_ENGINE" == "podman" ]]; then
+    # Pin the bridge network so the interface is always eth0, and turn off the
+    # reverse-path filter netavark sets on it (rp_filter=2): with private space
+    # routed `unreachable`, it drops inbound packets mid-transfer and large
+    # downloads stall (probe-verified: sealed clones failed 3/3 with it on, 2/2
+    # passed with it off). /proc/sys is read-only in the container, so it has
+    # to be set here.
+    priv_flags+=(--network bridge
+                 --sysctl net.ipv4.conf.all.rp_filter=0
+                 --sysctl net.ipv4.conf.default.rp_filter=0
+                 --sysctl net.ipv4.conf.eth0.rp_filter=0)
+    priv_flags+=(--cap-drop=ALL --cap-add=NET_ADMIN --cap-add=SETUID
+                 --cap-add=SETGID --cap-add=SETPCAP --security-opt=no-new-privileges)
+    [[ "$KONRAD_PIDS_LIMIT" != 0 ]] && priv_flags+=(--pids-limit "$KONRAD_PIDS_LIMIT")
+  else
+    priv_flags+=(--cap-add NET_ADMIN)
+  fi
+
+  local mem_cap cpu_cap
+  mem_cap="${KONRAD_MEMORY:-$(default_memory)}"
+  cpu_cap="${KONRAD_CPUS:-$(default_cpus)}"
+  local -a res_flags=()
+  [[ "$mem_cap" != 0 ]] && res_flags+=(--memory "$mem_cap")
+  [[ "$cpu_cap" != 0 ]] && res_flags+=(--cpus   "$cpu_cap")
+
+  # The host's git identity, so the agent's commits are attributed to the user
+  # (metadata only — no host file is read into the container).
+  local host_nets
+  host_nets="$(host_ip_cidrs | tr '\n' ' ')"
+  dbg "host networks handed to the seal: ${host_nets:-<none>}"
+  local -a env_flags=(-e "KONRAD_CODE_URL=$url" -e "KONRAD_CODE_SHELL=$shell"
+                      -e "KONRAD_CODE_HOST_NETS=$host_nets"
+                      -e "KONRAD_DEBUG=$KONRAD_DEBUG"
+                      -e "CLAUDE_CONFIG_DIR=/home/node/.config/claude"
+                      -e "TERM=${TERM:-xterm-256color}")
+  if command -v git >/dev/null 2>&1; then
+    local gname gemail
+    gname="$(git config --global --get user.name 2>/dev/null || true)"
+    gemail="$(git config --global --get user.email 2>/dev/null || true)"
+    [[ -n "$gname" ]]  && env_flags+=(-e "KONRAD_GIT_NAME=$gname")
+    [[ -n "$gemail" ]] && env_flags+=(-e "KONRAD_GIT_EMAIL=$gemail")
+  fi
+  [[ -n "${COLORTERM:-}" ]] && env_flags+=(-e "COLORTERM=$COLORTERM")
+  [[ -n "${NO_COLOR:-}" ]]  && env_flags+=(-e "NO_COLOR=$NO_COLOR")
+
+  # Named volumes only. Each mountpoint already exists node-owned in the image,
+  # so a fresh volume inherits that ownership (no :U — it would chown to the
+  # root start user). :nocopy keeps Podman from seeding the volume with the
+  # image's own content there (opencode's baked config under ~/.config);
+  # apple/container's store is a host dir and takes no suffix.
+  local nocopy=":nocopy"
+  [[ "$KONRAD_ENGINE" == "container" ]] && nocopy=""
+  local -a run_cmd=(
+    "$KONRAD_ENGINE" run --rm -it --init
+    "${priv_flags[@]}"
+    ${res_flags[@]+"${res_flags[@]}"}
+    "${env_flags[@]}"
+    -v "$(eng_volume_source "$vol"):/workspace"
+    -v "$(eng_volume_source "$CODE_TOOLS_VOLUME"):/home/node/.local${nocopy}"
+    -v "$(eng_volume_source "$CODE_CONFIG_VOLUME"):/home/node/.config${nocopy}"
+    --entrypoint /usr/local/bin/konrad-code
+    "$IMAGE_NAME" "$@"
+  )
+  dbg "about to run: ${run_cmd[*]}"
+  local rc=0
+  "${run_cmd[@]}" || rc=$?
+  # 126/127: the engine couldn't exec the entrypoint — an image from before
+  # konrad code existed.
+  if [[ "$rc" == 126 || "$rc" == 127 ]]; then
+    local fix="konrad update"
+    is_dev && fix="konrad-dev rebuild"
+    warn "if the error above says konrad-code wasn't found, the image predates konrad code — update it: $fix"
+  fi
+  exit "$rc"
+}
+
 # --- Org-layer subscriptions (konrad org) ------------------------------------
 # ~/.config/konrad/org/ is a container of named layer dirs (org/<name>/), each
 # holding the same optional pieces as user/; the entrypoint merges them
@@ -3332,6 +3505,16 @@ Subcommands:
                         token is stored on the konrad-secrets volume and reused
                         on every run:
                           $self mcp-auth wiki
+  $self code [--shell] <git-url> [claude args…]
+                        Sealed coding-agent mode: Claude Code on a clone of a
+                        forge repo, with open internet but no route to your
+                        machine or LAN, and NOTHING mounted from the host. The
+                        clone + a project access token (asked on first run) live
+                        in a per-repo volume; work comes back only as a pushed
+                        branch + merge request. Claude Code is installed on
+                        first use (you accept Anthropic's terms). '--shell'
+                        opens bash in the sealed clone instead.
+                          $self code https://gitlab.example.com/me/repo
   $self org add <git-url> [--name <n>] [--branch <b>]
                         Subscribe to an org config layer: clones the repo to
                         ~/.config/konrad/org/<name>/ and re-syncs it in the
@@ -3469,14 +3652,15 @@ reject_post_subcommand_args() {
 # shell (and konrad-dev's rebuild). Only genuine run modifiers stay flags
 # (--profile / --no-firewall / --allow-host / -v), plus the conventional meta
 # flags --version and -h/--help. Modifier flags come BEFORE the subcommand;
-# run / connect / mcp-auth capture the rest of the line verbatim (their args
-# belong to opencode) and stop parsing. No subcommand → the interactive TUI.
+# run / connect / mcp-auth / code capture the rest of the line verbatim (their
+# args belong to opencode / konrad code) and stop parsing. No subcommand → the interactive TUI.
 while [[ $# -gt 0 ]]; do
   case "$1" in
     run)        ACTION="run-oneshot"; shift; RUN_ARGS=("$@"); break ;;
     opencode)   ACTION="opencode";    shift; RUN_ARGS=("$@"); break ;;
     connect)    ACTION="connect";     shift; RUN_ARGS=("$@"); break ;;
     mcp-auth)   ACTION="mcp-auth";    shift; RUN_ARGS=("$@"); break ;;
+    code)       ACTION="code";        shift; RUN_ARGS=("$@"); break ;;
     org)        ACTION="org";         shift; RUN_ARGS=("$@"); break ;;
     shell)      ACTION="shell";       shift; reject_post_subcommand_args shell "$@";      break ;;
     scratch)    ACTION="scratch";     shift; reject_post_subcommand_args scratch "$@";    break ;;
@@ -3546,6 +3730,7 @@ case "$ACTION" in
   opencode)      do_opencode ${RUN_ARGS[@]+"${RUN_ARGS[@]}"} ;;
   connect)       do_connect ${RUN_ARGS[@]+"${RUN_ARGS[@]}"} ;;
   mcp-auth)      do_mcp_auth ${RUN_ARGS[@]+"${RUN_ARGS[@]}"} ;;
+  code)          do_code ${RUN_ARGS[@]+"${RUN_ARGS[@]}"} ;;
   org)           do_org ${RUN_ARGS[@]+"${RUN_ARGS[@]}"} ;;
   version)       do_version       ;;
   update)        do_update        ;;

@@ -128,6 +128,9 @@ in_image sh -c 'command -v setpriv || command -v gosu || command -v runuser' >/d
   || fail "no privilege-drop tool (setpriv/gosu/runuser) — apple/container root prelude can't drop to node"
 in_image which ip >/dev/null \
   || fail "ip (iproute2) missing — apple/container egress seal can't install the blackhole route"
+# konrad code's entrypoint (the host/LAN seal + clone + agent launch).
+in_image test -x /usr/local/bin/konrad-code \
+  || fail "konrad-code missing or non-executable (konrad code entrypoint)"
 in_image test -f /etc/konrad/opencode-defaults.jsonc \
   || fail "opencode-defaults.jsonc missing"
 # opencode-discoverable content. environment.md is the baked layer's
