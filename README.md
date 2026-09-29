@@ -354,6 +354,7 @@ opencode's sessions and conversation DB are **ephemeral** — gone on container 
 | `refusing to run with your home directory as the workspace`      | You ran `konrad shell`/`konrad run` from `$HOME` | `cd` into a project directory, or use `konrad scratch` for a throwaway workspace. (`$HOME` can't be the workspace — it exposes everything and won't mount on SELinux / macOS. The bare `konrad` TUI now auto-redirects to a scratch workspace instead of erroring.) |
 | A command (e.g. `docling`) prints `Killed` with no error         | Container hit its RAM cap (out-of-memory)   | Raise it for the run: `KONRAD_MEMORY=8G konrad` (see [Resource limits](#resource-limits)). |
 | `merge-config: failed to parse …/konrad/user/opencode.jsonc`     | Syntax error in your user override          | `cat` it and check the JSONC syntax. Comments are fine. (Same applies to an org layer's `org/<name>/opencode.jsonc`.) |
+| Clicking a link in the TUI does nothing                          | The TUI captures the mouse, so the click never reaches your terminal | Hold the terminal's bypass modifier: **Shift+Cmd+click** in Ghostty. In Terminal.app, turn off View → Allow Mouse Reporting (⌘R), then Cmd+click. |
 | Want to wipe and start over                                      | —                                           | `konrad reset` (prompts `[y/N]`), then `konrad update`                                |
 
 If a problem isn't listed here, run `konrad shell` to poke around inside the container with the same mounts opencode would see.
