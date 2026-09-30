@@ -113,7 +113,7 @@ The action verbs are subcommands; `konrad` with no subcommand launches the TUI.
 | `install-desktop`      | Add a clickable launcher — a Linux application-menu entry or a macOS `~/Applications/Konrad.app` (Dock / Launchpad / Spotlight) — that opens a scratch session. User-scope, no root; `install-desktop --remove` deletes it (also swept by `uninstall`). The installer offers this on a first install only. |
 | `connect [args…]`      | Authenticate a provider (`opencode auth login`) — agent-free, firewall off. `connect --custom [id]` declares a self-hosted endpoint. |
 | `mcp-auth <server>`    | Authenticate a remote MCP server's OAuth; the browser callback is forwarded into the sandbox. |
-| `code [--shell] <git-url> [args…]` | Run Claude Code on a clone of a forge repo, with open internet but no access to your machine — see [Coding agents](#coding-agents-konrad-code). |
+| `code [--shell] <git-url> [args…]` | *Preview.* Run Claude Code on a clone of a forge repo, with open internet but no access to your machine — see [Coding agents](#coding-agents-konrad-code). |
 | `org add` / `list` / `sync` / `remove` | Manage org config-layer subscriptions — see [For organizations](#for-organizations). |
 | `update`               | Refresh the CLI itself, pull the latest image from `ghcr.io/jlbauss/konrad:latest`, and re-sync subscribed org layers. `update --check` compares without pulling. |
 | `reset`                | Wipe shared volumes + log dir. Prompts `[y/N]`; affects all workspaces. |
@@ -148,6 +148,8 @@ The `curl | sh` installer offers to create it **on a first install only** — ne
 On **macOS**, the app opens Terminal.app by default; point it at another terminal with `KONRAD_TERMINAL` (`ghostty`, `alacritty`, or `iterm`) when you create it — e.g. `KONRAD_TERMINAL=ghostty konrad install-desktop` (the terminal must be installed). **The choice sticks**: the launcher records it, so updates and later `konrad install-desktop` re-runs keep your terminal unless you pass `KONRAD_TERMINAL` again to change it. On **Linux** the entry uses your desktop's own default terminal, so there's nothing to set.
 
 ### Coding agents (`konrad code`)
+
+*Preview since 0.30: the behaviour may still change, and native Linux hosts and IPv6 networks aren't probe-verified yet.*
 
 `konrad` gives its agent your files and keeps it off the internet. `konrad code` is the opposite trade-off for software work: the agent gets the internet and **nothing from your machine** — an agent gets your data or the internet, never both.
 
