@@ -2566,10 +2566,12 @@ code_normalize_url() {
     git@*:*)       u="${u#git@}"; u="https://${u/://}" ;;
     ssh://git@*)   u="${u#ssh://git@}"; h="${u%%/*}"; u="https://${h%%:*}/${u#*/}" ;;  # an ssh port isn't https's
   esac
-  u="${u%/}"
+  u="${u%/}"; u="${u%.git}"
   [[ "$u" =~ ^https://[A-Za-z0-9.-]+(:[0-9]+)?/[A-Za-z0-9._~-]+(/[A-Za-z0-9._~-]+)+$ ]] \
     || die "konrad code needs an https or ssh git URL without credentials, e.g. https://gitlab.example.com/group/repo (got '$1')"
-  printf '%s' "$u"
+  # Always with .git: without it, GitLab answers every git command with a
+  # redirect warning. (code_volume_name strips it, so the volume is unchanged.)
+  printf '%s.git' "$u"
 }
 
 # Volume name for a repo URL: konrad-code-<host>-<path…>, lowercased, .git and

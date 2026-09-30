@@ -161,8 +161,64 @@ git config --global --add safe.directory "$repo_dir"
 [[ -n "${KONRAD_GIT_NAME:-}" ]]  && git config --global user.name  "$KONRAD_GIT_NAME"
 [[ -n "${KONRAD_GIT_EMAIL:-}" ]] && git config --global user.email "$KONRAD_GIT_EMAIL"
 
-# First run: ask for a project access token, typed here so it never touches the
-# host. Empty → anonymous (a public repo clones; pushes will fail).
+# The token is typed here, inside the container, so it never touches the host.
+# ask_token stores it in git's `store` format; Enter stores an empty file
+# (anonymous: a public repo clones, pushes fail) so the choice is remembered;
+# deleting the file makes the next run ask again.
+asked=0
+ask_token() {
+  local token
+  asked=1
+  read -r -s -p "  Paste the token (input hidden; Enter to skip for a public repo): " token </dev/tty
+  printf '\n' >&2
+  if [[ -n "$token" ]]; then
+    ( umask 077; printf 'https://oauth2:%s@%s\n' "$token" "$repo_host" > "$CREDS" )
+    step "token stored in this repo's volume"
+  else
+    : > "$CREDS"
+    warn "no token — cloning anonymously; pushes will fail (to add one later: rm $CREDS in --shell, then run again)"
+  fi
+}
+
+# Ask the forge about the stored token (GitLab's token self-lookup, which works
+# for project tokens too): every token expires, and on a public repo a dead one
+# would otherwise only surface when the agent's push fails mid-session. A
+# rejected token is asked for again; a missing write scope or a near expiry
+# warns. Best-effort: any answer but 200/401 (another forge, an old GitLab, no
+# network) skips the check silently.
+check_token() {
+  local token body code exp days
+  token="$(sed -n 's|^https://oauth2:\(.*\)@.*$|\1|p' "$CREDS" 2>/dev/null || true)"
+  if [[ -z "$token" ]]; then
+    (( asked )) || go "no token, pushes fail · to add one: rm $CREDS in --shell, then run again"
+    return 0
+  fi
+  body="$(mktemp)"
+  code="$(curl -sS -m 8 -o "$body" -w '%{http_code}' -H "PRIVATE-TOKEN: $token" \
+            "https://$repo_host/api/v4/personal_access_tokens/self" 2>/dev/null || true)"
+  case "$code" in
+    401)
+      warn "$repo_host rejected the stored token — it was revoked or has expired"
+      printf '  Create a new one at https://%s/%s/-/settings/access_tokens\n' "$repo_host" "$repo_path" >&2
+      ask_token
+      ;;
+    200)
+      jq -e '.scopes | index("write_repository")' "$body" >/dev/null 2>&1 \
+        || warn "the token lacks the write_repository scope — the agent's pushes will fail"
+      exp="$(jq -r '.expires_at // empty' "$body" 2>/dev/null || true)"
+      if [[ -n "$exp" ]]; then
+        days=$(( ( $(date -d "$exp" +%s 2>/dev/null || date +%s) - $(date +%s) ) / 86400 ))
+        if (( days <= 14 )); then
+          warn "the token expires on $exp — renew it at https://$repo_host/$repo_path/-/settings/access_tokens"
+        fi
+      fi
+      ;;
+  esac
+  rm -f "$body"
+  return 0
+}
+
+# First run: explain the token and the branch protection, then ask.
 if [[ ! -f "$CREDS" ]]; then
   cat >&2 <<EOF
 
@@ -185,22 +241,26 @@ if [[ ! -f "$CREDS" ]]; then
   passes the protection and could push to the default branch directly.
 
 EOF
-  read -r -s -p "  Paste the token (input hidden; Enter to skip for a public repo): " token </dev/tty
-  printf '\n' >&2
-  if [[ -n "$token" ]]; then
-    ( umask 077; printf 'https://oauth2:%s@%s\n' "$token" "$repo_host" > "$CREDS" )
-    step "token stored in this repo's volume"
-  else
-    : > "$CREDS"   # remember the choice; delete the file to be asked again
-    warn "no token — cloning anonymously; pushes will fail"
-  fi
-  unset token
+  ask_token
 fi
+check_token
 
 if [[ -d "$repo_dir/.git" ]]; then
   # Fetch only — never touch the working tree, which may hold unpushed work.
+  # Clones from before bin/konrad added `.git` to the URL made GitLab print a
+  # redirect warning on every git command; point them at the canonical URL.
+  [[ "$(git -C "$repo_dir" remote get-url origin 2>/dev/null || true)" == "$KONRAD_CODE_URL" ]] \
+    || git -C "$repo_dir" remote set-url origin "$KONRAD_CODE_URL"
   if git -C "$repo_dir" fetch --prune --quiet origin; then
-    step "fetched · on $(git -C "$repo_dir" branch --show-current 2>/dev/null || echo '?')"
+    cur="$(git -C "$repo_dir" branch --show-current 2>/dev/null || true)"
+    step "fetched · on ${cur:-?}"
+    # A merged MR deletes its branch on the forge, which leaves the clone on a
+    # branch whose upstream is gone (`git pull` then fails cryptically). Say
+    # so; switching is the user's or the agent's call, not ours.
+    if [[ -n "$cur" && "$(git -C "$repo_dir" for-each-ref --format='%(upstream:track)' "refs/heads/$cur")" == "[gone]" ]]; then
+      base="$(git -C "$repo_dir" symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null || true)"
+      base="${base:-origin/main}"; go "its remote branch is gone (merged?) · git switch ${base#origin/} && git pull"
+    fi
   else
     warn "git fetch failed — continuing with the existing clone"
   fi
@@ -272,7 +332,7 @@ fi
 
 # A short environment note on top of the agent's own prompts: the facts it can't
 # discover by itself (the git-only way back, the sealed LAN). Nothing else.
-note="You are running inside konrad code: a disposable container with open internet access but no route to the user's machine or local network. The working directory is a fresh clone of $KONRAD_CODE_URL; nothing you do here reaches the user except through the forge. '$default_branch' is protected, so work on a feature branch, commit, and open a merge request with: git push -u origin <branch> -o merge_request.create -o merge_request.target=$default_branch. The user reviews and merges it in the forge web UI. Install project tooling you need at runtime (uv, npm, …)."
+note="You are running inside konrad code: a disposable container with open internet access but no route to the user's machine or local network. The working directory is a fresh clone of $KONRAD_CODE_URL; nothing you do here reaches the user except through the forge. '$default_branch' is protected, so work on a feature branch, commit, and open a merge request with: git push -u origin <branch> -o merge_request.create -o merge_request.target=$default_branch -o merge_request.remove_source_branch. The user reviews and merges it in the forge web UI. Install project tooling you need at runtime (uv, npm, …)."
 
 go "claude · $repo_path"
 exec claude --dangerously-skip-permissions --append-system-prompt "$note" "$@"
