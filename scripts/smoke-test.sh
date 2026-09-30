@@ -131,6 +131,10 @@ in_image which ip >/dev/null \
 # konrad code's entrypoint (the host/LAN seal + clone + agent launch).
 in_image test -x /usr/local/bin/konrad-code \
   || fail "konrad-code missing or non-executable (konrad code entrypoint)"
+# ...and the label bin/konrad's preflight keys on (grep over the inspect JSON:
+# the one shape docker, podman and apple/container all print).
+"$ENGINE" image inspect "$IMAGE" 2>/dev/null | grep -q '"io.konrad.code"' \
+  || fail "io.konrad.code label missing — konrad code would refuse this image"
 in_image test -f /etc/konrad/opencode-defaults.jsonc \
   || fail "opencode-defaults.jsonc missing"
 # opencode-discoverable content. environment.md is the baked layer's
