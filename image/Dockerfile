@@ -232,6 +232,43 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN ln -sf /usr/bin/fdfind /usr/local/bin/fd \
     && ln -sf /usr/bin/batcat /usr/local/bin/bat
 
+# ── Rootless nested Podman, for `konrad code --nested` ──────────────────────
+# Lets a coding agent build and run containers inside its sealed container (see
+# ARCHITECTURE → konrad code). Its own layer, so the big apt layer above stays
+# cache-stable. Each piece was forced by the probe (scripts/probe-nested.sh):
+#   - newuidmap/newgidmap get FILE capabilities instead of Debian's setuid bit:
+#     the setuid binary opens uid_map as a non-owner and the kernel refuses it.
+#     They stay inert on every other run: no-new-privileges (Podman) and the
+#     cleared bounding set (every engine) both void file capabilities; only
+#     --nested keeps setuid,setgid in node's bounding set.
+#   - every other setuid/setgid bit goes, so the two mappers are the only
+#     privileged binaries left (the rest were already inert under the drop).
+#   - subordinate ids inside 0..65535, so they also exist under a rootless
+#     outer engine, whose container maps only that range; single-uid mapping
+#     can't build images that chown to another user.
+#   - containers.conf: /proc/sys is read-only (no default sysctls) and seccomp
+#     refuses sethostname (share the outer UTS namespace).
+#   - storage lives at /var/lib/konrad-containers, outside ~/.local (the tools
+#     volume), on a per-repo volume: native overlay can't stack on the overlay
+#     rootfs. The mountpoint is node-owned so a fresh Podman volume inherits it.
+#   - nftables: netavark sets up nested bridge networks through `nft`.
+# hadolint ignore=DL3008
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    podman crun conmon passt uidmap fuse-overlayfs containers-storage \
+    netavark aardvark-dns catatonit iptables nftables libcap2-bin \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* /var/log/apt/* /var/log/dpkg.log \
+    && find / -xdev \( -perm -4000 -o -perm -2000 \) -type f -exec chmod ug-s {} + \
+    && setcap cap_setuid=ep /usr/bin/newuidmap \
+    && setcap cap_setgid=ep /usr/bin/newgidmap \
+    && printf 'node:1:999\nnode:1001:64535\n' > /etc/subuid \
+    && cp /etc/subuid /etc/subgid \
+    && install -d -o node -g node /var/lib/konrad-containers \
+    && printf '[containers]\ndefault_sysctls = []\nutsns = "host"\n' \
+         > /etc/containers/containers.conf \
+    && printf '[storage]\ndriver = "overlay"\nrunroot = "/run/containers/storage"\ngraphroot = "/var/lib/containers/storage"\nrootless_storage_path = "/var/lib/konrad-containers"\n' \
+         > /etc/containers/storage.conf
+
 # Bundled font palette (all SIL OFL 1.1). Lands in /usr/local/share/fonts/
 # so fontconfig picks it up alongside system fonts — Playwright, LibreOffice,
 # Typst, and anything else fontconfig-aware sees the same set. reportlab

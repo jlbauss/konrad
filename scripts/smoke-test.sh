@@ -135,6 +135,20 @@ in_image test -x /usr/local/bin/konrad-code \
 # the one shape docker, podman and apple/container all print).
 "$ENGINE" image inspect "$IMAGE" 2>/dev/null | grep -q '"io.konrad.code"' \
   || fail "io.konrad.code label missing — konrad code would refuse this image"
+# konrad code --nested: rootless podman, with the uid mappers as the ONLY
+# privileged binaries (file capabilities, inert unless --nested keeps
+# setuid,setgid in the bounding set) and no setuid/setgid file left at all.
+for bin in podman crun pasta newuidmap newgidmap nft; do
+  in_image which "$bin" >/dev/null || fail "$bin missing (konrad code --nested)"
+done
+[ "$(in_image sh -c 'getcap -r / 2>/dev/null | cut -d" " -f1 | sort | tr "\n" " "')" \
+    = "/usr/bin/newgidmap /usr/bin/newuidmap " ] \
+  || fail "file capabilities other than the two uid mappers (or the mappers lack them)"
+[ "$(in_image sh -c 'find / -xdev -type f -perm /6000 2>/dev/null | wc -l')" = 0 ] \
+  || fail "setuid/setgid files in the image — the uid mappers must be the only privileged binaries"
+in_image grep -qx 'node:1001:64535' /etc/subuid || fail "/etc/subuid lacks node's range"
+[ "$(in_image stat -c %U /var/lib/konrad-containers)" = node ] \
+  || fail "/var/lib/konrad-containers missing or not node-owned (nested image store)"
 in_image test -f /etc/konrad/opencode-defaults.jsonc \
   || fail "opencode-defaults.jsonc missing"
 # opencode-discoverable content. environment.md is the baked layer's

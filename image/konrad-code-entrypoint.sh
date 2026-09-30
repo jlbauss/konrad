@@ -13,6 +13,8 @@
 #   /workspace        konrad-code-<repo>  the clone + its forge token
 #   /home/node/.local konrad-code-tools   the agent binary (installed on first use)
 #   /home/node/.config konrad-code-config the agent's login + settings
+#   /var/lib/konrad-containers  konrad-code-<repo>-containers  nested podman's
+#                     image store (--nested only)
 #
 # Two stages in one file: as root, install the seal and drop to node with every
 # capability gone; as node, set up git, clone or fetch, install the agent if
@@ -24,6 +26,7 @@ KONRAD_DEBUG="${KONRAD_DEBUG:-0}"
 WORK=/workspace
 CREDS="$WORK/.git-credentials"
 SEAL_TABLE=100
+NESTED_STORE=/var/lib/konrad-containers
 
 # Output style mirrors image/entrypoint.sh (a launch reads as one sequence).
 if [ -t 2 ] && [ -z "${NO_COLOR:-}" ]; then
@@ -132,6 +135,31 @@ if [[ "$(id -u)" == "0" ]]; then
   fi
   dbg "$(ip -4 rule; ip -4 route show table "$SEAL_TABLE")"
   step "egress · open, host + LAN sealed"
+  if [[ "${KONRAD_CODE_NESTED:-0}" == "1" ]]; then
+    # Rootless nested Podman (--nested). On Podman, bin/konrad's flags already
+    # did the work (--device, unmask, the store volume); apple/container has no
+    # such flags, so root does their job here with the SYS_ADMIN it was given
+    # for this prelude only (the drop below clears it): open the tun device to
+    # node (pasta), unmount the masks over /proc (the kernel refuses a fresh
+    # proc mount in a nested namespace while any of it is hidden), and hand
+    # node the store, which an apple/container volume brings root-owned.
+    if [[ -c /dev/net/tun && "$(stat -c %a /dev/net/tun)" != 666 ]]; then
+      chmod 666 /dev/net/tun || warn "could not open /dev/net/tun to node — nested networking may fail"
+    fi
+    while read -r m; do
+      umount "$m" 2>/dev/null || true
+    done < <(awk '$2 ~ "^/proc/" || $2 ~ "^/sys/firmware" {print $2}' /proc/mounts | sort -r)
+    awk '$2 ~ "^/proc/" {f = 1} END {exit !f}' /proc/mounts \
+      && warn "/proc is still partly masked — nested containers may fail to start"
+    if [[ -d "$NESTED_STORE" && "$(stat -c %U "$NESTED_STORE")" != node ]]; then
+      chown node:node "$NESTED_STORE" || warn "could not hand $NESTED_STORE to node — nested containers will fail"
+    fi
+    step "nested containers · rootless podman"
+    # Node keeps exactly setuid,setgid in its bounding set: the file-capability
+    # newuidmap/newgidmap need them to map the subordinate ids. NET_ADMIN stays
+    # out of reach, so the seal holds.
+    exec_as_node --keep-caps setuid,setgid "$0" "$@"
+  fi
   exec_as_node "$0" "$@"
 fi
 
@@ -140,6 +168,12 @@ fi
 [[ -t 0 ]] || fatal "konrad code needs an interactive terminal"
 ip -4 rule 2>/dev/null | grep -q "lookup $SEAL_TABLE" \
   || fatal "egress seal missing — konrad code must start as root so it can seal the host (start it through 'konrad code')"
+# The drop must have left exactly the bounding set this run asked for: nothing,
+# or setuid+setgid (0xc0) under --nested. Anything wider refuses to run.
+want_bnd=0000000000000000
+[[ "${KONRAD_CODE_NESTED:-0}" == "1" ]] && want_bnd=00000000000000c0
+[[ "$(awk '$1 == "CapBnd:" {print $2}' /proc/self/status)" == "$want_bnd" ]] \
+  || fatal "unexpected capability bounding set after the drop — refusing to run"
 
 repo_host="${KONRAD_CODE_URL#https://}"; repo_host="${repo_host%%/*}"
 repo_path="${KONRAD_CODE_URL#https://*/}"; repo_path="${repo_path%.git}"
@@ -279,6 +313,10 @@ cd "$repo_dir"
 
 default_branch="$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null || true)"
 default_branch="${default_branch#origin/}"; default_branch="${default_branch:-main}"
+if [[ "${KONRAD_CODE_NESTED:-0}" == "1" ]]; then
+  store_imgs="$(podman images -q 2>/dev/null | wc -l)"
+  go "nested podman · $store_imgs image(s) kept in this repo's store"
+fi
 
 if [[ "${KONRAD_CODE_SHELL:-0}" == "1" ]]; then
   go "shell"
@@ -333,6 +371,9 @@ fi
 # A short environment note on top of the agent's own prompts: the facts it can't
 # discover by itself (the git-only way back, the sealed LAN). Nothing else.
 note="You are running inside konrad code: a disposable container with open internet access but no route to the user's machine or local network. The working directory is a fresh clone of $KONRAD_CODE_URL; nothing you do here reaches the user except through the forge. '$default_branch' is protected, so work on a feature branch, commit, and open a merge request with: git push -u origin <branch> -o merge_request.create -o merge_request.target=$default_branch -o merge_request.remove_source_branch. The user reviews and merges it in the forge web UI. Install project tooling you need at runtime (uv, npm, …)."
+if [[ "${KONRAD_CODE_NESTED:-0}" == "1" ]]; then
+  note+=" Rootless podman is available: you can build and run containers here (images persist in this repo's store across sessions); they share this container's sealed network, so they reach the internet but not the user's machine or LAN either."
+fi
 
 go "claude · $repo_path"
 exec claude --dangerously-skip-permissions --append-system-prompt "$note" "$@"

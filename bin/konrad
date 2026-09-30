@@ -2609,24 +2609,27 @@ host_ip_cidrs() {
 
 do_code() {
   dbg "do_code start"
-  local shell=0
+  local shell=0 nested=0
   while [[ "${1:-}" == --* ]]; do
     case "$1" in
-      --shell) shell=1; shift ;;
+      --shell)  shell=1; shift ;;
+      --nested) nested=1; shift ;;
       --)      shift; break ;;
       *)       break ;;
     esac
   done
   [[ $# -ge 1 ]] \
-    || die "usage: $SELF code [--shell] <git-url> [claude args…]   (e.g. $SELF code https://gitlab.example.com/me/repo)"
-  local url vol tools_vol="$CODE_TOOLS_VOLUME" config_vol="$CODE_CONFIG_VOLUME"
+    || die "usage: $SELF code [--shell] [--nested] <git-url> [claude args…]   (e.g. $SELF code https://gitlab.example.com/me/repo)"
+  local url vol store_vol tools_vol="$CODE_TOOLS_VOLUME" config_vol="$CODE_CONFIG_VOLUME"
   url="$(code_normalize_url "$1")"; shift
   vol="$(code_volume_name "$url")"
+  store_vol="$vol-containers"
   # --profile gives konrad code a whole separate set — clone, install AND login
   # (unlike `konrad`, which keeps credentials shared): a throwaway first run, e.g.
   # to rehearse the install + login without touching the real volumes.
   if [[ -n "$KONRAD_PROFILE" ]]; then
     vol+="-$KONRAD_PROFILE"; tools_vol+="-$KONRAD_PROFILE"; config_vol+="-$KONRAD_PROFILE"
+    store_vol+="-$KONRAD_PROFILE"
   fi
   [[ -t 0 && -t 1 ]] || die "konrad code is interactive — run it from a terminal."
   if [[ "$KONRAD_FIREWALL" != 1 || -n "$KONRAD_ALLOW_HOST" ]]; then
@@ -2663,10 +2666,24 @@ do_code() {
                  --sysctl net.ipv4.conf.default.rp_filter=0
                  --sysctl net.ipv4.conf.eth0.rp_filter=0)
     priv_flags+=(--cap-drop=ALL --cap-add=NET_ADMIN --cap-add=SETUID
-                 --cap-add=SETGID --cap-add=SETPCAP --security-opt=no-new-privileges)
+                 --cap-add=SETGID --cap-add=SETPCAP)
     [[ "$KONRAD_PIDS_LIMIT" != 0 ]] && priv_flags+=(--pids-limit "$KONRAD_PIDS_LIMIT")
+    if (( nested )); then
+      # Rootless nested Podman (probe-verified, scripts/probe-nested.sh). The
+      # file-capability uid mappers need no-new-privileges off (node's bounding
+      # set still holds only setuid,setgid); Podman's seccomp allows chroot only
+      # with SYS_CHROOT; pasta needs the tun device; the nested /proc mount needs
+      # the masks gone and no SELinux label (label=nested isn't enough).
+      priv_flags+=(--cap-add=SYS_CHROOT --device /dev/net/tun
+                   --security-opt 'unmask=/proc/*' --security-opt label=disable)
+    else
+      priv_flags+=(--security-opt=no-new-privileges)
+    fi
   else
     priv_flags+=(--cap-add NET_ADMIN)
+    # No --device/unmask flags here: the root prelude opens tun and unmounts
+    # the masks itself, with SYS_ADMIN the drop to node clears again.
+    (( nested )) && priv_flags+=(--cap-add SYS_ADMIN)
   fi
 
   local mem_cap cpu_cap
@@ -2683,6 +2700,7 @@ do_code() {
   dbg "host networks handed to the seal: ${host_nets:-<none>}"
   local -a env_flags=(-e "KONRAD_CODE_URL=$url" -e "KONRAD_CODE_SHELL=$shell"
                       -e "KONRAD_CODE_HOST_NETS=$host_nets"
+                      -e "KONRAD_CODE_NESTED=$nested"
                       -e "KONRAD_DEBUG=$KONRAD_DEBUG"
                       -e "CLAUDE_CONFIG_DIR=/home/node/.config/claude"
                       -e "TERM=${TERM:-xterm-256color}")
@@ -2701,6 +2719,27 @@ do_code() {
   local vol_new=0
   eng_volume_exists "$vol" || vol_new=1
 
+  # --nested: the image store is a volume of this repo's own, so builds stay
+  # warm across runs (a cold konrad build ~2 min, warm ~8 s) and one repo's
+  # images can't poison another's. On apple/container it's an ENGINE volume,
+  # unlike the host dirs behind konrad's other stores: VirtioFS refuses the
+  # overlay store (probe-verified); the root prelude hands it to node.
+  local -a store_flags=()
+  local store_new=0
+  if (( nested )); then
+    if [[ "$KONRAD_ENGINE" == "podman" ]]; then
+      podman volume exists "$store_vol" || store_new=1
+    elif ! container volume inspect "$store_vol" >/dev/null 2>&1; then
+      store_new=1
+      container volume create "$store_vol" >/dev/null \
+        || die "could not create the nested image store volume $store_vol"
+    fi
+    store_flags=(-v "$store_vol:/var/lib/konrad-containers")
+    local relaxed="/proc masks"
+    [[ "$KONRAD_ENGINE" == "podman" ]] && relaxed="no-new-privileges, SELinux label, /proc masks"
+    go "nested containers on · relaxed for this run: $relaxed · store $store_vol"
+  fi
+
   # Named volumes only. Each mountpoint already exists node-owned in the image,
   # so a fresh volume inherits that ownership (no :U — it would chown to the
   # root start user). :nocopy keeps Podman from seeding the volume with the
@@ -2716,6 +2755,7 @@ do_code() {
     -v "$(eng_volume_source "$vol"):/workspace"
     -v "$(eng_volume_source "$tools_vol"):/home/node/.local${nocopy}"
     -v "$(eng_volume_source "$config_vol"):/home/node/.config${nocopy}"
+    ${store_flags[@]+"${store_flags[@]}"}
     --entrypoint /usr/local/bin/konrad-code
     "$IMAGE_NAME" "$@"
   )
@@ -2726,6 +2766,10 @@ do_code() {
   # created then holds nothing worth keeping, so don't leave it behind.
   if [[ "$rc" == 3 && "$vol_new" == 1 ]]; then
     eng_volume_rm "$vol" || true
+    if [[ "$store_new" == 1 ]]; then
+      if [[ "$KONRAD_ENGINE" == "podman" ]]; then podman volume rm "$store_vol" >/dev/null || true
+      else container volume delete "$store_vol" >/dev/null || true; fi
+    fi
   fi
   exit "$rc"
 }
@@ -3526,7 +3570,7 @@ Subcommands:
                         token is stored on the konrad-secrets volume and reused
                         on every run:
                           $self mcp-auth wiki
-  $self code [--shell] <git-url> [claude args…]
+  $self code [--shell] [--nested] <git-url> [claude args…]
                         Sealed coding-agent mode: Claude Code on a clone of a
                         forge repo, with open internet but no route to your
                         machine or LAN, and NOTHING mounted from the host. The
@@ -3534,7 +3578,10 @@ Subcommands:
                         in a per-repo volume; work comes back only as a pushed
                         branch + merge request. Claude Code is installed on
                         first use (you accept Anthropic's terms). '--shell'
-                        opens bash in the sealed clone instead.
+                        opens bash in the sealed clone instead. '--nested' lets
+                        the agent build and run containers (rootless podman,
+                        images kept in a per-repo volume); it relaxes some
+                        container hardening for that run — see the README.
                           $self code https://gitlab.example.com/me/repo
   $self org add <git-url> [--name <n>] [--branch <b>]
                         Subscribe to an org config layer: clones the repo to
