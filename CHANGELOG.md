@@ -11,6 +11,14 @@ Entries stay terse — the *why* lives in the git commit log and the [ARCHITECTU
 
 ## [Unreleased]
 
+### Added
+
+- **`konrad code --nested` — containers inside the sealed coding agent.** The agent gets rootless Podman to build and run images, behind the same host/LAN seal; images are kept in a per-repo volume (`konrad-code-<host>-<path>-containers`), so rebuilds are warm. Opt-in, because it relaxes `no-new-privileges`, the SELinux label and the `/proc` masks for that run (on Apple's `container`, only the masks). See [README → Coding agents](README.md#coding-agents-konrad-code).
+
+### Security
+
+- **No setuid binaries left in the image.** The two uid mappers `--nested` needs carry file capabilities instead, inert on every other run.
+
 ## [0.30.0] - 2026-09-30
 
 ### Added
