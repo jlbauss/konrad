@@ -314,8 +314,15 @@ cd "$repo_dir"
 default_branch="$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null || true)"
 default_branch="${default_branch#origin/}"; default_branch="${default_branch:-main}"
 if [[ "${KONRAD_CODE_NESTED:-0}" == "1" ]]; then
-  store_imgs="$(podman images -q 2>/dev/null | wc -l)"
-  go "nested podman · $store_imgs image(s) kept in this repo's store"
+  # Informational only — a failing store must warn with podman's own error,
+  # never end the run (under set -e + pipefail a bare pipeline here would).
+  store_err="$(mktemp)"
+  if store_ids="$(podman images -q 2>"$store_err")"; then
+    go "nested podman · $(grep -c . <<<"$store_ids" || true) image(s) kept in this repo's store"
+  else
+    warn "nested podman can't read its store: $(tail -1 "$store_err")"
+  fi
+  rm -f "$store_err"
 fi
 
 if [[ "${KONRAD_CODE_SHELL:-0}" == "1" ]]; then
