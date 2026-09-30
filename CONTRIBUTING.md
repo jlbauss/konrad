@@ -22,7 +22,7 @@ What does *not* need an issue first:
 
 ## What you're agreeing to
 
-By submitting a PR you agree your contributions are licensed under **AGPL-3.0-or-later** (see [LICENSE](LICENSE)). konrad is strong-copyleft on purpose — anyone running it (including over a network) has to publish their source. If that's incompatible with your situation, please don't submit.
+By submitting a merge request you agree your contributions are licensed under **AGPL-3.0-or-later** (see [LICENSE](LICENSE)). konrad is strong-copyleft on purpose — anyone running it (including over a network) has to publish their source. If that's incompatible with your situation, please don't submit.
 
 No CLA, no DCO. The license terms attach automatically.
 
