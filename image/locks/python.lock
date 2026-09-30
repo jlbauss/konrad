@@ -17,10 +17,10 @@ doclang==0.7.3
 docling-core==2.99.0
 docling-ibm-models==4.0.3
 docling-parse==7.22.1
-docling-slim==2.130.0
+docling-slim==2.131.0
 et-xmlfile==2.0.0
-faker==40.39.0
-filelock==4.0.6
+faker==40.40.0
+filelock==4.0.7
 filetype==1.2.0
 flatbuffers==25.12.19
 fsspec==2026.9.0
@@ -80,7 +80,7 @@ python-pptx==1.0.2
 pyyaml==6.0.3
 rapidocr==3.9.2
 referencing==0.37.0
-regex==2026.9.10
+regex==2026.9.29
 reportlab==5.0.1
 requests==2.34.2
 rich==15.0.0
