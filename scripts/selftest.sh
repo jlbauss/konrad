@@ -124,7 +124,7 @@ printf '%s\n' "$out" | sed 's/^/    │ /'
 if printf '%s' "$out" | grep -q "$EXPECT"; then
   pass "agent answered through the full konrad runtime (token '$EXPECT' present, rc=$rc)"
   info "self-test complete — runtime + model both verified end to end"
-elif printf '%s' "$out" | grep -qi 'starting opencode'; then
+elif printf '%s' "$out" | grep -qiE 'starting opencode|→.*opencode'; then
   # The container came up via the real invocation — uid mapping, workspace
   # mount, and config compose all succeeded — only the model call didn't
   # produce the token. That's an environment gap (no usable credential for
