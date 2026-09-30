@@ -16,6 +16,9 @@
 #
 # The disposable container plus the committed deny/ask lists are the security
 # boundary (CLAUDE.md → Permission posture); `podman run` stays `ask` even here.
+# `git push` is denied here, not in the committed list: this container pushes
+# with the host's credentials, while `konrad code` — which reads the same repo
+# settings — pushes a feature branch with a project token by design.
 #
 # Idempotent and non-destructive: merges the one key into whatever else the file
 # holds, never replaces it.
@@ -26,7 +29,8 @@ mkdir -p "$HOME/.claude"
 [ -s "$f" ] || printf '{}\n' > "$f"
 
 tmp=$(mktemp "${f}.XXXXXX")
-jq '.permissions.defaultMode = "bypassPermissions"' "$f" > "$tmp"
+jq '.permissions.defaultMode = "bypassPermissions"
+    | .permissions.deny = ((.permissions.deny // []) + ["Bash(git push:*)"] | unique)' "$f" > "$tmp"
 mv "$tmp" "$f"
 
-echo "claude: bypassPermissions enabled for this dev container (container-only $f)"
+echo "claude: bypassPermissions enabled, git push denied, for this dev container (container-only $f)"
