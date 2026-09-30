@@ -2617,12 +2617,18 @@ do_code() {
   done
   [[ $# -ge 1 ]] \
     || die "usage: $SELF code [--shell] <git-url> [claude args…]   (e.g. $SELF code https://gitlab.example.com/me/repo)"
-  local url vol
+  local url vol tools_vol="$CODE_TOOLS_VOLUME" config_vol="$CODE_CONFIG_VOLUME"
   url="$(code_normalize_url "$1")"; shift
   vol="$(code_volume_name "$url")"
+  # --profile gives konrad code a whole separate set — clone, install AND login
+  # (unlike `konrad`, which keeps credentials shared): a throwaway first run, e.g.
+  # to rehearse the install + login without touching the real volumes.
+  if [[ -n "$KONRAD_PROFILE" ]]; then
+    vol+="-$KONRAD_PROFILE"; tools_vol+="-$KONRAD_PROFILE"; config_vol+="-$KONRAD_PROFILE"
+  fi
   [[ -t 0 && -t 1 ]] || die "konrad code is interactive — run it from a terminal."
-  if [[ "$KONRAD_FIREWALL" != 1 || -n "$KONRAD_ALLOW_HOST" || -n "$KONRAD_PROFILE" ]]; then
-    warn "--no-firewall / --allow-host / --profile don't apply to konrad code (its egress is open, minus host and LAN)."
+  if [[ "$KONRAD_FIREWALL" != 1 || -n "$KONRAD_ALLOW_HOST" ]]; then
+    warn "--no-firewall / --allow-host don't apply to konrad code (its egress is open, minus host and LAN)."
   fi
   launch_preflight
   # An image from before konrad code has no konrad-code entrypoint; the engine
@@ -2706,8 +2712,8 @@ do_code() {
     ${res_flags[@]+"${res_flags[@]}"}
     "${env_flags[@]}"
     -v "$(eng_volume_source "$vol"):/workspace"
-    -v "$(eng_volume_source "$CODE_TOOLS_VOLUME"):/home/node/.local${nocopy}"
-    -v "$(eng_volume_source "$CODE_CONFIG_VOLUME"):/home/node/.config${nocopy}"
+    -v "$(eng_volume_source "$tools_vol"):/home/node/.local${nocopy}"
+    -v "$(eng_volume_source "$config_vol"):/home/node/.config${nocopy}"
     --entrypoint /usr/local/bin/konrad-code
     "$IMAGE_NAME" "$@"
   )
