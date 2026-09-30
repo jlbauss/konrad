@@ -2625,6 +2625,16 @@ do_code() {
     warn "--no-firewall / --allow-host / --profile don't apply to konrad code (its egress is open, minus host and LAN)."
   fi
   launch_preflight
+  # An image from before konrad code has no konrad-code entrypoint; the engine
+  # would fail to exec it (apple/container with a crash trace). Refuse up front
+  # — only when the labels are readable at all (the read is best-effort), so a
+  # failed read never blocks a good image.
+  if [[ -n "$(eng_image_label "$IMAGE_NAME" org.opencontainers.image.title)" \
+        && -z "$(eng_image_label "$IMAGE_NAME" io.konrad.code)" ]]; then
+    local fix="$SELF update"
+    is_dev && fix="$SELF rebuild"
+    die "the image $IMAGE_NAME ($KONRAD_ENGINE) predates konrad code — update it first: $fix"
+  fi
   code_brand "$url" "$vol"
 
   # Seal privileges: the entrypoint starts as root ONLY to install the host/LAN
@@ -2678,6 +2688,11 @@ do_code() {
   [[ -n "${COLORTERM:-}" ]] && env_flags+=(-e "COLORTERM=$COLORTERM")
   [[ -n "${NO_COLOR:-}" ]]  && env_flags+=(-e "NO_COLOR=$NO_COLOR")
 
+  # Whether this run creates the repo volume (see the rc 3 cleanup below) —
+  # checked before eng_volume_source, which creates the dir on apple/container.
+  local vol_new=0
+  eng_volume_exists "$vol" || vol_new=1
+
   # Named volumes only. Each mountpoint already exists node-owned in the image,
   # so a fresh volume inherits that ownership (no :U — it would chown to the
   # root start user). :nocopy keeps Podman from seeding the volume with the
@@ -2699,12 +2714,10 @@ do_code() {
   dbg "about to run: ${run_cmd[*]}"
   local rc=0
   "${run_cmd[@]}" || rc=$?
-  # 126/127: the engine couldn't exec the entrypoint — an image from before
-  # konrad code existed.
-  if [[ "$rc" == 126 || "$rc" == 127 ]]; then
-    local fix="konrad update"
-    is_dev && fix="konrad-dev rebuild"
-    warn "if the error above says konrad-code wasn't found, the image predates konrad code — update it: $fix"
+  # 3 = the first clone failed (a wrong URL, or no access). A volume this run
+  # created then holds nothing worth keeping, so don't leave it behind.
+  if [[ "$rc" == 3 && "$vol_new" == 1 ]]; then
+    eng_volume_rm "$vol" || true
   fi
   exit "$rc"
 }

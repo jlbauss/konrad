@@ -150,6 +150,14 @@ repo_dir="$WORK/${repo_path##*/}"
 git config --global credential.helper "store --file=$CREDS"
 git config --global push.autoSetupRemote true
 git config --global init.defaultBranch main
+# No interactive credential prompt: GitLab answers a missing repo and a private
+# one without a valid token alike (401), and git would then ask for a username
+# — a dead end here, since the token is the only credential.
+export GIT_TERMINAL_PROMPT=0
+# On apple/container the volume is a host dir shared into the VM, and a later
+# run sees the clone owned by another uid than node, so git refuses it as
+# "dubious ownership". The volume is this repo's alone; trust just that path.
+git config --global --add safe.directory "$repo_dir"
 [[ -n "${KONRAD_GIT_NAME:-}" ]]  && git config --global user.name  "$KONRAD_GIT_NAME"
 [[ -n "${KONRAD_GIT_EMAIL:-}" ]] && git config --global user.email "$KONRAD_GIT_EMAIL"
 
@@ -164,8 +172,17 @@ if [[ ! -f "$CREDS" ]]; then
     https://$repo_host/$repo_path/-/settings/access_tokens
       role: Developer   scopes: read_repository, write_repository
 
-  Protect 'main' on the forge (Settings → Repository → Protected branches) so
-  the agent can open merge requests but never land code by itself.
+  Recommended: protect the default branch so the agent can open merge requests
+  but never land code by itself. GitLab usually does this out of the box — check
+  it under Settings → Repository → Protected branches (or Branch rules):
+
+    https://$repo_host/$repo_path/-/settings/repository#js-protected-branches-settings
+      Allowed to merge:           Maintainers
+      Allowed to push and merge:  Maintainers  (or No one — never Developers)
+      Allowed to force push:      off
+
+  This only holds while the token stays role Developer: a Maintainer token
+  passes the protection and could push to the default branch directly.
 
 EOF
   read -r -s -p "  Paste the token (input hidden; Enter to skip for a public repo): " token </dev/tty
@@ -188,8 +205,14 @@ if [[ -d "$repo_dir/.git" ]]; then
     warn "git fetch failed — continuing with the existing clone"
   fi
 else
-  git clone "$KONRAD_CODE_URL" "$repo_dir" \
-    || fatal "git clone failed — check the URL and the token (delete it via 'konrad code --shell <url>': rm $CREDS)"
+  if ! git clone "$KONRAD_CODE_URL" "$repo_dir"; then
+    # Forget the token too: it was typed for a URL that didn't work, so the
+    # next run asks again. Exit 3 tells bin/konrad the volume holds nothing.
+    rm -f "$CREDS"
+    printf '%skonrad%s %serror:%s could not clone %s — either the repository does not exist, or it is private and the token is missing or lacks read_repository. Check the URL and run again (you will be asked for the token again).\n' \
+      "$_C_DIM" "$_C_OFF" "$_C_ERR" "$_C_OFF" "$KONRAD_CODE_URL" >&2
+    exit 3
+  fi
   step "cloned $repo_path"
 fi
 cd "$repo_dir"
@@ -217,8 +240,32 @@ if ! command -v claude >/dev/null 2>&1; then
 EOF
   read -r -p "  Install Claude Code now? [y/N] " ans </dev/tty
   [[ "$ans" =~ ^[Yy] ]] || fatal "not installed — nothing to run"
-  curl -fsSL https://claude.ai/install.sh | bash \
-    || fatal "Claude Code install failed"
+  # The installer downloads a ~240 MB binary with a silent `curl -fsSL` and no
+  # timeout, so a stalled network reads as a hang. curl honours $CURL_HOME/.curlrc,
+  # which turns a stall (< 1 KB/s for 60 s) into a clean failure without touching
+  # the vendor's script; a watcher on the download file shows progress meanwhile.
+  # Whole lines, not an in-place redraw, so they can't collide with the
+  # installer's own output; it stops once the installer marks the verified
+  # binary executable, i.e. when its `claude install` step takes over.
+  CURL_HOME="$(mktemp -d)"; export CURL_HOME
+  printf 'connect-timeout = 20\nspeed-limit = 1024\nspeed-time = 60\n' > "$CURL_HOME/.curlrc"
+  (
+    while sleep 5; do
+      for f in "$HOME"/.claude/downloads/claude-*; do
+        [[ -f "$f" ]] || continue
+        [[ -x "$f" ]] && exit 0
+        go "downloading Claude Code · $(( $(stat -c %s "$f" 2>/dev/null || echo 0) / 1048576 )) MB"
+      done
+    done
+  ) &
+  watcher=$!
+  rc=0
+  curl -fsSL https://claude.ai/install.sh | bash || rc=$?
+  kill "$watcher" 2>/dev/null || true
+  wait "$watcher" 2>/dev/null || true
+  unset CURL_HOME
+  [[ "$rc" == 0 ]] \
+    || fatal "Claude Code install failed (exit $rc) — a stalled or blocked network is the usual cause; run konrad code again to retry"
   command -v claude >/dev/null 2>&1 || fatal "installer finished but 'claude' is not on PATH"
   step "Claude Code installed"
 fi

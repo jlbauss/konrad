@@ -392,6 +392,10 @@ COPY --chmod=0755 konrad-proxy-entrypoint.sh /usr/local/bin/konrad-proxy
 # into its volume and launches the (user-installed) coding agent. Root-owned so
 # the node runtime user can't tamper with the seal. See bin/konrad do_code.
 COPY --chmod=0755 konrad-code-entrypoint.sh /usr/local/bin/konrad-code
+# Marks the image as konrad-code-capable, so bin/konrad can refuse an older one
+# host-side (`image inspect`, no container start) instead of letting the engine
+# fail to exec a missing entrypoint — apple/container crashes on that.
+LABEL io.konrad.code="1"
 COPY --chmod=0755 konrad-defaults/ /etc/konrad/
 
 # NODE_DISABLE_COMPILE_CACHE / NPM_CONFIG_* keep npm and node from writing
