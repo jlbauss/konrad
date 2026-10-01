@@ -110,7 +110,7 @@ Trunk-based: `main` is always deployable — what's at `ghcr.io/jlbauss/konrad:l
 
 For a higher-risk change, optionally push the branch to the GitHub mirror and open a PR there to get a `:pr-<num>` test image first (see *Testing a change as an image* below); merge on GitLab once it checks out.
 
-**Collaborators** (have GitLab repo access) — branch on the repo, push, then either hand the maintainer the branch to fast-forward, or open a **GitLab MR** if you want a review thread.
+**Collaborators** (have GitLab repo access) — the same loop: branch on the repo, push, and open a **GitLab MR**; `main` is protected, so the MR is the only way in. The maintainer merges it.
 
 **External contributors** (the public) — everything happens on GitLab:
 
