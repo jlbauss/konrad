@@ -47,16 +47,5 @@
     "ask": [
       "Bash(podman push:*)"
     ]
-  },
-  "enabledPlugins": {
-    "ponytail@ponytail": true
-  },
-  "extraKnownMarketplaces": {
-    "ponytail": {
-      "source": {
-        "source": "github",
-        "repo": "DietrichGebert/ponytail"
-      }
-    }
   }
 }

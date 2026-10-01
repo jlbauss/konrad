@@ -327,7 +327,7 @@ WORKSPACE_GUARD_ENTRIES=(.git .githooks .husky .vscode .devcontainer .claude .mc
 KONRAD_ENGINE="${KONRAD_ENGINE:-}"
 # opencode's loopback port for the remote-MCP OAuth callback. `konrad mcp-auth`
 # publishes it to the host so the post-approval redirect reaches the sandbox.
-# ponytail: opencode uses a fixed port today; env-overridable if that changes.
+# opencode uses a fixed port today; env-overridable if that changes.
 KONRAD_MCP_AUTH_PORT="${KONRAD_MCP_AUTH_PORT:-19876}"
 
 # $SECONDS is bash's built-in script-elapsed counter (portable to bash 3.2
