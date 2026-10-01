@@ -70,10 +70,10 @@ printf 'fi\n' >> "$ctx/seal-only"
 # drop, ",+setuid,+setgid" the nested one (the file-capability mappers need
 # exactly those two; NET_ADMIN stays unreachable either way).
 # shellcheck disable=SC2016
-sed 's|--bounding-set=-all|--bounding-set=-all${PROBE_KEEP:-}|' \
+sed 's|--bounding-set="\$bounding"|--bounding-set="$bounding${PROBE_KEEP:-}"|' \
   "$repo_root/image/konrad-privdrop.sh" > "$ctx/konrad-privdrop.sh"
 # shellcheck disable=SC2016  # a literal ${ in the pattern
-grep -q -- '-all${PROBE_KEEP' "$ctx/konrad-privdrop.sh" \
+grep -q -- 'bounding${PROBE_KEEP' "$ctx/konrad-privdrop.sh" \
   || { echo "konrad-privdrop.sh changed shape — update this probe" >&2; exit 1; }
 cat > "$ctx/Containerfile" <<EOF
 FROM $base
@@ -246,7 +246,9 @@ o userns-mapped "$(unshare -Ur true 2>/dev/null && echo yes || echo no)"
 o userns-chroot "$(unshare -Ur chroot / true 2>/dev/null && echo allowed || echo refused)"
 o userns-mount-proc "$(unshare -Urpm --fork sh -c 'mount -t proc proc /proc' 2>/dev/null && echo allowed || echo refused)"
 o filecap-files "$(getcap -r / 2>/dev/null | awk '{print $1}' | tr '\n' ',' | sed 's/,$//')"
-o nested-run "$(podman run --rm docker.io/library/alpine true >/dev/null 2>&1 && echo works || echo no)"
+# On failure, podman's last error line, so a "no" says why.
+if nr="$(podman run --rm docker.io/library/alpine true 2>&1)"; then o nested-run works
+else o nested-run "no: $(printf '%s\n' "$nr" | grep -v -e 'single mapping' -e level=warning | tail -1 | cut -c1-160)"; fi
 EOF
 )"
 echo
