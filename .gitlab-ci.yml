@@ -46,6 +46,25 @@
 #      below), so it never runs on regular pushes.
 # =============================================================================
 
+# =============================================================================
+# Pipeline selection — one pipeline per change.
+#
+# A branch with an open MR would otherwise run twice (a `push` pipeline and a
+# `merge_request_event` one), since the gates match both sources. So: MR
+# pipelines run; a branch push with an open MR doesn't (the MR pipeline covers
+# it, and it's the one "pipelines must succeed" reads); everything else —
+# pushes to main, branches without an MR, schedules, web triggers — runs as
+# before. The very first push of a branch that opens its MR via
+# `-o merge_request.create` can still get both once: the MR doesn't exist yet
+# when the push pipeline is created.
+# =============================================================================
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never
+    - when: always
+
 resolve-locks:
   image: node:26-trixie-slim
   tags: [docker]
