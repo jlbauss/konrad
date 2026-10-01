@@ -65,7 +65,7 @@ seal_v4=(0.0.0.0/8 10.0.0.0/8 100.64.0.0/10 169.254.0.0/16 172.16.0.0/12
 seal_v6=(::/128 ::ffff:0:0/96 64:ff9b::/96 64:ff9b:1::/48 fc00::/7 fe80::/10 ff00::/8)
 
 seal_family() {  # $1 = -4|-6, rest = ranges
-  local fam="$1" net r p; shift
+  local fam="$1" net r p err; shift
   for net in "$@"; do
     ip "$fam" route add unreachable "$net" table "$SEAL_TABLE" \
       || fatal "egress seal: could not install the route for $net"
@@ -98,12 +98,16 @@ for a in sys.argv[2].split():
         print(n)
 PY
 )
+  # Deduplicated: the engine copies the host's resolvers, and a host on two links
+  # to the same router (Wi-Fi + dock) lists it twice — as does rootless Podman
+  # one level down. A repeated `rule add` is refused with EEXIST, so pass ip's
+  # own error through instead of guessing.
   while read -r r; do
     for p in udp tcp; do
-      ip "$fam" rule add to "$r" ipproto "$p" dport 53 lookup main pref 100 \
-        || fatal "egress seal: could not exempt DNS to $r (kernel lacks ip rule dport?)"
+      err="$(ip "$fam" rule add to "$r" ipproto "$p" dport 53 lookup main pref 100 2>&1)" \
+        || fatal "egress seal: could not exempt DNS to $r ($p): ${err:-unknown error}"
     done
-  done < <(awk '$1 == "nameserver" {print $2}' /etc/resolv.conf \
+  done < <(awk '$1 == "nameserver" && !seen[$2]++ {print $2}' /etc/resolv.conf \
              | if [[ "$fam" == -6 ]]; then grep ':' ; else grep -v ':'; fi || true)
   ip "$fam" rule add lookup "$SEAL_TABLE" pref 200 \
     || fatal "egress seal: could not install the policy rule"
