@@ -9,6 +9,7 @@
       "Bash(npx --yes markdownlint-cli2:*)",
       "Bash(bash -n:*)",
       "Bash(sh -n:*)",
+      "Bash(./scripts/check.sh:*)",
       "Bash(git:*)",
       "mcp__context7__resolve-library-id",
       "mcp__context7__query-docs",
@@ -44,9 +45,7 @@
       "Bash(gh:*)"
     ],
     "ask": [
-      "Bash(podman push:*)",
-      "Bash(podman run:*)",
-      "Bash(podman system prune:*)"
+      "Bash(podman push:*)"
     ]
   },
   "enabledPlugins": {

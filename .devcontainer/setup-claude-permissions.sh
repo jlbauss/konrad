@@ -15,12 +15,15 @@
 # settings set it (which they must not — keep it out of committed settings).
 #
 # The disposable container plus the committed deny/ask lists are the security
-# boundary (CLAUDE.md → Permission posture); `podman run` stays `ask` even here.
-# `git push` is denied here, not in the committed list: this container pushes
-# with the host's credentials, while `konrad code` — which reads the same repo
-# settings — pushes a feature branch with a project token by design.
+# boundary (CLAUDE.md → Permission posture). Two guards live here, not in the
+# committed lists, because `konrad code` reads the same repo settings and needs
+# neither: `git push` is denied (this container pushes with the host's
+# credentials; `konrad code` pushes a feature branch with a project token by
+# design), and `podman run` / `podman system prune` stay `ask` (here podman is
+# the HOST socket, where `podman run -v …` escapes the container; in `konrad
+# code` it's the agent's own nested engine).
 #
-# Idempotent and non-destructive: merges the one key into whatever else the file
+# Idempotent and non-destructive: merges these keys into whatever else the file
 # holds, never replaces it.
 set -eu
 
@@ -30,7 +33,8 @@ mkdir -p "$HOME/.claude"
 
 tmp=$(mktemp "${f}.XXXXXX")
 jq '.permissions.defaultMode = "bypassPermissions"
-    | .permissions.deny = ((.permissions.deny // []) + ["Bash(git push:*)"] | unique)' "$f" > "$tmp"
+    | .permissions.deny = ((.permissions.deny // []) + ["Bash(git push:*)"] | unique)
+    | .permissions.ask = ((.permissions.ask // []) + ["Bash(podman run:*)", "Bash(podman system prune:*)"] | unique)' "$f" > "$tmp"
 mv "$tmp" "$f"
 
-echo "claude: bypassPermissions enabled, git push denied, for this dev container (container-only $f)"
+echo "claude: bypassPermissions enabled, git push denied, podman run asks, for this dev container (container-only $f)"
