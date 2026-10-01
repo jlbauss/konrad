@@ -9,7 +9,9 @@
 #   ./scripts/probe-konrad-code.sh container   # Apple's container (macOS 26+)
 #
 # Step 1 (automatic): serve HTTP on this machine's LAN address and prove an
-# UNSEALED container reaches it, the engine gateway and IPv6 — so a refusal in
+# UNSEALED container reaches it (directly, or at the engine's mapped address
+# host.containers.internal — under pasta the host's own LAN IP is the
+# container's own), the engine gateway and IPv6 — so a refusal in
 # step 2 means the seal refused it, not that the target was never reachable.
 # Step 2 (by hand): the same targets from inside `konrad code --shell`; the
 # script prints the line to paste there. Pass: whatever step 1 reached now fails.
@@ -41,6 +43,7 @@ t() { printf "  %-8s %-40s " "$1" "$2"; curl -sS -o /dev/null -m 5 -w "%{http_co
 t public https://gitlab.com/
 t public6 https://ipv6.google.com/ -6
 t host-LAN http://'"$lan4"':'"$port"'/
+t host http://host.containers.internal:'"$port"'/
 [ -n "'"$lan6"'" ] && t host-v6 "http://['"$lan6"']:'"$port"'/" -6
 t gateway http://$gw/
 t gw-port http://$gw:'"$port"'/
@@ -64,7 +67,9 @@ cat <<EOF
 
   must work:  public (and public6 if step 1 reached it)
   must fail:  every target that connected in step 1 (a 200, or raw "connected");
-              one that already failed there proves nothing either way
+              one that already failed there proves nothing either way;
+              if neither host-LAN nor host connected in step 1, nothing here
+              proves the host is sealed — stop and report step 1 instead
   then also:  ip rule del pref 200   → Operation not permitted
               grep CapEff /proc/self/status → 0000000000000000
 

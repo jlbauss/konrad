@@ -14,8 +14,10 @@
 #    and this checkout's seal (konrad-code-entrypoint.sh stage 1, verbatim)
 #    wired to exec a command instead of the interactive stage 2.
 # 2. Baseline: serves HTTP on this machine's LAN address and proves an UNSEALED
-#    container reaches it, the gateway and the resolver's port 80 — so a refusal
-#    later means the seal refused it.
+#    container reaches it (directly, or at host.containers.internal, the
+#    engine's mapped host address under pasta), the gateway and the resolver's
+#    port 80 — so a refusal later means the seal refused it. A baseline that
+#    reaches none of them fails the verdict: it would prove nothing.
 # 3. Delta: the same read-only observations under today's `konrad code` flags
 #    and under the nested flags, side by side — what nesting-by-default gives up.
 # 4. Sealed + nested (run A): the baseline targets from the sealed shell (L1), a
@@ -103,7 +105,7 @@ echo "== step 1: probe image $img (from $base, $engine)"
 # One line per target: OPEN or blocked. Runs in bash+curl (konrad image) and in
 # busybox (alpine), so both tool paths are here. Args: lan4 port gateway resolver.
 cat > "$ctx/probe" <<'EOF'
-lan="$1"; port="$2"; gw="$3"; ns="$4"
+lan="$1"; port="$2"; gw="$3"; ns="$4"; hm="$5"
 if command -v curl >/dev/null; then get() { curl -sS -o /dev/null -m 4 "$1" 2>/dev/null; }
 else get() { wget -S -T 4 -O /dev/null "$1" 2>&1 | grep -q "HTTP/"; }; fi
 if [ -n "${BASH_VERSION:-}" ]; then tcp() { timeout 4 bash -c "exec 3<>/dev/tcp/$1/$2" 2>/dev/null; }
@@ -111,6 +113,9 @@ else tcp() { timeout 4 nc -w 3 "$1" "$2" </dev/null >/dev/null 2>&1; }; fi
 r() { printf '%-12s %s\n' "$1" "$2"; }
 get https://gitlab.com/            && r public OPEN      || r public blocked
 get "http://$lan:$port/"           && r host-lan OPEN    || r host-lan blocked
+if [ "$hm" != - ]; then
+get "http://$hm:$port/"            && r host-mapped OPEN || r host-mapped blocked
+fi
 get "http://$gw/"                  && r gateway OPEN     || r gateway blocked
 get "http://$gw:$port/"            && r gw-port OPEN     || r gw-port blocked
 tcp "$gw" 22                       && r gw-ssh OPEN      || r gw-ssh blocked
@@ -119,15 +124,18 @@ tcp "$ns" 53                       && r resolver-53 OPEN || r resolver-53 blocke
 EOF
 
 net=(); [[ "$engine" == podman ]] && net=(--network bridge)
-# The resolver and gateway as a container on this network sees them.
+# The resolver, the gateway and the engine's address for the host
+# (host.containers.internal: under pasta the host's own LAN IP is the
+# container's own, so this mapped address is the only way to the host) as a
+# container on this network sees them; "-" where the engine maps none.
 # shellcheck disable=SC2016  # expands inside the container
-read -r gw ns < <("$engine" run --rm ${net[@]+"${net[@]}"} --entrypoint bash "$img" -c \
-  'echo "$(ip -4 route show default | awk "{print \$3; exit}") $(awk "\$1==\"nameserver\"{print \$2; exit}" /etc/resolv.conf)"')
-echo "   host-lan=$lan4:$port gateway=$gw resolver=$ns"
+read -r gw ns hm < <("$engine" run --rm ${net[@]+"${net[@]}"} --entrypoint bash "$img" -c \
+  'echo "$(ip -4 route show default | awk "{print \$3; exit}") $(awk "\$1==\"nameserver\"{print \$2; exit}" /etc/resolv.conf) $(getent hosts host.containers.internal | awk "{print \$1; exit}" | grep . || echo -)"')
+echo "   host-lan=$lan4:$port host-mapped=$hm gateway=$gw resolver=$ns"
 
 echo
 echo "== step 2: UNSEALED baseline"
-"$engine" run --rm -i ${net[@]+"${net[@]}"} --entrypoint bash "$img" -s "$lan4" "$port" "$gw" "$ns" \
+"$engine" run --rm -i ${net[@]+"${net[@]}"} --entrypoint bash "$img" -s "$lan4" "$port" "$gw" "$ns" "$hm" \
   < "$ctx/probe" | tee "$ctx/L0"
 echo "   setuid/setgid files in $base today: $("$engine" run --rm --entrypoint bash "$base" -c \
   'find / -xdev -type f -perm /6000 2>/dev/null | wc -l')"
@@ -213,7 +221,7 @@ launch() {
   for kv in "$@"; do extra+=(-e "$kv"); done
   # shellcheck disable=SC2016
   "$engine" run --rm -i "${f[@]}" ${extra[@]+"${extra[@]}"} \
-    -e LAN="$lan4" -e PORT="$port" -e GW="$gw" -e NS="$ns" -e BUILD="$build" \
+    -e LAN="$lan4" -e PORT="$port" -e GW="$gw" -e NS="$ns" -e HM="$hm" -e BUILD="$build" \
     --entrypoint bash "$img" \
     -c "$pre"$'\n''exec /usr/local/bin/seal-only bash -c '\''cat > /tmp/probe; exec bash -c "$0"'\'' "$0"' "$body" \
     < "$ctx/probe"
@@ -268,7 +276,7 @@ echo "   (* = changed by nesting)"
 # ── 4. run A ──────────────────────────────────────────────────────────────────
 inner="$(cat <<'EOF'
 q() { grep -v -e 'single mapping' -e 'Additional gid' -e 'level=warning'; }
-args="$LAN $PORT $GW $NS"
+args="$LAN $PORT $GW $NS $HM"
 echo "-- outer: $(id -un) $(grep -E 'CapEff|CapBnd' /proc/self/status | tr -s '\t\n' '  ') $(grep NoNewPrivs /proc/self/status | tr -s '\t' ' ')"
 echo "-- store: $(podman info --format '{{.Store.GraphDriverName}} {{.Store.GraphRoot}}' 2>&1 | q | tail -1)  images before: $(podman images -q 2>/dev/null | wc -l)"
 echo "STORE images-at-start=$(podman images -q 2>/dev/null | wc -l)"
@@ -334,6 +342,12 @@ while read -r target base_res; do
     printf '  %-3s %-12s %s\n' "$lvl" "$target" "$res"
   done
 done < "$ctx/L0"
+# Fail closed on a blind baseline: if the unsealed run reached nothing
+# private, every "blocked" above is meaningless and the seal stays unproven.
+if ! awk '$1 != "public" && $1 != "resolver-53" && $2 == "OPEN" {f = 1} END {exit !f}' "$ctx/L0"; then
+  echo "  FAIL: the unsealed baseline reached no host, gateway or resolver target — the seal is unproven"
+  fail=1
+fi
 if grep -q '^ESC .* SUCCEEDED' "$ctx/sealed"; then grep '^ESC .* SUCCEEDED' "$ctx/sealed"; fail=1; fi
 grep -q '^ESC ' "$ctx/sealed" || { echo "  no escape attempts ran"; fail=1; }
 if (( build )); then
