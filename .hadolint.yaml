@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: 2026 Jan-Luca Bauß
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+# hadolint project config — auto-discovered from the repo root by the CLI
+# (scripts/check.sh) and editor integrations, parallel to .shellcheckrc.
+#
+# DL3066 ("non-numeric user-id may not be resolvable by host system", info,
+# new in hadolint 2.15): `USER node` names the base image's own user, which
+# exists in the image by construction; the host never resolves it — konrad maps
+# uids explicitly (keep-id / explicit maps), not by name.
+ignored:
+  - DL3066

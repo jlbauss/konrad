@@ -60,6 +60,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 # Claude Code itself is delivered as the VS Code extension installed
 # via devcontainer.json's customizations.vscode.extensions — no npm
 # CLI needed.
+# hadolint ignore=DL3008
 RUN apt-get update && apt-get install -y --no-install-recommends \
     shellcheck \
     yamllint \
