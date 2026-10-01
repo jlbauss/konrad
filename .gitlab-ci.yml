@@ -22,9 +22,8 @@
 #
 # Why direct push (no MR): this bot has no reviewer and no MR pipeline
 # gates the merge (image build + smoke run downstream on the GitHub
-# mirror after main moves). The konrad working agreement (CLAUDE.md)
-# already prescribes CLI merges over MRs for trunk-based flow; for a
-# deterministic daily bump the MR adds polling complexity without
+# mirror after main moves). Human and agent changes go through MRs; for
+# a deterministic daily bump an MR adds polling complexity without
 # review value, and FF-pushing main keeps history linear.
 #
 # Setup (manual, one-time, done in the GitLab UI):

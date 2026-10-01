@@ -62,17 +62,12 @@ konrad-dev rebuild
 
 You need:
 
-- A container engine — **Podman** on Linux (and the dev container), or Apple's **`container`** on Apple-Silicon macOS 26+. `konrad-dev rebuild` builds on whichever it runs on: Podman via buildah, apple/container via `container build` (straight into its own store — no Podman or `podman machine` VM needed on the Mac). Pin with `KONRAD_ENGINE=podman|container`. Docker is on the roadmap but not supported yet.
+- A container engine — **Podman** on Linux (and inside `konrad code`), or Apple's **`container`** on Apple-Silicon macOS 26+. `konrad-dev rebuild` builds on whichever it runs on: Podman via buildah, apple/container via `container build` (straight into its own store — no Podman or `podman machine` VM needed on the Mac). Pin with `KONRAD_ENGINE=podman|container`. Docker is on the roadmap but not supported yet.
 - `~/.local/bin` on your `$PATH`
 
-The repo ships a Dev Container at `.devcontainer/` — "Reopen in Container" in VS Code gives you a portable edit-and-lint environment (shellcheck, hadolint, actionlint, jq, git, ripgrep, the Claude Code extension preinstalled), with **`konrad-dev` already on `PATH`** — the manual step 2 above is only for a native checkout. It also mounts the host's Podman socket, so `konrad-dev rebuild`, `konrad-dev shell`, and the smoke test run **from inside the container** against the host daemon — no privileged Podman-in-container needed, and a self-test composes `baked < org < user` with your real config, exactly like a normal run.
+- **uv** and **node** (with `npx`) for `scripts/check.sh`, which fetches the lint tools at pinned versions on first use
 
-One-time prerequisite per OS for that runtime self-testing:
-
-- **Linux:** `systemctl --user enable --now podman.socket`
-- **macOS:** point the Dev Containers extension at the rootful-connection shim — add `"dev.containers.dockerPath": "/Users/you/.local/bin/podman-vscode.sh"` to your VS Code **user** settings (run `echo ~/.local/bin/podman-vscode.sh` for the exact path) and run `sh .devcontainer/ensure-podman-sock.sh` once before the first container open. Why a shim and how it works: header of [.devcontainer/podman-vscode.sh](.devcontainer/podman-vscode.sh). Two side effects: the rootful daemon keeps separate stores, so the first reopen starts fresh (one-time Claude Code re-login) and the runtime needs its own `/connect`; and self-tests there exercise a *rootful* daemon, so rootless-specific behavior (uid semantics, networking, limits) still needs a Linux run.
-
-Without the prerequisite the container still starts — podman calls just fail cleanly (build/lint/edit all keep working).
+**Agents work in `konrad code`, not in your checkout.** Launch one with `konrad code --nested https://gitlab.git.nrw/jbauss2/konrad`: a disposable container with its own clone, its own rootless Podman (so it builds, smoke-tests and self-tests the image itself) and open internet, but no host mounts and a sealed LAN; it hands work back only as a merge request ([ARCHITECTURE → konrad code](ARCHITECTURE.md#konrad-code)). On native Linux, `--nested` currently drops SELinux confinement for that container — see the ROADMAP's SELinux item. The agent-side rules live in [CLAUDE.md](CLAUDE.md). (The `.devcontainer/` that used to fill this role is being retired; see the ROADMAP.)
 
 ## Local development loop
 
@@ -80,7 +75,7 @@ Without the prerequisite the container still starts — podman calls just fail c
 # Edit files...
 konrad-dev rebuild                                      # builds konrad:local
 konrad-dev shell                                        # exercise the dev image
-shellcheck bin/konrad image/entrypoint.sh scripts/*.sh    # lint
+./scripts/check.sh                                        # static gates (what CI runs)
 ./scripts/smoke-test.sh konrad:local                      # smoke (image artifact)
 ./scripts/selftest.sh                                     # end-to-end (image + a real run)
 ```
@@ -89,11 +84,10 @@ shellcheck bin/konrad image/entrypoint.sh scripts/*.sh    # lint
 
 There's no traditional unit-test suite. The validation gates are:
 
-- `bash -n <script>` — parse check
-- `shellcheck <script>` — static analysis, should stay clean
+- `./scripts/check.sh` — the static gates in one command: `bash -n`, shellcheck, `reuse lint`, markdownlint, actionlint, hadolint, each at a version pinned in the script. GitLab CI runs the same script on every MR, so a green local run is a green pipeline. `./scripts/check.sh <gate>…` runs a subset.
 - `./scripts/build-image.sh` — does the image build?
-- `./scripts/smoke-test.sh konrad:local` — does the image have the right binaries / Python deps / baked content, and does the docling round-trip work? CI runs this same script. (Engine-agnostic and deliberately `bin/konrad`-free — CI runs it under Docker, and it validates the *image artifact*, not the host CLI. From a dev container against a remote daemon it skips the one bind-mount-based check, the org-layer compose, since that resolves daemon-side and is already covered by CI on a local daemon.)
-- `./scripts/selftest.sh` — the realistic end-to-end loop, and the right gate to hand an agent: it runs the smoke test, then drives a real `konrad run` *through `bin/konrad`* (uid mapping, workspace mount, config compose — the path a user actually takes) and asserts the agent answers. The **model comes from your own `~/.config/konrad` config** (override with `--model <slug>` / `KONRAD_SELFTEST_MODEL`, any provider); with no usable model/credential the model stage degrades to a SKIP, so a red result always means the *runtime* broke. One-time: populate the shared `konrad-secrets` volume via `konrad-dev` → `/connect` (on macOS from inside the dev container — the rootful daemon has its own volume). Not a CI gate.
+- `./scripts/smoke-test.sh konrad:local` — does the image have the right binaries / Python deps / baked content, and does the docling round-trip work? CI runs this same script. (Engine-agnostic and deliberately `bin/konrad`-free — CI runs it under Docker, and it validates the *image artifact*, not the host CLI. Against a remote daemon it skips the one bind-mount-based check, the org-layer compose, since that resolves daemon-side; inside `konrad code --nested` the daemon is local and it runs.)
+- `./scripts/selftest.sh` — the realistic end-to-end loop, and the right gate to hand an agent: it runs the smoke test, then drives a real `konrad run` *through `bin/konrad`* (uid mapping, workspace mount, config compose — the path a user actually takes) and asserts the agent answers. The **model comes from your own `~/.config/konrad` config** (override with `--model <slug>` / `KONRAD_SELFTEST_MODEL`, any provider); with no usable model/credential the model stage degrades to a SKIP, so a red result always means the *runtime* broke. One-time: populate the shared `konrad-secrets` volume via `konrad-dev` → `/connect`. Inside `konrad code` there's no provider key, so an agent's run always SKIPs the model stage; the real-model run is yours. Not a CI gate.
 - A live poke: `cd /tmp/konrad-test && konrad-dev --version` then `konrad-dev shell` to look around. Dump the full build manifest with `podman run --rm --entrypoint cat konrad:local /etc/konrad/build-manifest.json | jq .`.
 
 **Always smoke-test locally before pushing changes that touch `image/`, `scripts/smoke-test.sh`, or `image/build-manifest.sh`.** CI catches the bug eventually but at a ~10 min round-trip cost per iteration vs. ~5.5 min locally (rebuild + smoke).
@@ -102,12 +96,15 @@ There's no traditional unit-test suite. The validation gates are:
 
 Trunk-based: `main` is always deployable — what's at `ghcr.io/jlbauss/konrad:latest` mirrors `main`'s current state. The primary repo is **GitLab** (`gitlab.git.nrw/jbauss2/konrad`, public). The GitHub mirror is **public for discoverability, but CI-and-releases only** — it exists because gitlab.git.nrw's shared runners can't run the privileged Podman build (see [ARCHITECTURE.md](ARCHITECTURE.md)), and [mirror-release.yml](.github/workflows/mirror-release.yml) recreates each GitLab release there off the mirrored tag. Contributions happen on GitLab; you never need a GitHub account to contribute.
 
-**Maintainer** (direct repo access) — trunk-based via the git CLI, no MR ceremony. The canonical loop is **branch → develop → bump → merge**:
+**Maintainer** (direct repo access) — every change lands through a **merge request**, whether you wrote it or an agent did; `main` is protected. The loop is **branch → develop → bump → MR → merge**:
 
-1. **Branch** off main: `git checkout -b feat/short-name`
-2. **Develop** and commit.
-3. **Bump** `VERSION` as the *last commit before merging*, not up front — with ff-only the branch tip becomes `main`, so a late bump keeps the version matching the integrated change and shrinks the window where two in-flight branches collide on the `VERSION` line (what to bump: [Versioning](#versioning)).
-4. **Merge**: `git checkout main && git merge --ff-only feat/short-name && git push origin main`
+1. **Branch** off the current main: `git fetch origin && git checkout -b feat/short-name origin/main`
+2. **Develop** and commit; `./scripts/check.sh` before pushing.
+3. **Bump** `VERSION` as the *last commit before merging*, not up front — with fast-forward merges the branch tip becomes `main`, so a late bump keeps the version matching the integrated change and shrinks the window where two in-flight branches collide on the `VERSION` line (what to bump: [Versioning](#versioning)).
+4. **Push and open the MR**: `git push -u origin feat/short-name -o merge_request.create -o merge_request.target=main -o merge_request.remove_source_branch`. The [MR template](.gitlab/merge_request_templates/Default.md) asks for summary, why, what was validated, the probes left for you, and the release impact.
+5. **Merge** in the web UI once the pipeline is green. The project merges fast-forward only (linear history, one commit per concern, no squash); the locks bot moves `main` almost daily, so most MRs need GitLab's one-click **Rebase** first. The source branch is deleted on merge.
+
+**Reviewing an agent's MR.** An agent in `konrad code` pushes its branch as a draft MR whose description is its write-up, including the probes only you can run (each with a baseline first). **Read the diff before you run any of the branch's code on your host** — `git pull` + `./scripts/selftest.sh`, an installer run, even a `konrad-dev` launch executes the agent's code with your rights and no sandbox, which is exactly the deferred escape `konrad code` otherwise prevents. Then run the probes, mark the MR ready, and merge.
 
 For a higher-risk change, optionally push the branch to the GitHub mirror and open a PR there to get a `:pr-<num>` test image first (see *Testing a change as an image* below); merge on GitLab once it checks out.
 
@@ -177,12 +174,14 @@ konrad/
 │   └── fonts/konrad/                  # → /usr/local/share/fonts/konrad/ (seven OFL families)
 ├── scripts/
 │   ├── build-image.sh                 # Local build (KONRAD_VERSION + GIT_SHA build args)
+│   ├── check.sh                       # Static gates (lint, REUSE) — CI runs this same script
 │   ├── smoke-test.sh                  # Smoke gate — CI runs this same script
 │   ├── install.sh              # curl|sh installer — fetches the CLI standalone, bakes VERSION in
 │   └── fetch-fonts.sh                 # One-shot — pulls fonts from upstream when bumping versions
 ├── examples/org-package/              # Git-native org-layer example repo (referenced from README)
 ├── .github/workflows/build-image.yml  # CI: build → smoke → publish (multi-arch amd64 + arm64)
-├── .gitlab-ci.yml                     # Lock-resolver bot (source of truth; mirrors to GitHub)
+├── .gitlab-ci.yml                     # Static gates, lock-resolver bot, release job (source of truth; mirrors to GitHub)
+├── .gitlab/merge_request_templates/   # MR description template
 ├── ARCHITECTURE.md                     # System design and the *why* (consolidated)
 ├── CHANGELOG.md                       # Released-change log (Keep a Changelog; agent-maintained)
 ├── ROADMAP.md                         # Backlog (shipped work → CHANGELOG.md)
