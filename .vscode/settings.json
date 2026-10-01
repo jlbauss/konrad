@@ -1,0 +1,12 @@
+// SPDX-FileCopyrightText: 2026 Jan-Luca Bauß
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//
+// markdownlint fixes are code actions, not a formatter, so this applies them on
+// save: Markdown normalizes to the house style in .markdownlint.jsonc.
+{
+  "[markdown]": {
+    "editor.codeActionsOnSave": {
+      "source.fixAll.markdownlint": "explicit"
+    }
+  }
+}

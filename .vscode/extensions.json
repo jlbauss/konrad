@@ -1,0 +1,11 @@
+// SPDX-FileCopyrightText: 2026 Jan-Luca Bauß
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//
+// Editor-side mirrors of two scripts/check.sh gates; both extensions bundle
+// their own linter, so nothing to install on the host. check.sh stays the gate.
+{
+  "recommendations": [
+    "DavidAnson.vscode-markdownlint",
+    "timonwong.shellcheck"
+  ]
+}

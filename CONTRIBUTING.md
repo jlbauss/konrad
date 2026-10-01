@@ -67,7 +67,9 @@ You need:
 
 - **uv** and **node** (with `npx`) for `scripts/check.sh`, which fetches the lint tools at pinned versions on first use
 
-**Agents work in `konrad code`, not in your checkout.** Launch one with `konrad code --nested https://gitlab.git.nrw/jbauss2/konrad`: a disposable container with its own clone, its own rootless Podman (so it builds, smoke-tests and self-tests the image itself) and open internet, but no host mounts and a sealed LAN; it hands work back only as a merge request ([ARCHITECTURE → konrad code](ARCHITECTURE.md#konrad-code)). On native Linux, `--nested` currently drops SELinux confinement for that container — see the ROADMAP's SELinux item. The agent-side rules live in [CLAUDE.md](CLAUDE.md). (The `.devcontainer/` that used to fill this role is being retired; see the ROADMAP.)
+That's the whole host toolchain; there's deliberately no dev container (why: [ARCHITECTURE → konrad code](ARCHITECTURE.md#konrad-code)). In VS Code, accept the workspace's recommended extensions (markdownlint and shellcheck, both bundling their linter) — [.vscode/settings.json](.vscode/settings.json) applies the markdownlint fixes on save. For a shell with the agent's exact toolset and a nested Podman, nothing installed on your host, run `konrad code --shell --nested https://gitlab.git.nrw/jbauss2/konrad`: the same sealed box an agent works in, with its own clone.
+
+**Agents work in `konrad code`, not in your checkout.** Launch one with `konrad code --nested https://gitlab.git.nrw/jbauss2/konrad`: a disposable container with its own clone, its own rootless Podman (so it builds, smoke-tests and self-tests the image itself) and open internet, but no host mounts and a sealed LAN; it hands work back only as a merge request ([ARCHITECTURE → konrad code](ARCHITECTURE.md#konrad-code)). On native Linux, `--nested` currently drops SELinux confinement for that container — see the ROADMAP's SELinux item. The agent-side rules live in [CLAUDE.md](CLAUDE.md).
 
 ## Local development loop
 
@@ -86,7 +88,7 @@ There's no traditional unit-test suite. The validation gates are:
 
 - `./scripts/check.sh` — the static gates in one command: `bash -n`, shellcheck, `reuse lint`, markdownlint, actionlint, hadolint, each at a version pinned in the script. GitLab CI runs the same script on every MR, so a green local run is a green pipeline. `./scripts/check.sh <gate>…` runs a subset.
 - `./scripts/build-image.sh` — does the image build?
-- `./scripts/smoke-test.sh konrad:local` — does the image have the right binaries / Python deps / baked content, and does the docling round-trip work? CI runs this same script. (Engine-agnostic and deliberately `bin/konrad`-free — CI runs it under Docker, and it validates the *image artifact*, not the host CLI. Against a remote daemon it skips the one bind-mount-based check, the org-layer compose, since that resolves daemon-side; inside `konrad code --nested` the daemon is local and it runs.)
+- `./scripts/smoke-test.sh konrad:local` — does the image have the right binaries / Python deps / baked content, and does the docling round-trip work? CI runs this same script. (Engine-agnostic and deliberately `bin/konrad`-free — CI runs it under Docker, and it validates the *image artifact*, not the host CLI.)
 - `./scripts/selftest.sh` — the realistic end-to-end loop, and the right gate to hand an agent: it runs the smoke test, then drives a real `konrad run` *through `bin/konrad`* (uid mapping, workspace mount, config compose — the path a user actually takes) and asserts the agent answers. The **model comes from your own `~/.config/konrad` config** (override with `--model <slug>` / `KONRAD_SELFTEST_MODEL`, any provider); with no usable model/credential the model stage degrades to a SKIP, so a red result always means the *runtime* broke. One-time: populate the shared `konrad-secrets` volume via `konrad-dev` → `/connect`. Inside `konrad code` there's no provider key, so an agent's run always SKIPs the model stage; the real-model run is yours. Not a CI gate.
 - A live poke: `cd /tmp/konrad-test && konrad-dev --version` then `konrad-dev shell` to look around. Dump the full build manifest with `podman run --rm --entrypoint cat konrad:local /etc/konrad/build-manifest.json | jq .`.
 
@@ -188,7 +190,7 @@ konrad/
 ├── CLAUDE.md                          # Repo instructions for agents working ON konrad
 ├── REUSE.toml                         # Per-file copyright/license by glob (REUSE spec)
 ├── LICENSES/                          # SPDX license texts (REUSE)
-└── .devcontainer/                     # VS Code Dev Container for working ON konrad (Claude Code preinstalled)
+└── .vscode/                           # Recommended extensions + markdownlint-on-save (the rest of .vscode/ is ignored)
 ```
 
 If a change touches multiple concerns, prefer separate commits per concern. The git log is the project's primary design history — keep it useful.
@@ -210,7 +212,7 @@ Co-Authored-By: ...                               (when applicable)
 
 **Types** — `feat` (new capability), `fix` (bug fix), `docs`, `refactor` (no behaviour change), `perf`, `test`, `build` (build system / deps), `ci`, `style` (formatting only), `chore` (housekeeping — locks, etc.), `revert`.
 
-**Scope** — optional; use one where it adds signal, from: `cli`, `image`, `config`, `skills`, `devcontainer`, `ci`, `locks`, `roadmap`, `release`.
+**Scope** — optional; use one where it adds signal, from: `cli`, `image`, `config`, `skills`, `ci`, `locks`, `roadmap`, `release`.
 
 **Breaking changes** — mark with `!` after the type/scope (e.g. `feat!:`) and/or a `BREAKING CHANGE:` footer. This drives the version bump: **MINOR pre-1.0** (no MAJOR slot yet), **MAJOR post-1.0** — see [Versioning](#versioning).
 

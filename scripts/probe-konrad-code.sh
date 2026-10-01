@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
 # Host-side seal probe for `konrad code`, with a baseline. Run it on the HOST
-# (not in the dev container), once per engine:
+# (not inside a container), once per engine:
 #
 #   ./scripts/probe-konrad-code.sh podman      # the podman connection in use
 #   ./scripts/probe-konrad-code.sh container   # Apple's container (macOS 26+)

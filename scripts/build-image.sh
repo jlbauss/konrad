@@ -22,7 +22,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 CTX="$REPO_ROOT/image"
 
-# Build engine. Normally Podman/buildah (CI, Linux, the dev container). On the
+# Build engine. Normally Podman/buildah (CI, Linux, `konrad code --nested`). On the
 # apple/container runtime we build with `container build` instead — its
 # BuildKit-based builder lands the image straight in container's own store, so a
 # Mac contributor needs neither podman nor its machine VM. bin/konrad's
@@ -92,7 +92,7 @@ if [ "$ENGINE" = container ]; then
   exit "$status"
 fi
 
-# Podman/buildah path (CI, Linux, the dev container, and Macs pinned to podman).
+# Podman/buildah path (CI, Linux, `konrad code --nested`, and Macs pinned to podman).
 command -v podman >/dev/null 2>&1 \
   || { printf 'konrad-build: podman is not installed.\n' >&2; exit 1; }
 

@@ -79,7 +79,7 @@ if [ "$LOCAL" -eq 1 ]; then
   command -v podman >/dev/null 2>&1 || die "podman not found (needed for --local)"
 else
   command -v skopeo >/dev/null 2>&1 \
-    || die "skopeo not found — add it to the dev container (apt-get install skopeo)"
+    || die "skopeo not found — install it (apt-get install skopeo / brew install skopeo)"
 fi
 
 # Registry refs select a platform out of a manifest list; local images are
@@ -112,7 +112,7 @@ FROM_REF="$(resolve "$FROM_TAG")"
 TO_REF="$(resolve "$TO_TAG")"
 
 # Source acquisition. skopeo's containers-storage transport can't reach
-# podman's *remote* daemon (the dev container drives the host socket), so for
+# a *remote* podman daemon (on macOS podman always drives the machine VM), so for
 # --local we read podman over that socket and reshape its output into the same
 # {LayersData,…} / {history:…} shape skopeo emits — the diff pipeline below is
 # then identical for both sources.

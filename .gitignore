@@ -12,7 +12,11 @@
 .DS_Store
 Thumbs.db
 .idea/
-.vscode/
+# .vscode/ is personal, except the two shared files: recommended extensions
+# and the repo's markdownlint-on-save setting (see CONTRIBUTING).
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
 *.swp
 
 # Python bytecode, venvs, and tool caches. The skills under image/
@@ -29,15 +33,9 @@ venv/
 .ruff_cache/
 .coverage
 
-# Freedesktop trash dirs (created by trash-cli inside the dev container
-# when files under /workspace are deleted — they live next to the
-# originals on the host filesystem so deletes survive container rebuilds).
+# Freedesktop trash dirs (created by trash-cli when files on a mounted
+# filesystem are deleted — they live next to the originals).
 .Trash-*
-
-# Dev-container host-socket symlink (dropped by initializeCommand —
-# .devcontainer/ensure-podman-sock.sh — to give the podman-host mount a
-# stable, always-resolvable source). Host-local, regenerated each launch.
-/.devcontainer/.cache/
 
 # Logs
 *.log
