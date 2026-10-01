@@ -17,7 +17,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ## Maintainer probes
 
-<!-- What only the maintainer can run (host-only: a real model, apple/container, native networking, the installer from the forge). Each probe: first a baseline that proves the environment is right, then the one change under test, and the expected result of each. "None" if nothing is host-only. -->
+<!-- What only the maintainer can run (host-only: a real model, apple/container, native networking, the installer from the forge), as a runbook to paste from a native checkout: setup (checkout the branch; `konrad-dev rebuild` or not), the binary (`konrad-dev`, never `konrad`), any pre-state cleanup, a baseline that proves the environment is right, then the one change under test, with the expected output of each, then cleanup. Format: CLAUDE.md → Working with the user. "None" if nothing is host-only. -->
 
 ## Release
 
