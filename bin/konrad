@@ -2557,16 +2557,18 @@ host_ip_cidrs() {
 do_code() {
   dbg "do_code start"
   local shell=0 nested=0
-  while [[ "${1:-}" == --* ]]; do
+  local usage="usage: $SELF code [--shell] [--nested] <git-url> [claude args…]   (e.g. $SELF code https://gitlab.example.com/me/repo)"
+  [[ "${1:-}" == help ]] && { printf '%s\n' "$usage"; return 0; }
+  while [[ "${1:-}" == -* ]]; do
     case "$1" in
+      -h|--help) printf '%s\n' "$usage"; return 0 ;;
       --shell)  shell=1; shift ;;
       --nested) nested=1; shift ;;
       --)      shift; break ;;
       *)       break ;;
     esac
   done
-  [[ $# -ge 1 ]] \
-    || die "usage: $SELF code [--shell] [--nested] <git-url> [claude args…]   (e.g. $SELF code https://gitlab.example.com/me/repo)"
+  [[ $# -ge 1 ]] || die "$usage"
   local url vol store_vol tools_vol="$CODE_TOOLS_VOLUME" config_vol="$CODE_CONFIG_VOLUME"
   url="$(code_normalize_url "$1")"; shift
   vol="$(code_volume_name "$url")"
