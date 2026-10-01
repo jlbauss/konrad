@@ -11,6 +11,10 @@ Entries stay terse — the *why* lives in the git commit log and the [ARCHITECTU
 
 ## [Unreleased]
 
+### Added
+
+- **Parallel `konrad code` sessions on one repo.** Run `konrad code` on the same repo from a second terminal and that session works in its own git worktree of the clone (`s2`, `s3`, …), so agents no longer share a working tree; `--session <name>` picks or resumes one by name. Under `--nested`, sessions share the repo's images but each keeps its own container database (on Apple's `container`, a second session gets its own image store). See [README → Coding agents](README.md#coding-agents-konrad-code).
+
 ## [0.32.0] - 2026-10-01
 
 ### Security

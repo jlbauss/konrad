@@ -10,7 +10,8 @@
 # the root prelude below seals at the IP level before anything else runs.
 #
 # Mounts (all named volumes, nothing from the host filesystem):
-#   /workspace        konrad-code-<repo>  the clone + its forge token
+#   /workspace        konrad-code-<repo>  the clone, its forge token, and the
+#                     worktrees of parallel sessions (.sessions/<name>)
 #   /home/node/.local konrad-code-tools   the agent binary (installed on first use)
 #   /home/node/.config konrad-code-config the agent's login + settings
 #   /var/lib/konrad-containers  konrad-code-<repo>-containers  nested podman's
@@ -25,6 +26,7 @@ KONRAD_CODE_URL="${KONRAD_CODE_URL:-}"
 KONRAD_DEBUG="${KONRAD_DEBUG:-0}"
 WORK=/workspace
 CREDS="$WORK/.git-credentials"
+SESSIONS="$WORK/.sessions"   # parallel sessions' git worktrees (one per name)
 SEAL_TABLE=100
 NESTED_STORE=/var/lib/konrad-containers
 
@@ -290,15 +292,7 @@ if [[ -d "$repo_dir/.git" ]]; then
   [[ "$(git -C "$repo_dir" remote get-url origin 2>/dev/null || true)" == "$KONRAD_CODE_URL" ]] \
     || git -C "$repo_dir" remote set-url origin "$KONRAD_CODE_URL"
   if git -C "$repo_dir" fetch --prune --quiet origin; then
-    cur="$(git -C "$repo_dir" branch --show-current 2>/dev/null || true)"
-    step "fetched · on ${cur:-?}"
-    # A merged MR deletes its branch on the forge, which leaves the clone on a
-    # branch whose upstream is gone (`git pull` then fails cryptically). Say
-    # so; switching is the user's or the agent's call, not ours.
-    if [[ -n "$cur" && "$(git -C "$repo_dir" for-each-ref --format='%(upstream:track)' "refs/heads/$cur")" == "[gone]" ]]; then
-      base="$(git -C "$repo_dir" symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null || true)"
-      base="${base:-origin/main}"; go "its remote branch is gone (merged?) · git switch ${base#origin/} && git pull"
-    fi
+    step "fetched"
   else
     warn "git fetch failed — continuing with the existing clone"
   fi
@@ -313,10 +307,54 @@ else
   fi
   step "cloned $repo_path"
 fi
-cd "$repo_dir"
-
-default_branch="$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null || true)"
+default_branch="$(git -C "$repo_dir" symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null || true)"
 default_branch="${default_branch#origin/}"; default_branch="${default_branch:-main}"
+
+# Parallel sessions (bin/konrad picks the name; see code_live_sessions there).
+# `primary` works in the clone itself, as every run did before sessions; any
+# other session gets a git worktree of that clone under $SESSIONS, created
+# detached at the default branch on first use and resumed after. Worktrees
+# share the clone's objects and its token, and git refuses to check out one
+# branch in two of them — the guard parallel agents need.
+session="${KONRAD_CODE_SESSION:-primary}"
+work_dir="$repo_dir"
+if [[ "$session" != primary ]]; then
+  work_dir="$SESSIONS/$session"
+  git config --global --add safe.directory "$work_dir"
+  git -C "$repo_dir" worktree prune || true
+  if [[ -e "$work_dir/.git" ]]; then
+    step "session $session · resumed its worktree"
+  else
+    git -C "$repo_dir" worktree add --quiet --detach "$work_dir" "origin/$default_branch" \
+      || fatal "could not create the worktree for session $session"
+    step "session $session · new worktree at origin/$default_branch"
+  fi
+fi
+cd "$work_dir"
+
+# Where each worktree stands. A merged MR deletes its branch on the forge, which
+# leaves a worktree on a branch whose upstream is gone (`git pull` then fails
+# cryptically). Say so; switching or removing is the user's or the agent's call.
+gone() {  # gone <dir> — its branch's upstream was deleted
+  local b
+  b="$(git -C "$1" branch --show-current 2>/dev/null || true)"
+  [[ -n "$b" && "$(git -C "$1" for-each-ref --format='%(upstream:track)' "refs/heads/$b")" == "[gone]" ]]
+}
+cur="$(git branch --show-current 2>/dev/null || true)"
+go "on ${cur:-a detached HEAD}"
+if gone .; then
+  go "its remote branch is gone (merged?) · git switch --detach origin/$default_branch, then branch anew"
+fi
+others=""
+while read -r key path; do
+  [[ "$key" == worktree && "$path" != "$PWD" ]] || continue
+  name=primary; [[ "$path" == "$repo_dir" ]] || name="${path##*/}"
+  b="$(git -C "$path" branch --show-current 2>/dev/null || true)"
+  gone "$path" && b+=", merged?"
+  others+="${others:+ · }$name (${b:-detached})"
+done < <(git worktree list --porcelain)
+[[ -z "$others" ]] || go "other sessions: $others"
+
 if [[ "${KONRAD_CODE_NESTED:-0}" == "1" ]]; then
   # A store written before --nested kept SELinux on holds layers labelled with
   # the old unconfined SELinux user. The confined agent can't copy up their
@@ -330,6 +368,18 @@ if [[ "${KONRAD_CODE_NESTED:-0}" == "1" ]]; then
     go "this repo's image store predates SELinux confinement · resetting it once (images get pulled or rebuilt again)"
     podman system reset --force >/dev/null 2>&1 \
       || warn "could not reset the image store — nested containers may fail; 'podman system reset' inside the session retries"
+  fi
+  # A session keeps its own container database (libpod's static dir) and named
+  # volumes; images and layers stay shared. libpod keeps its db in the store
+  # but its run state and lock table in this container's /tmp and /dev/shm, so
+  # two sessions on one db reset each other's running containers ("Exited 292
+  # years ago") and hand out the same locks — scripts/probe-shared-store.sh.
+  # The primary session keeps libpod's default, so stores from before carry on.
+  if [[ "$session" != primary ]]; then
+    mkdir -p "$NESTED_STORE/sessions/$session"
+    printf '[engine]\nstatic_dir = "%s/libpod"\nvolume_path = "%s/volumes"\n' \
+      "$NESTED_STORE/sessions/$session" "$NESTED_STORE/sessions/$session" > /tmp/konrad-session-containers.conf
+    export CONTAINERS_CONF_OVERRIDE=/tmp/konrad-session-containers.conf
   fi
   # Informational only — a failing store must warn with podman's own error,
   # never end the run (under set -e + pipefail a bare pipeline here would).
@@ -394,9 +444,9 @@ fi
 
 # A short environment note on top of the agent's own prompts: the facts it can't
 # discover by itself (the git-only way back, the sealed LAN). Nothing else.
-note="You are running inside konrad code: a disposable container with open internet access but no route to the user's machine or local network. The working directory is a fresh clone of $KONRAD_CODE_URL; nothing you do here reaches the user except through the forge. '$default_branch' is protected, so work on a feature branch, commit, and open a merge request with: git push -u origin <branch> -o merge_request.create -o merge_request.target=$default_branch -o merge_request.remove_source_branch. The user reviews and merges it in the forge web UI. Install project tooling you need at runtime (uv, npm, …)."
+note="You are running inside konrad code: a disposable container with open internet access but no route to the user's machine or local network. The working directory is a fresh clone of $KONRAD_CODE_URL; nothing you do here reaches the user except through the forge. '$default_branch' is protected, so work on a feature branch, commit, and open a merge request with: git push -u origin <branch> -o merge_request.create -o merge_request.target=$default_branch -o merge_request.remove_source_branch. The user reviews and merges it in the forge web UI. Install project tooling you need at runtime (uv, npm, …). Other konrad code sessions may work on this repo in parallel, each in its own git worktree of the same clone under $WORK (this one: $session, at $work_dir): stay in yours, leave their branches alone, and start new branches from origin/$default_branch rather than checking out '$default_branch' (git refuses a branch another worktree has checked out)."
 if [[ "${KONRAD_CODE_NESTED:-0}" == "1" ]]; then
-  note+=" Rootless podman is available: you can build and run containers here (images persist in this repo's store across sessions); they share this container's sealed network, so they reach the internet but not the user's machine or LAN either."
+  note+=" Rootless podman is available: you can build and run containers here (images persist in this repo's store across sessions and are shared with parallel ones, so don't prune images you didn't build); they share this container's sealed network, so they reach the internet but not the user's machine or LAN either."
 fi
 
 go "claude · $repo_path"

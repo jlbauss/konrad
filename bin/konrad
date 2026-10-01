@@ -1277,7 +1277,7 @@ default_cpus() {
 }
 
 # Remove agent containers whose konrad is gone. Each launch names its agent
-# konrad-<pid> (podman_run) or konrad-code-<pid> (do_code) after its konrad, so
+# konrad-<pid> (podman_run) or konrad-code-<pid>-… (do_code) after its konrad, so
 # one that outlives that pid is an orphan. Closing the terminal makes one on
 # apple/container: konrad and the engine client die of the hangup, but the
 # container's VM keeps running. It then holds whatever it had attached: the
@@ -1292,8 +1292,13 @@ default_cpus() {
 sweep_orphans() {
   local name pid
   while IFS= read -r name; do
-    [[ "$name" =~ ^konrad-(code-)?([0-9]+)$ ]] || continue
-    pid="${BASH_REMATCH[2]}"
+    if [[ "$name" =~ ^konrad-(code-)?([0-9]+)$ ]]; then
+      pid="${BASH_REMATCH[2]}"
+    elif [[ "$name" =~ ^konrad-code-([0-9]+)-[0-9]+-[a-z0-9-]+$ ]]; then
+      pid="${BASH_REMATCH[1]}"   # a konrad code session (code_repo_id)
+    else
+      continue
+    fi
     kill -0 "$pid" 2>/dev/null && continue
     info "stopping $name, a session left running by a closed terminal (your files are kept)"
     eng_rm_container "$name"
@@ -2531,6 +2536,35 @@ code_volume_name() {
   printf 'konrad-code-%s' "$s"
 }
 
+# Parallel sessions on one repo. Each run's container is named
+# konrad-code-<pid>-<repo id>-<session>: the pid lets sweep_orphans find a dead
+# one, the repo id (a checksum of the repo volume's name, so --profile counts)
+# and the session say which worktree it holds. Names rather than labels because
+# eng_container_ls already lists them on both engines. `primary` is the clone
+# itself (every run before sessions existed); any other name is a git worktree
+# beside it (see konrad-code-entrypoint.sh).
+code_repo_id() { printf '%s' "$1" | cksum | awk '{print $1}'; }
+code_session_valid() { [[ "$1" =~ ^[a-z0-9][a-z0-9-]{0,31}$ ]]; }
+# The sessions running on repo id $1, one per line. Run after sweep_orphans, so
+# every listed container belongs to a live konrad.
+code_live_sessions() {
+  local name
+  while IFS= read -r name; do
+    [[ "$name" =~ ^konrad-code-[0-9]+-"$1"-([a-z0-9-]+)$ ]] && printf '%s\n' "${BASH_REMATCH[1]}"
+  done < <(eng_container_ls)
+  return 0
+}
+# The session a run without --session gets: the clone while it's free, else the
+# lowest free s2, s3, … (an existing worktree of that name is resumed).
+code_pick_session() {
+  local live n
+  live="$(code_live_sessions "$1")"
+  grep -qx primary <<<"$live" || { printf 'primary'; return 0; }
+  for (( n = 2; ; n++ )); do
+    grep -qx "s$n" <<<"$live" || { printf 's%s' "$n"; return 0; }
+  done
+}
+
 # The host's own networks as CIDRs (address/prefix, one per line; loopback and
 # link-local skipped — the seal covers those). Handed to the seal so it also
 # blocks the host's LAN when that LAN is on PUBLIC addresses (common on
@@ -2556,19 +2590,25 @@ host_ip_cidrs() {
 
 do_code() {
   dbg "do_code start"
-  local shell=0 nested=0
-  local usage="usage: $SELF code [--shell] [--nested] <git-url> [claude args…]   (e.g. $SELF code https://gitlab.example.com/me/repo)"
+  local shell=0 nested=0 session=""
+  local usage="usage: $SELF code [--shell] [--nested] [--session <name>] <git-url> [claude args…]   (e.g. $SELF code https://gitlab.example.com/me/repo)"
   [[ "${1:-}" == help ]] && { printf '%s\n' "$usage"; return 0; }
   while [[ "${1:-}" == -* ]]; do
     case "$1" in
       -h|--help) printf '%s\n' "$usage"; return 0 ;;
       --shell)  shell=1; shift ;;
       --nested) nested=1; shift ;;
+      --session)
+        [[ $# -ge 2 ]] || die "--session needs a name"
+        session="$2"; shift 2 ;;
+      --session=*) session="${1#--session=}"; shift ;;
       --)      shift; break ;;
       *)       break ;;
     esac
   done
   [[ $# -ge 1 ]] || die "$usage"
+  [[ -z "$session" ]] || code_session_valid "$session" \
+    || die "session names are 1–32 of a-z, 0-9 and '-', starting with a letter or digit (got '$session')"
   local url vol store_vol tools_vol="$CODE_TOOLS_VOLUME" config_vol="$CODE_CONFIG_VOLUME"
   url="$(code_normalize_url "$1")"; shift
   vol="$(code_volume_name "$url")"
@@ -2595,7 +2635,24 @@ do_code() {
     is_dev && fix="$SELF rebuild"
     die "the image $IMAGE_NAME ($KONRAD_ENGINE) predates konrad code — update it first: $fix"
   fi
+  # Pick the session before anything is created: dead runs are swept first, so
+  # what's left in the listing is live. Two runs racing for the same free name
+  # both get past this; the engine then refuses the second's container name.
+  sweep_orphans
+  local rid live
+  rid="$(code_repo_id "$vol")"
+  live="$(code_live_sessions "$rid")"
+  if [[ -z "$session" ]]; then
+    session="$(code_pick_session "$rid")"
+  elif grep -qx "$session" <<<"$live"; then
+    die "session '$session' of this repo is already running in another terminal — pick another name, or leave out --session for a free one"
+  fi
   code_brand "$url" "$vol"
+  if [[ "$session" != primary ]]; then
+    local others=""
+    [[ -n "$live" ]] && others=" · also running: $(paste -sd, - <<<"$live")"
+    go "session $session (its own worktree)$others · resume with --session $session"
+  fi
 
   # Seal privileges: the entrypoint starts as root ONLY to install the host/LAN
   # routes, then drops to node with the bounding set cleared (exec_as_node). On
@@ -2656,6 +2713,7 @@ do_code() {
   local -a env_flags=(-e "KONRAD_CODE_URL=$url" -e "KONRAD_CODE_SHELL=$shell"
                       -e "KONRAD_CODE_HOST_NETS=$host_nets"
                       -e "KONRAD_CODE_NESTED=$nested"
+                      -e "KONRAD_CODE_SESSION=$session"
                       -e "KONRAD_DEBUG=$KONRAD_DEBUG"
                       -e "CLAUDE_CONFIG_DIR=/home/node/.config/claude"
                       -e "TERM=${TERM:-xterm-256color}")
@@ -2679,9 +2737,14 @@ do_code() {
   # images can't poison another's. On apple/container it's an ENGINE volume,
   # unlike the host dirs behind konrad's other stores: VirtioFS refuses the
   # overlay store (probe-verified); the root prelude hands it to node.
+  # Parallel sessions share the store on Podman (each keeps its own container
+  # database — see the entrypoint). On apple/container the store is a block
+  # volume only one VM can attach, so a second session there gets a store of
+  # its own, cold on its first build.
   local -a store_flags=()
   local store_new=0
   if (( nested )); then
+    [[ "$KONRAD_ENGINE" == container && "$session" != primary ]] && store_vol+="-$session"
     if [[ "$KONRAD_ENGINE" == "podman" ]]; then
       podman volume exists "$store_vol" || store_new=1
     elif ! container volume inspect "$store_vol" >/dev/null 2>&1; then
@@ -2710,7 +2773,7 @@ do_code() {
   (( nested )) && [[ "$KONRAD_ENGINE" == "podman" ]] \
     && init_flags=(--entrypoint '["/usr/bin/catatonit","--","/usr/local/bin/konrad-code"]')
   local -a run_cmd=(
-    "$KONRAD_ENGINE" run --rm -it --name "konrad-code-$$"
+    "$KONRAD_ENGINE" run --rm -it --name "konrad-code-$$-$rid-$session"
     "${init_flags[@]}"
     "${priv_flags[@]}"
     ${res_flags[@]+"${res_flags[@]}"}
@@ -2722,7 +2785,6 @@ do_code() {
     "$IMAGE_NAME" "$@"
   )
   dbg "about to run: ${run_cmd[*]}"
-  sweep_orphans
   local rc=0
   "${run_cmd[@]}" || rc=$?
   # 3 = the first clone failed (a wrong URL, or no access). A volume this run
@@ -3533,7 +3595,7 @@ Subcommands:
                         token is stored on the konrad-secrets volume and reused
                         on every run:
                           $self mcp-auth wiki
-  $self code [--shell] [--nested] <git-url> [claude args…]
+  $self code [--shell] [--nested] [--session <name>] <git-url> [claude args…]
                         Sealed coding-agent mode: Claude Code on a clone of a
                         forge repo, with open internet but no route to your
                         machine or LAN, and NOTHING mounted from the host. The
@@ -3545,6 +3607,9 @@ Subcommands:
                         the agent build and run containers (rootless podman,
                         images kept in a per-repo volume); it relaxes some
                         container hardening for that run — see the README.
+                        Run it again on the same repo from another terminal and
+                        that session works in its own git worktree (s2, s3, …);
+                        '--session <name>' picks or resumes one by name.
                           $self code https://gitlab.example.com/me/repo
   $self org add <git-url> [--name <n>] [--branch <b>]
                         Subscribe to an org config layer: clones the repo to
