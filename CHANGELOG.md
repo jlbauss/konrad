@@ -11,6 +11,8 @@ Entries stay terse — the *why* lives in the git commit log and the [ARCHITECTU
 
 ## [Unreleased]
 
+## [0.31.1] - 2026-10-01
+
 ### Removed
 
 - **The dev-container self-testing mode** (`KONRAD_REMOTE_HOST_ROOT`, `KONRAD_REMOTE_GUEST_ROOT`, `KONRAD_REMOTE_HOST_CONFIG`, `KONRAD_DAEMON_ROOTFUL`, `KONRAD_REMOTE_UID`/`GID`). It existed only for konrad's own `.devcontainer/`, which is gone; contributors build and self-test in `konrad code --nested` instead ([CONTRIBUTING.md](CONTRIBUTING.md)). No change for normal use.
