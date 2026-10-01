@@ -599,6 +599,14 @@ eng_container_exists() {
     container) container inspect "$1" >/dev/null 2>&1 ;;
   esac
 }
+# Names of every container the engine knows, running or stopped, one per line
+# (best-effort; empty on any failure). apple/container's name is its ID column.
+eng_container_ls() {
+  case "$KONRAD_ENGINE" in
+    podman)    podman ps -a --format '{{.Names}}' 2>/dev/null || true ;;
+    container) container ls --all 2>/dev/null | awk 'NR>1 {print $1}' || true ;;
+  esac
+}
 
 # Wall-clock ceiling for a single network create, so a wedged engine fails fast
 # instead of hanging forever. Applied only when a `timeout` binary is present
@@ -1268,6 +1276,30 @@ default_cpus() {
   return 0
 }
 
+# Remove agent containers whose konrad is gone. Each launch names its agent
+# konrad-<pid> (podman_run) or konrad-code-<pid> (do_code) after its konrad, so
+# one that outlives that pid is an orphan. Closing the terminal makes one on
+# apple/container: konrad and the engine client die of the hangup, but the
+# container's VM keeps running. It then holds whatever it had attached: the
+# firewall nets (which fw_sweep_orphans can't delete while it's attached, so
+# this runs first) and, under konrad code --nested, the store, a block volume
+# only one VM can attach, so the next launch died with "The storage device
+# attachment is invalid". No HUP trap instead: bash runs a trap only once its
+# foreground child exits, and when konrad is the session leader the child never
+# gets the hangup, so the trap would wedge the session that closing the
+# terminal used to end (probed on Podman). A live pid is a run in another
+# terminal and is kept. The workspace and the volumes keep their content.
+sweep_orphans() {
+  local name pid
+  while IFS= read -r name; do
+    [[ "$name" =~ ^konrad-(code-)?([0-9]+)$ ]] || continue
+    pid="${BASH_REMATCH[2]}"
+    kill -0 "$pid" 2>/dev/null && continue
+    info "stopping $name, a session left running by a closed terminal (your files are kept)"
+    eng_rm_container "$name"
+  done < <(eng_container_ls)
+}
+
 # Run a command inside the konrad container with the standard mount set.
 # All variables are quoted, so paths containing spaces are safe.
 podman_run() {
@@ -1295,6 +1327,7 @@ EOF
   fi
 
   workspace_guard_mounts "$cwd"
+  sweep_orphans
 
   # Profile-suffixed state + cache volumes (secrets stays shared — see
   # KONRAD_PROFILE above). No profile → the base names, unchanged.
@@ -1473,7 +1506,7 @@ EOF
 
   local -a run_cmd=(
     "$KONRAD_ENGINE" run
-    --rm ${tty_flags[@]+"${tty_flags[@]}"} --init
+    --rm ${tty_flags[@]+"${tty_flags[@]}"} --init --name "konrad-$$"
     ${userns_flags[@]+"${userns_flags[@]}"}
     ${seal_flags[@]+"${seal_flags[@]}"}
     ${net_flags[@]+"${net_flags[@]}"}
@@ -2662,7 +2695,7 @@ do_code() {
   local nocopy=":nocopy"
   [[ "$KONRAD_ENGINE" == "container" ]] && nocopy=""
   local -a run_cmd=(
-    "$KONRAD_ENGINE" run --rm -it --init
+    "$KONRAD_ENGINE" run --rm -it --init --name "konrad-code-$$"
     "${priv_flags[@]}"
     ${res_flags[@]+"${res_flags[@]}"}
     "${env_flags[@]}"
@@ -2674,6 +2707,7 @@ do_code() {
     "$IMAGE_NAME" "$@"
   )
   dbg "about to run: ${run_cmd[*]}"
+  sweep_orphans
   local rc=0
   "${run_cmd[@]}" || rc=$?
   # 3 = the first clone failed (a wrong URL, or no access). A volume this run

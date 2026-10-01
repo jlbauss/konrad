@@ -7,7 +7,6 @@ Two horizons: **Next** (beta → 1.0) and **Later** (post-1.0). Raw ideas land i
 *Raw ideas land here. Promote into Next or Later after a refinement pass.*
 
 - [ ] `S` **`konrad code` from Ghostty: `'xterm-ghostty': unknown terminal type`.** `do_code` passes the host's `TERM` through, and the image has no terminfo entry for it, so `clear` and anything curses-based fails in the session (seen 2026-10-01). Fall back to `xterm-256color` when `infocmp "$TERM"` fails in the entrypoint, or bake Ghostty's terminfo; check whether `konrad` (the opencode TUI) has the same issue.
-- [ ] `S` **Killing or closing an interactive launch can orphan its container.** Seen from the dev container (remote Podman client → rootful podman-machine socket), 2026-09-30: after a SIGTERM to the CLI *or* a closed terminal, the `--rm -it` container kept running — for `konrad --no-firewall shell` (the `exec` path) and `konrad code` alike, so it's not a `do_code` issue. Check on a native Linux and macOS host first; if it reproduces, the lightweight fix is probably `--sig-proxy` + a `SIGHUP` trap, or an `eng rm -f` of a `--cidfile` on EXIT.
 
 ## Next — beta → 1.0
 

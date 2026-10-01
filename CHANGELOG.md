@@ -11,6 +11,10 @@ Entries stay terse — the *why* lives in the git commit log and the [ARCHITECTU
 
 ## [Unreleased]
 
+### Fixed
+
+- **A session left running by a closed terminal or a killed konrad is now stopped on the next launch.** On Apple's `container` such a session kept running, and `konrad code --nested` then failed to start ("The storage device attachment is invalid"), since the orphan still held its image store. Your files are kept.
+
 ## [0.31.1] - 2026-10-01
 
 ### Removed
