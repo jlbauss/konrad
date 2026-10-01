@@ -11,6 +11,10 @@ Entries stay terse — the *why* lives in the git commit log and the [ARCHITECTU
 
 ## [Unreleased]
 
+### Security
+
+- **`konrad code --nested` keeps SELinux on.** On SELinux hosts (Fedora, the macOS Podman VM) the agent now runs as `container_engine_t` instead of unconfined: should it ever break out of its container, SELinux still stops it from reading your files or talking to system services, as in a normal `konrad code` run. The first `--nested` run after updating resets each repo's image store once, so images get pulled or rebuilt again.
+
 ## [0.31.3] - 2026-10-01
 
 ### Fixed

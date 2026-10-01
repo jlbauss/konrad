@@ -2622,9 +2622,15 @@ do_code() {
       # file-capability uid mappers need no-new-privileges off (node's bounding
       # set still holds only setuid,setgid); Podman's seccomp allows chroot only
       # with SYS_CHROOT; pasta needs the tun device; the nested /proc mount needs
-      # the masks gone and no SELinux label (label=nested isn't enough).
+      # the masks gone. SELinux stays on, in container-selinux's type for engines
+      # in containers: container_t refuses the nested /proc mount and tun, while
+      # container_engine_t allows them and, like container_t, no host file or
+      # service (ARCHITECTURE → konrad code). Ignored on hosts without SELinux.
+      # Its nested crun masks the same paths again, over our masks, whose tmpfs
+      # carries a label it may not mount on — so unmask=ALL, /sys included.
       priv_flags+=(--cap-add=SYS_CHROOT --device /dev/net/tun
-                   --security-opt 'unmask=/proc/*' --security-opt label=disable)
+                   --security-opt unmask=ALL
+                   --security-opt label=type:container_engine_t)
     else
       priv_flags+=(--security-opt=no-new-privileges)
     fi
@@ -2685,7 +2691,7 @@ do_code() {
     fi
     store_flags=(-v "$store_vol:/var/lib/konrad-containers")
     local relaxed="/proc masks"
-    [[ "$KONRAD_ENGINE" == "podman" ]] && relaxed="no-new-privileges, SELinux label, /proc masks"
+    [[ "$KONRAD_ENGINE" == "podman" ]] && relaxed="no-new-privileges, /proc + /sys masks"
     go "nested containers on · relaxed for this run: $relaxed · store $store_vol"
   fi
 
@@ -2696,8 +2702,16 @@ do_code() {
   # apple/container's store is a host dir and takes no suffix.
   local nocopy=":nocopy"
   [[ "$KONRAD_ENGINE" == "container" ]] && nocopy=""
+  # PID 1 is catatonit, for signals and reaping. Normally the engine's --init
+  # mounts the host's copy; under the confined --nested label that host binary
+  # isn't an entrypoint container_engine_t may start from ("exec container
+  # process /run/podman-init: Permission denied"), so it runs the image's own.
+  local -a init_flags=(--init --entrypoint /usr/local/bin/konrad-code)
+  (( nested )) && [[ "$KONRAD_ENGINE" == "podman" ]] \
+    && init_flags=(--entrypoint '["/usr/bin/catatonit","--","/usr/local/bin/konrad-code"]')
   local -a run_cmd=(
-    "$KONRAD_ENGINE" run --rm -it --init --name "konrad-code-$$"
+    "$KONRAD_ENGINE" run --rm -it --name "konrad-code-$$"
+    "${init_flags[@]}"
     "${priv_flags[@]}"
     ${res_flags[@]+"${res_flags[@]}"}
     "${env_flags[@]}"
@@ -2705,7 +2719,6 @@ do_code() {
     -v "$(eng_volume_source "$tools_vol"):/home/node/.local${nocopy}"
     -v "$(eng_volume_source "$config_vol"):/home/node/.config${nocopy}"
     ${store_flags[@]+"${store_flags[@]}"}
-    --entrypoint /usr/local/bin/konrad-code
     "$IMAGE_NAME" "$@"
   )
   dbg "about to run: ${run_cmd[*]}"

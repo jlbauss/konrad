@@ -34,7 +34,10 @@
 # probed 2026-09-30, VirtioFS refuses both the chown and the overlay's pivot dir.
 #
 # Knobs: PROBE_BASE, PROBE_PIDS (1024), PROBE_MEMORY (6G), PROBE_CPUS (4),
-# PROBE_KEEP_STORE=1 (don't wipe the store before a --build run).
+# PROBE_KEEP_STORE=1 (don't wipe the store first; a store an unconfined run
+# filled breaks a confined one, as konrad-code-entrypoint.sh explains),
+# PROBE_LABEL (Podman's nested SELinux option, default do_code's
+# type:container_engine_t; `disable` is the unconfined run it replaced).
 # Nothing here changes konrad; it only needs the engine and python3 on the host.
 set -euo pipefail
 
@@ -133,8 +136,9 @@ echo "   setuid/setgid files in $base today: $("$engine" run --rm --entrypoint b
 # flags default|nested → sets the global array `f`. `default` is do_code's
 # flags today; `nested` drops no-new-privileges (the file capabilities need it
 # off) and adds what nesting needs: SYS_CHROOT (Podman's seccomp allows chroot
-# only with it), /dev/net/tun for pasta, a real /proc and no SELinux label for
-# the nested /proc mount, and the store (native overlay can't stack on overlay).
+# only with it), /dev/net/tun for pasta, a real /proc and an SELinux type that
+# allows the nested /proc mount, and the store (native overlay can't stack on
+# overlay).
 store_src="$store"
 store_reset() {
   if [[ "$engine" == podman ]]; then
@@ -161,7 +165,7 @@ flags() {
         --pids-limit "${PROBE_PIDS:-1024}")
     if [[ "$1" == nested ]]; then
       f+=(--cap-add=SYS_CHROOT --device /dev/net/tun
-          --security-opt 'unmask=/proc/*' --security-opt label=disable
+          --security-opt unmask=ALL --security-opt "label=${PROBE_LABEL:-type:container_engine_t}"
           -e "PROBE_KEEP=,+setuid,+setgid" -v "$store_src:$store_path")
     else
       f+=(--security-opt=no-new-privileges)
@@ -299,7 +303,7 @@ if [ "$BUILD" = 1 ]; then
 fi
 EOF
 )"
-if (( build )) && [[ "${PROBE_KEEP_STORE:-0}" != 1 ]]; then store_reset; fi
+if [[ "${PROBE_KEEP_STORE:-0}" != 1 ]]; then store_reset; fi
 store_ensure
 echo
 echo "== step 4: SEALED + nested, run A ($engine, store: ${store_src})"

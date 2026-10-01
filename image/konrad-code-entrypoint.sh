@@ -318,6 +318,19 @@ cd "$repo_dir"
 default_branch="$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null || true)"
 default_branch="${default_branch#origin/}"; default_branch="${default_branch:-main}"
 if [[ "${KONRAD_CODE_NESTED:-0}" == "1" ]]; then
+  # A store written before --nested kept SELinux on holds layers labelled with
+  # the old unconfined SELinux user. The confined agent can't copy up their
+  # directories (an object's SELinux user differs from its own) or relabel them,
+  # so every nested container would fail to start. It's a cache: reset it once.
+  # Only when this run is confined (bin/konrad's label on SELinux hosts).
+  self_ctx="$(tr -d '\0' </proc/self/attr/current 2>/dev/null || true)"
+  store_ctx="$(stat -c %C "$NESTED_STORE/overlay" 2>/dev/null || true)"
+  if [[ "$self_ctx" == *:container_engine_t:* && "$store_ctx" == *:*:*:* \
+        && "${self_ctx%%:*}" != "${store_ctx%%:*}" ]]; then
+    go "this repo's image store predates SELinux confinement · resetting it once (images get pulled or rebuilt again)"
+    podman system reset --force >/dev/null 2>&1 \
+      || warn "could not reset the image store — nested containers may fail; 'podman system reset' inside the session retries"
+  fi
   # Informational only — a failing store must warn with podman's own error,
   # never end the run (under set -e + pipefail a bare pipeline here would).
   store_err="$(mktemp)"

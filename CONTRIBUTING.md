@@ -69,7 +69,7 @@ You need:
 
 That's the whole host toolchain; there's deliberately no dev container (why: [ARCHITECTURE → konrad code](ARCHITECTURE.md#konrad-code)). In VS Code, accept the workspace's recommended extensions (markdownlint and shellcheck, both bundling their linter) — [.vscode/settings.json](.vscode/settings.json) applies the markdownlint fixes on save. For a shell with the agent's exact toolset and a nested Podman, nothing installed on your host, run `konrad code --shell --nested https://gitlab.git.nrw/jbauss2/konrad`: the same sealed box an agent works in, with its own clone.
 
-**Agents work in `konrad code`, not in your checkout.** Launch one with `konrad code --nested https://gitlab.git.nrw/jbauss2/konrad`: a disposable container with its own clone, its own rootless Podman (so it builds, smoke-tests and self-tests the image itself) and open internet, but no host mounts and a sealed LAN; it hands work back only as a merge request ([ARCHITECTURE → konrad code](ARCHITECTURE.md#konrad-code)). On native Linux, `--nested` currently drops SELinux confinement for that container — see the ROADMAP's SELinux item. The agent-side rules live in [CLAUDE.md](CLAUDE.md).
+**Agents work in `konrad code`, not in your checkout.** Launch one with `konrad code --nested https://gitlab.git.nrw/jbauss2/konrad`: a disposable container with its own clone, its own rootless Podman (so it builds, smoke-tests and self-tests the image itself) and open internet, but no host mounts and a sealed LAN; it hands work back only as a merge request ([ARCHITECTURE → konrad code](ARCHITECTURE.md#konrad-code)). The agent-side rules live in [CLAUDE.md](CLAUDE.md).
 
 ## Local development loop
 
