@@ -11,6 +11,8 @@ Entries stay terse — the *why* lives in the git commit log and the [ARCHITECTU
 
 ## [Unreleased]
 
+## [0.31.3] - 2026-10-01
+
 ### Fixed
 
 - **`konrad code` no longer aborts at startup when the host lists a DNS server more than once** (e.g. Wi-Fi and Ethernet to the same router): the egress seal now exempts each resolver once, and reports `ip`'s real error if an exemption fails.
