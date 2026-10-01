@@ -10,9 +10,8 @@
 #   2. a real `konrad run` through bin/konrad — does the RUNTIME come up the way
 #      a user's invocation does (uid mapping, workspace mount, config compose)
 #      and answer a prompt? This is the part the image smoke test deliberately
-#      doesn't cover, and the part that exercises the macOS dev-container
-#      self-testing path end to end. It goes through the real CLI on purpose —
-#      that's where the rootful uid-map / remote-path-translation logic lives.
+#      doesn't cover. It goes through the real CLI on purpose — that's where
+#      the uid mapping, mounts and firewall assembly live.
 #
 # Layer 2 needs a model + a provider credential. By default the model is
 # whatever you've configured for NORMAL konrad — the self-test runtime mounts
@@ -28,8 +27,7 @@
 # unreachable, …): the container-startup half still validates the runtime path
 # and the model probe reports SKIP with the reason. So a RED result means the
 # runtime broke — not that you haven't configured a model or wired a key.
-# Setup (model + one-time credential) is in CONTRIBUTING.md (on macOS the
-# rootful daemon has its own, initially-empty secrets volume).
+# Setup (model + one-time credential) is in CONTRIBUTING.md.
 #
 # Not a CI gate: CI has no podman, no model, and no credentials. This is the
 # contributor's / agent's loop. CONTAINER_ENGINE is intentionally NOT honored —
@@ -76,8 +74,8 @@ skip() { printf '  \033[33mSKIP\033[0m  %s\n' "$*"; }
 info() { printf '\n\033[1m%s\033[0m\n' "$*"; }
 
 # --- Locate the CLI ---
-# konrad-dev is preprovisioned on PATH in the dev container; a native checkout
-# runs bin/konrad directly. KONRAD_IMAGE pins the tag regardless of which one.
+# konrad-dev if it's on PATH (CONTRIBUTING's symlink), else the checkout's
+# bin/konrad directly. KONRAD_IMAGE pins the tag regardless of which one.
 if command -v konrad-dev >/dev/null 2>&1; then
   KONRAD="konrad-dev"
 elif [ -x "$ROOT/bin/konrad" ]; then

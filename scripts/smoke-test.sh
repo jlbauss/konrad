@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2026 Jan-Luca Bauß
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
 # Smoke test the konrad image. Runs in CI before publishing to the
 # registry — if any check fails, the daily build does not move the
 # `:latest` tag and last-known-good keeps serving users. Also runnable
@@ -196,15 +199,6 @@ pass "docling extracted a generated PDF"
 # without a workspace mount. ':ro,z' relabels for SELinux hosts (Fedora local
 # podman) and is accepted/ignored by docker in CI.
 info "org config layer (entrypoint compose)"
-# Remote daemon (dev-container self-testing — KONRAD_REMOTE_HOST_ROOT set): the
-# bind-mount sources below resolve on the DAEMON's filesystem, not this script's,
-# so a local mktemp dir is invisible daemon-side (statfs ENOENT). The real konrad
-# self-test path skips the config-layer mounts for exactly this reason (podman_run
-# in bin/konrad), and CI exercises this compose logic on every build against a
-# local daemon — so skip here rather than fail. Matches CONTRIBUTING.md.
-if [[ -n "${KONRAD_REMOTE_HOST_ROOT:-}" ]]; then
-  printf '  \033[33mSKIP\033[0m  org-layer compose (remote daemon — covered by CI on a local daemon)\n'
-else
 ORG_TMP="$(mktemp -d)"
 USER_TMP="$(mktemp -d)"
 cleanup_org() { rm -rf "$ORG_TMP" "$USER_TMP"; }
@@ -290,7 +284,6 @@ grep -qx 'llm.acme.example'  /tmp/allowed-hosts
 grep -qx 'wiki.acme.example' /tmp/allowed-hosts
 CONTAINER
 pass "org layers merge in order under user precedence; instructions copy; skill loads; firewall sees every layer"
-fi
 
 
 # --- All clear ---

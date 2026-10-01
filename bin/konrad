@@ -86,7 +86,7 @@ KONRAD_STORE_HOME="${XDG_STATE_HOME:-$HOME/.local/state}/konrad/store"
 # use is `--profile selftest` for end-to-end self-test runs: a live run against
 # the real konrad-state otherwise triggers opencode's one-time DB migration on
 # it and persists a model/session the user didn't pick (hit 2026-06-03 during
-# dev-container self-testing). SECRETS is deliberately NOT suffixed — it stays
+# self-testing). SECRETS is deliberately NOT suffixed — it stays
 # shared so a profile reuses the user's real provider credentials (auth.json);
 # an isolated secrets volume would start empty and have no API key to resolve a
 # model. Empty (no --profile) → the unsuffixed volumes above, unchanged.
@@ -319,8 +319,7 @@ WORKSPACE_GUARD_ENTRIES=(.git .githooks .husky .vscode .devcontainer .claude .mc
 # is installed, that native engine is preferred — it drops the `podman machine`
 # VM entirely. Empty here → detect_engine() picks one at startup. Pin explicitly
 # with KONRAD_ENGINE=podman (stay on Podman on a Mac) or =container (force it).
-# The dev container is Linux, so it always resolves to podman — working ON konrad
-# stays on Podman. Every engine call below routes through an eng_* wrapper, since
+# Every engine call below routes through an eng_* wrapper, since
 # the two CLIs are NOT subcommand-compatible (`container image pull` vs
 # `podman pull`, `container delete` vs `podman rm`, JSON-only inspect, no
 # `--userns`, no `:z`/`:U`/`:ro` mount suffixes).
@@ -688,8 +687,7 @@ ro_bind() {
 }
 
 # Set the global WS_GUARD array to read-only overlays for every guarded entry
-# (WORKSPACE_GUARD_ENTRIES) that exists at the root of workspace $1, bound from
-# host source root $2 (differs from $1 only in remote mode). Deferred escape is
+# (WORKSPACE_GUARD_ENTRIES) that exists at the root of workspace $1. Deferred escape is
 # the threat: the agent can't reach the host, but the host runs what the agent
 # leaves behind — `git status` runs core.fsmonitor, a fetch fires hooks, a
 # trusted VS Code runs .vscode tasks, a devcontainer reopen runs initializeCommand.
@@ -707,13 +705,13 @@ ro_bind() {
 # .mcp.json, and a .git FILE (worktree/submodule) — are skipped, a documented gap.
 WS_GUARD=()
 workspace_guard_mounts() {
-  local ws="$1" src="$2" e
+  local ws="$1" e
   WS_GUARD=()
   [[ "$KONRAD_WORKSPACE_GUARD" == 0 ]] && return 0
   for e in "${WORKSPACE_GUARD_ENTRIES[@]}"; do
     [[ -e "$ws/$e" && ! -L "$ws/$e" ]] || continue
     [[ "$KONRAD_ENGINE" == "container" && ! -d "$ws/$e" ]] && continue
-    ro_bind "$src/$e" "/workspace/$e"
+    ro_bind "$ws/$e" "/workspace/$e"
     WS_GUARD+=("${RO_BIND[@]}")
   done
 }
@@ -967,29 +965,6 @@ scratch_notice() {
   [[ "$why" == "redirect" ]] \
     && info "  cd into a project directory to work on real files instead."
   return 0
-}
-
-# --- Remote-daemon path translation (dev-container self-testing) ---
-# Normally konrad's podman talks to a LOCAL daemon, so bind-mount SOURCE
-# paths are read off the same filesystem as this script. The .devcontainer
-# self-testing path (see CLAUDE.md) instead points podman at the HOST's
-# rootless socket via CONTAINER_HOST, so the agent working ON konrad can
-# exercise the runtime image. With a remote daemon, every `-v src:…` source
-# is resolved against the HOST fs, not this container's — so the workspace
-# the agent sees under /workspace has to be rewritten to its real host path.
-# The dev container supplies the mapping in two env vars:
-#   KONRAD_REMOTE_HOST_ROOT   host-fs path the guest workspace root maps to
-#                             (its presence is what flips on remote mode)
-#   KONRAD_REMOTE_GUEST_ROOT  the in-container prefix that maps to it (/workspace)
-# Unset on every normal host install → no rewrite, paths used verbatim.
-remote_host_path() {
-  local p="$1"
-  local host="${KONRAD_REMOTE_HOST_ROOT:-}" guest="${KONRAD_REMOTE_GUEST_ROOT:-/workspace}"
-  if [[ -n "$host" && "$p" == "$guest"* ]]; then
-    printf '%s%s' "$host" "${p#"$guest"}"
-  else
-    printf '%s' "$p"
-  fi
 }
 
 # --- Egress firewall (sidecar filtering proxy) -------------------------------
@@ -1296,7 +1271,7 @@ default_cpus() {
 # Run a command inside the konrad container with the standard mount set.
 # All variables are quoted, so paths containing spaces are safe.
 podman_run() {
-  local cwd ws_src
+  local cwd
   # The bind source is the selected scratch workspace when one was minted
   # (KONRAD_WORKSPACE_DIR), else the current directory — the normal case.
   cwd="${KONRAD_WORKSPACE_DIR:-$(pwd -P)}"
@@ -1306,10 +1281,8 @@ podman_run() {
   # entire home, and the mount fails outright on some hosts (SELinux won't relabel
   # $HOME; the macOS Podman VM can't traverse ~/.Trash). Name the fix, don't emit
   # a raw mount error. Skipped when a scratch workspace is already selected (the
-  # agent TUI redirects there instead of erroring — see do_run) and in
-  # remote/self-test mode, where cwd is /workspace.
-  if [[ -z "${KONRAD_REMOTE_HOST_ROOT:-}" && -z "${KONRAD_WORKSPACE_DIR:-}" ]] \
-     && cwd_is_home; then
+  # agent TUI redirects there instead of erroring — see do_run).
+  if [[ -z "${KONRAD_WORKSPACE_DIR:-}" ]] && cwd_is_home; then
     cat >&2 <<EOF
 konrad: refusing to run with your home directory as the workspace.
 
@@ -1321,8 +1294,7 @@ EOF
     exit 1
   fi
 
-  ws_src="$(remote_host_path "$cwd")"   # rewritten only in remote mode
-  workspace_guard_mounts "$cwd" "$ws_src"
+  workspace_guard_mounts "$cwd"
 
   # Profile-suffixed state + cache volumes (secrets stays shared — see
   # KONRAD_PROFILE above). No profile → the base names, unchanged.
@@ -1335,8 +1307,7 @@ EOF
   # Mount-option suffixes for READ-WRITE binds. Podman uses :z (SELinux relabel)
   # and :U (chown the volume to the mapped user); apple/container supports neither
   # (VirtioFS maps UIDs, no SELinux, and its -v rejects suffixes), so they're
-  # empty there. vol_relabel may be cleared again below for the rootful-remote
-  # Podman path (chcon fails on virtiofs). Read-ONLY binds don't use these — they
+  # empty there. Read-ONLY binds don't use these — they
   # go through ro_bind(), which picks :ro vs --mount …,readonly per engine.
   local vol_relabel=":z" vol_chown=":U"
   if [[ "$KONRAD_ENGINE" == "container" ]]; then
@@ -1368,99 +1339,43 @@ EOF
   [[ -n "${NO_COLOR:-}" ]]  && color_env+=(-e "NO_COLOR=${NO_COLOR}")
 
   # Host-home bind mounts. The central log dir and the org/user config layers
-  # live under $HOME. Against a LOCAL daemon they bind straight off this
-  # filesystem. Against a REMOTE daemon (dev-container self-testing) the daemon
-  # resolves every -v SOURCE on its OWN filesystem, so:
-  #   - the log dir is skipped — no daemon-visible path for it; giving up
-  #     host-side log capture is the one concession self-testing makes;
-  #   - the config layers ARE mounted, from the host path the dev container
-  #     exposes as KONRAD_REMOTE_HOST_CONFIG (the user's real ~/.config/konrad,
-  #     which .devcontainer also binds into THIS container at $KONRAD_CFG_DIR so
-  #     the -d guards below can see which layers exist). Net effect: self-testing
-  #     composes baked < org < user exactly like an ordinary run — same model,
-  #     AGENTS.md, skills, and providers — instead of running bare baked config.
-  # The named volumes further down are daemon-side and work either way (so the
-  # dev-container konrad still shares the host konrad's secrets/state).
+  # live under $HOME and bind straight off this filesystem.
   # cfg_mounts holds ONLY the org/user config layers — the firewall proxy needs
   # the identical set (it composes the same baked<org<user config to derive the
   # provider allow-list), so it's kept separate and merged into home_mounts for
   # the agent. home_mounts adds the agent-only central log dir on top.
   local -a cfg_mounts=()
   local -a home_mounts=()
-  if [[ -z "${KONRAD_REMOTE_HOST_ROOT:-}" ]]; then
-    # LOCAL daemon: log dir + config layers off this filesystem.
-    # Central log dir on the host (XDG state). Created lazily so the bind
-    # works on the very first launch. The entrypoint writes a per-session
-    # sidecar here and opencode writes its structured log alongside.
-    mkdir -p "$KONRAD_LOG_DIR"
-    home_mounts+=(-v "${KONRAD_LOG_DIR}:/home/node/.local/share/opencode/log${vol_relabel}")
-    # Config-layer mounts. The org layer (~/.config/konrad/org/) and the
-    # per-user layer (~/.config/konrad/user/) are each surfaced WHOLE into
-    # the container at /home/node/.config/konrad/{org,user}; the entrypoint
-    # composes them over the baked defaults (precedence: baked < org < user).
-    # Read-only — the container never writes back. Gated on existence so a
-    # user with no org package (the common case) just gets the user mount.
-    [[ -d "$ORG_CFG_DIR" ]]  && { ro_bind "$ORG_CFG_DIR"  /home/node/.config/konrad/org;  cfg_mounts+=("${RO_BIND[@]}"); }
-    [[ -d "$USER_CFG_DIR" ]] && { ro_bind "$USER_CFG_DIR" /home/node/.config/konrad/user; cfg_mounts+=("${RO_BIND[@]}"); }
-    # Reference-material mount (org/user-supplied wiki, docs, …) at /context.
-    # AGENT-ONLY, so it lands in home_mounts, NOT cfg_mounts: it is not config,
-    # and the firewall proxy (which consumes cfg_mounts to derive the allow-list)
-    # has no business seeing it. One bind of the whole dir; consumers namespace
-    # by subdir (/context/<name>). Reads fall under the default external_directory
-    # allow, so no permission change. See ARCHITECTURE's mount table.
-    [[ -d "$CONTEXT_CFG_DIR" ]] && { ro_bind "$CONTEXT_CFG_DIR" /context; home_mounts+=("${RO_BIND[@]}"); }
-  else
-    # REMOTE daemon: mount the SAME config layers, but from the daemon-visible
-    # host path (KONRAD_REMOTE_HOST_CONFIG); the -d guards stat the copy the dev
-    # container sees at $KONRAD_CFG_DIR. Unset (Linux host without the wire-up,
-    # or an older dev container) → no config mount, baked-only, as before.
-    local host_cfg="${KONRAD_REMOTE_HOST_CONFIG:-}"
-    if [[ -n "$host_cfg" ]]; then
-      [[ -d "$ORG_CFG_DIR" ]]  && { ro_bind "$host_cfg/org"  /home/node/.config/konrad/org;  cfg_mounts+=("${RO_BIND[@]}"); }
-      [[ -d "$USER_CFG_DIR" ]] && { ro_bind "$host_cfg/user" /home/node/.config/konrad/user; cfg_mounts+=("${RO_BIND[@]}"); }
-      # /context too (agent-only → home_mounts), for self-test parity. See the
-      # local branch above for the full rationale.
-      [[ -d "$CONTEXT_CFG_DIR" ]] && { ro_bind "$host_cfg/context" /context; home_mounts+=("${RO_BIND[@]}"); }
-    fi
-    # In remote-socket mode (dev-container self-test) the daemon resolves the
-    # workspace bind against the HOST fs, which only knows paths under the guest
-    # root. Outside it the bind can't resolve — podman dies with a raw
-    # `statfs <cwd>: no such file or directory`. Refuse upfront with the fix
-    # instead (the remote-mode analog of the $HOME guard above).
-    local guest_root="${KONRAD_REMOTE_GUEST_ROOT:-/workspace}"
-    if [[ "$cwd" != "$guest_root" && "$cwd" != "$guest_root/"* ]]; then
-      die "in the dev container, run konrad from under $guest_root (got $cwd) — the workspace mount can't resolve a path outside it. cd into your checkout (e.g. $guest_root) and re-run."
-    fi
-  fi
+  # Central log dir on the host (XDG state). Created lazily so the bind
+  # works on the very first launch. The entrypoint writes a per-session
+  # sidecar here and opencode writes its structured log alongside.
+  mkdir -p "$KONRAD_LOG_DIR"
+  home_mounts+=(-v "${KONRAD_LOG_DIR}:/home/node/.local/share/opencode/log${vol_relabel}")
+  # Config-layer mounts. The org layer (~/.config/konrad/org/) and the
+  # per-user layer (~/.config/konrad/user/) are each surfaced WHOLE into
+  # the container at /home/node/.config/konrad/{org,user}; the entrypoint
+  # composes them over the baked defaults (precedence: baked < org < user).
+  # Read-only — the container never writes back. Gated on existence so a
+  # user with no org package (the common case) just gets the user mount.
+  [[ -d "$ORG_CFG_DIR" ]]  && { ro_bind "$ORG_CFG_DIR"  /home/node/.config/konrad/org;  cfg_mounts+=("${RO_BIND[@]}"); }
+  [[ -d "$USER_CFG_DIR" ]] && { ro_bind "$USER_CFG_DIR" /home/node/.config/konrad/user; cfg_mounts+=("${RO_BIND[@]}"); }
+  # Reference-material mount (org/user-supplied wiki, docs, …) at /context.
+  # AGENT-ONLY, so it lands in home_mounts, NOT cfg_mounts: it is not config,
+  # and the firewall proxy (which consumes cfg_mounts to derive the allow-list)
+  # has no business seeing it. One bind of the whole dir; consumers namespace
+  # by subdir (/context/<name>). Reads fall under the default external_directory
+  # allow, so no permission change. See ARCHITECTURE's mount table.
+  [[ -d "$CONTEXT_CFG_DIR" ]] && { ro_bind "$CONTEXT_CFG_DIR" /context; home_mounts+=("${RO_BIND[@]}"); }
   home_mounts+=(${cfg_mounts[@]+"${cfg_mounts[@]}"})
 
-  # User-namespace mapping. The normal case (local rootless daemon, and the
-  # Linux remote-socket path) is keep-id: container node(1000) shares the
-  # invoking user's uid, so workspace files have sane ownership. A ROOTFUL
-  # remote daemon — the macOS dev-container self-testing path, flagged by
-  # KONRAD_DAEMON_ROOTFUL from .devcontainer/podman-vscode.sh — needs the
-  # explicit equivalent instead: rootful keep-id degrades to an identity map
-  # while virtiofs presents the workspace with raw Mac ids, so node must be
-  # mapped to the Mac user's uid/gid (KONRAD_REMOTE_UID/GID, injected by the
-  # same shim). SELinux labeling is disabled there (Enforcing in the machine
-  # VM) and the workspace `:z` relabel skipped (chcon fails on virtiofs).
-  # apple/container takes neither path: VirtioFS maps guest UIDs → the host user
+  # User-namespace mapping: keep-id, so container node(1000) shares the
+  # invoking user's uid and workspace files have sane ownership.
+  # apple/container needs none: VirtioFS maps guest UIDs → the host user
   # automatically, so it gets no userns flag at all (and no relabel — vol_relabel
   # was already emptied for it above).
   local -a userns_flags=("--userns=keep-id:uid=1000,gid=1000")
   if [[ "$KONRAD_ENGINE" == "container" ]]; then
     userns_flags=()
-  elif [[ "${KONRAD_DAEMON_ROOTFUL:-0}" == "1" ]]; then
-    local ruid="${KONRAD_REMOTE_UID:?KONRAD_DAEMON_ROOTFUL=1 requires KONRAD_REMOTE_UID}"
-    local rgid="${KONRAD_REMOTE_GID:?KONRAD_DAEMON_ROOTFUL=1 requires KONRAD_REMOTE_GID}"
-    vol_relabel=""
-    userns_flags=(
-      --security-opt label=disable
-      --uidmap 0:100000:999 --uidmap 999:0:1
-      --uidmap "1000:${ruid}:1" --uidmap 1001:101001:64535
-      --gidmap 0:100000:999 --gidmap 999:0:1
-      --gidmap "1000:${rgid}:1" --gidmap 1001:101001:64535
-    )
   fi
 
   # Egress firewall: stand up the sidecar + isolated network, then put the agent
@@ -1572,10 +1487,10 @@ EOF
     -e "KONRAD_TRACE_FETCH=${KONRAD_TRACE_FETCH:-0}"
     -e "KONRAD_NO_DISCOVERY=${KONRAD_NO_DISCOVERY:-0}"
     -e "KONRAD_DISCOVERY_TIMEOUT=${KONRAD_DISCOVERY_TIMEOUT:-}"
-    -e "KONRAD_HOST_WORKSPACE=${ws_src}"
+    -e "KONRAD_HOST_WORKSPACE=${cwd}"
     -e "KONRAD_HOST_LOG_DIR=${KONRAD_LOG_DIR}"
     -e "KONRAD_ALLOWED_HOSTS=${KONRAD_ALLOW_HOST}"
-    -v "${ws_src}:/workspace${vol_relabel}"
+    -v "${cwd}:/workspace${vol_relabel}"
     ${WS_GUARD[@]+"${WS_GUARD[@]}"}
     -v "$(eng_volume_source "$SECRETS_VOLUME"):/home/node/.opencode-secrets${vol_chown}"
     -v "$(eng_volume_source "$cache_vol"):/home/node/.cache/opencode${vol_chown}"
@@ -1868,11 +1783,10 @@ do_run() {
   dbg "do_run start (mode=$mode)"
   launch_preflight
   # Workspace selection for the agent TUI. Two ways into a scratch workspace,
-  # both agent-only and skipped in remote/self-test mode (KONRAD_REMOTE_HOST_ROOT,
-  # where cwd is already /workspace): an explicit `konrad scratch` (KONRAD_SCRATCH),
-  # or the auto-fallback when the TUI is launched from $HOME — which used to be a
+  # both agent-only: an explicit `konrad scratch` (KONRAD_SCRATCH), or the
+  # auto-fallback when the TUI is launched from $HOME — which used to be a
   # hard refusal. `shell`/`run` keep the explicit guard in podman_run.
-  if [[ "$mode" == "agent" && -z "${KONRAD_REMOTE_HOST_ROOT:-}" ]]; then
+  if [[ "$mode" == "agent" ]]; then
     if [[ "${KONRAD_SCRATCH:-0}" == "1" ]]; then
       prepare_scratch_workspace; scratch_notice explicit
     elif cwd_is_home; then
