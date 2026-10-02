@@ -44,8 +44,11 @@
 #        cron:        0 1 * * *   (daily 01:00 UTC)
 #        target:      main
 #        description: daily lock refresh
-#      The job is gated to schedule + manual web triggers (see `rules:`
-#      below), so it never runs on regular pushes.
+#      The job is gated to schedule + manual web triggers on main (see
+#      `rules:` below), so it never runs on regular pushes. Main only,
+#      because the bump is committed on top of whatever ref the pipeline
+#      runs on: started on a feature branch, its unreviewed commits would
+#      ride the bot's auto-merging MR into main.
 # =============================================================================
 
 # =============================================================================
@@ -71,8 +74,8 @@ resolve-locks:
   image: node:26-trixie-slim
   tags: [docker]
   rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule"
-    - if: $CI_PIPELINE_SOURCE == "web"
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "web" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
   variables:
     GIT_STRATEGY: clone
     GIT_DEPTH: "1"
