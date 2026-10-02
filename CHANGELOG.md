@@ -11,6 +11,12 @@ Entries stay terse — the *why* lives in the git commit log and the [ARCHITECTU
 
 ## [Unreleased]
 
+## [0.33.1] - 2026-10-02
+
+### Fixed
+
+- **`konrad code --nested` on Apple's `container` no longer warns at startup that nested podman "can't read its store"** (`"/home/node/.config" exists and it is not owned by the current user`) when podman works fine. When the store really is broken, the warning now shows podman's whole error, not just its last line.
+
 ## [0.33.0] - 2026-10-02
 
 ### Added
