@@ -194,10 +194,17 @@ git config --global init.defaultBranch main
 # one without a valid token alike (401), and git would then ask for a username
 # — a dead end here, since the token is the only credential.
 export GIT_TERMINAL_PROMPT=0
-# On apple/container the volume is a host dir shared into the VM, and a later
-# run sees the clone owned by another uid than node, so git refuses it as
-# "dubious ownership". The volume is this repo's alone; trust just that path.
+# On apple/container /workspace, ~/.config and ~/.local are host dirs shared
+# into the VM over VirtioFS (the one filesystem two VMs can share, which
+# parallel sessions and repos need). VirtioFS reports a file as owned by
+# whichever uid last looked it up, for as long as the guest caches that answer,
+# so tools that check ownership can see root (after the prelude) or a nested
+# container's uid instead of node. git refuses the clone as "dubious
+# ownership": the volume is this repo's alone, so trust just that path.
 git config --global --add safe.directory "$repo_dir"
+# Podman refuses a ~/.config it doesn't seem to own, but checks only a config
+# dir it derives from $HOME: naming its default explicitly skips the check.
+export XDG_CONFIG_HOME="$HOME/.config"
 [[ -n "${KONRAD_GIT_NAME:-}" ]]  && git config --global user.name  "$KONRAD_GIT_NAME"
 [[ -n "${KONRAD_GIT_EMAIL:-}" ]] && git config --global user.email "$KONRAD_GIT_EMAIL"
 
@@ -383,11 +390,13 @@ if [[ "${KONRAD_CODE_NESTED:-0}" == "1" ]]; then
   fi
   # Informational only — a failing store must warn with podman's own error,
   # never end the run (under set -e + pipefail a bare pipeline here would).
+  # Every line of it but the warnings, which podman prints on a healthy run too.
   store_err="$(mktemp)"
   if store_ids="$(podman images -q 2>"$store_err")"; then
     go "nested podman · $(grep -c . <<<"$store_ids" || true) image(s) kept in this repo's store"
   else
-    warn "nested podman can't read its store: $(tail -1 "$store_err")"
+    store_msg="$(grep -v -e '^WARN\[' -e 'level=warning' "$store_err" | paste -sd ' ' || true)"
+    warn "nested podman can't read its store: ${store_msg:-$(tail -1 "$store_err")}"
   fi
   rm -f "$store_err"
 fi
