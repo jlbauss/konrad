@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Jan-Luca Bauß
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 # =============================================================================
 # GitLab CI — daily lock-file refresh.
 #
@@ -9,8 +12,8 @@
 # / clone() capabilities Podman-in-Docker needs (see commit f5bc95d).
 #
 # This job is different: it just resolves dependency names (uv pip
-# compile, npm view, GitHub releases API) and pushes the bump directly
-# to main. No Podman, no privileged container ops — runs fine on the
+# compile, npm view, GitHub releases API) and lands the bump through an
+# auto-merging MR. No Podman, no privileged container ops — runs fine on the
 # same shared runner that couldn't host the image build.
 #
 # Why this matters: the GitLab repo is source of truth; GitHub is a
@@ -20,17 +23,17 @@
 # the source of truth single, and the push to main mirrors to GitHub,
 # which then triggers build-image.yml via the image/** path filter.
 #
-# Why direct push (no MR): this bot has no reviewer and no MR pipeline
-# gates the merge (image build + smoke run downstream on the GitHub
-# mirror after main moves). Human and agent changes go through MRs; for
-# a deterministic daily bump an MR adds polling complexity without
-# review value, and FF-pushing main keeps history linear.
+# Why an MR, not a direct push: main accepts no pushes at all — every
+# commit on it, the bot's included, passed `check` in an MR pipeline
+# first, so main's own push pipeline doesn't re-run it. The MR needs no
+# reviewer: the push sets auto-merge, and GitLab merges (fast-forward)
+# once the MR pipeline is green.
 #
 # Setup (manual, one-time, done in the GitLab UI):
 #   1. Settings → Access Tokens → create a Project Access Token with
-#      scope `write_repository`. Role must be allowed to push to main:
-#      Maintainer if main is a protected branch, Developer otherwise.
-#      Stash as a masked + protected CI/CD variable named BOT_PAT.
+#      scope `write_repository`. Role must be allowed to merge into main
+#      (Maintainer while main is protected), since auto-merge merges as
+#      the bot. Stash as a masked + protected CI/CD variable named BOT_PAT.
 #   1b. (Optional but recommended) Settings → CI/CD → Variables → add a
 #      masked variable HF_TOKEN holding a HuggingFace read token. The models
 #      resolver uses it to lift the anonymous HF API rate limit; without it
@@ -254,17 +257,25 @@ resolve-locks:
       fi
       echo "Locks moved: $MOVED"
 
-      # ---- commit + push directly to main ---------------------------------
-      # FF-push HEAD to main. If main moved after this pipeline started
-      # the push is rejected (no -f), which is the desired behavior:
-      # tomorrow's run will re-resolve against the new main.
+      # ---- commit + open an auto-merging MR --------------------------------
+      # Force-push to one fixed branch, so a bump that didn't merge (main
+      # moved first: the fast-forward needs a rebase, and GitLab drops the
+      # auto-merge) is replaced by the next run's, re-resolved against the
+      # new main and re-armed by the same options — never a pile of MRs.
+      # The push options open the MR on the first push and update it on
+      # later ones; auto_merge merges it once the MR pipeline is green.
       git config user.email "konrad-bot@gitlab.git.nrw"
       git config user.name  "konrad-locks-bot"
       git add image/locks image/konrad-defaults/provider-hosts.json
       git commit -m "chore(locks): bump $MOVED"
-      git push \
+      git push --force \
+        -o merge_request.create \
+        -o merge_request.target=main \
+        -o merge_request.remove_source_branch \
+        -o merge_request.auto_merge \
+        -o "merge_request.title=chore(locks): bump $MOVED" \
         "https://oauth2:${BOT_PAT}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git" \
-        HEAD:main
+        HEAD:refs/heads/bot/locks
 
 # =============================================================================
 # Static gates — scripts/check.sh.
@@ -274,7 +285,9 @@ resolve-locks:
 # actionlint, hadolint, each fetched at the version pinned in the script. So a
 # gate can't pass locally and fail here on a version or flag difference, and
 # adding a gate is one edit to check.sh, not a new job. Plain file checks — they
-# run on the shared runner, gating MRs and pushes on the source-of-truth repo.
+# run on the shared runner, gating MRs and branch pushes on the source-of-truth
+# repo. Not main or tags: main takes merges only (fast-forward), so its commit
+# is exactly the one the MR pipeline already checked.
 # Tool config is auto-discovered from the repo root (.shellcheckrc,
 # .hadolint.yaml, .markdownlint*.jsonc, REUSE.toml).
 #
@@ -289,7 +302,7 @@ check:
   tags: [docker]
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    - if: $CI_PIPELINE_SOURCE == "push"
+    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH && $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH
   before_script:
     - apk add --no-cache bash git curl
     - curl -fsSL https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh
