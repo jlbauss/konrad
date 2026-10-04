@@ -110,6 +110,11 @@ USER_CFG_DIR="$KONRAD_CFG_DIR/user"
 # sibling of org/user holding named subdirs the agent greps at /context/<name>;
 # see the context mount below and ARCHITECTURE → State, secrets & isolation.
 CONTEXT_CFG_DIR="$KONRAD_CFG_DIR/context"
+# konrad code's own layers — for the coding agent, not konrad's coworking one,
+# so never merged with org/user above. code/user/ is bound read-only into
+# `konrad code` sessions (see code_user_layer below).
+CODE_USER_CFG_DIR="$KONRAD_CFG_DIR/code/user"
+CODE_USER_LAYER_MOUNT="/opt/konrad-code/user"   # the entrypoint's CODE_USER_LAYER
 
 # Central log directory on the host (XDG state). Holds opencode's
 # structured log files plus a per-session sidecar that records the host
@@ -2564,6 +2569,40 @@ code_volume_name() {
 # beside it (see konrad-code-entrypoint.sh).
 code_repo_id() { printf '%s' "$1" | cksum | awk '{print $1}'; }
 code_session_valid() { [[ "$1" =~ ^[a-z0-9][a-z0-9-]{0,31}$ ]]; }
+
+# Set the global CODE_LAYER_FLAGS to the read-only bind of the user's code
+# layer (~/.config/konrad/code/user), or to nothing when it's absent. A bind,
+# not a copy: it carries a whole dir as is (skills with their scripts), and read-only keeps
+# konrad code's real guarantee — nothing the agent writes reaches the host.
+# The session has open egress, so whatever the dir holds can leak; three
+# checks keep it from holding more than the user meant:
+#   - a symlinked dir is refused: the engine would bind its target, and a
+#     convenience link to ~/.claude would hand the agent credentials and
+#     transcripts;
+#   - symlinks inside are flagged: they resolve in the container, not on the
+#     host, so they dangle there (safe, but they silently don't load);
+#   - on Podman, files the agent can't read are flagged: without a keep-id
+#     userns the host user is container root and node reads as "other".
+CODE_LAYER_FLAGS=()
+code_user_layer() {
+  CODE_LAYER_FLAGS=()
+  local dir="$CODE_USER_CFG_DIR" found
+  [[ -L "$KONRAD_CFG_DIR/code" || -L "$dir" ]] \
+    && die "$dir is a symlink — konrad code binds it into a session with open internet access, so it must be a real directory holding only what the agent may see"
+  [[ -e "$dir" ]] || return 0
+  [[ -d "$dir" ]] || die "$dir is not a directory"
+  found="$(find "$dir" -type l 2>/dev/null || true)"; found="${found//"$dir"\//}"
+  [[ -n "$found" ]] \
+    && warn "symlinks in $dir don't resolve inside konrad code (they'd point at host paths) — copy the files in instead: $(paste -sd, - <<<"$found")"
+  if [[ "$KONRAD_ENGINE" == "podman" ]]; then
+    found="$( { find "$dir" -type f ! -perm -004; find "$dir" -type d ! -perm -005; } 2>/dev/null || true)"
+    found="${found//"$dir"\//}"
+    [[ -n "$found" ]] \
+      && warn "konrad code can't read these in $dir (needs world-readable, e.g. chmod -R o+rX): $(paste -sd, - <<<"$found")"
+  fi
+  ro_bind "$dir" "$CODE_USER_LAYER_MOUNT"
+  CODE_LAYER_FLAGS=("${RO_BIND[@]}")
+}
 # The sessions running on repo id $1, one per line. Run after sweep_orphans, so
 # every listed container belongs to a live konrad.
 code_live_sessions() {
@@ -2644,6 +2683,7 @@ do_code() {
     warn "--no-firewall / --allow-host don't apply to konrad code (its egress is open, minus host and LAN)."
   fi
   launch_preflight
+  code_user_layer
   # An image from before konrad code has no konrad-code entrypoint; the engine
   # would fail to exec it (apple/container with a crash trace). Refuse up front
   # — only when the labels are readable at all (the read is best-effort), so a
@@ -2777,7 +2817,8 @@ do_code() {
     go "nested containers on · relaxed for this run: $relaxed · store $store_vol"
   fi
 
-  # Named volumes only. Each mountpoint already exists node-owned in the image,
+  # Named volumes, plus the read-only user code layer (code_user_layer). Each
+  # volume mountpoint already exists node-owned in the image,
   # so a fresh volume inherits that ownership (no :U — it would chown to the
   # root start user). :nocopy keeps Podman from seeding the volume with the
   # image's own content there (opencode's baked config under ~/.config);
@@ -2801,6 +2842,7 @@ do_code() {
     -v "$(eng_volume_source "$tools_vol"):/home/node/.local${nocopy}"
     -v "$(eng_volume_source "$config_vol"):/home/node/.config${nocopy}"
     ${store_flags[@]+"${store_flags[@]}"}
+    ${CODE_LAYER_FLAGS[@]+"${CODE_LAYER_FLAGS[@]}"}
     "$IMAGE_NAME" "$@"
   )
   dbg "about to run: ${run_cmd[*]}"

@@ -9,13 +9,15 @@
 # egress is open to the internet — minus the host, the LAN and link-local, which
 # the root prelude below seals at the IP level before anything else runs.
 #
-# Mounts (all named volumes, nothing from the host filesystem):
+# Mounts (named volumes, plus one optional read-only host dir):
 #   /workspace        konrad-code-<repo>  the clone, its forge token, and the
 #                     worktrees of parallel sessions (.sessions/<name>)
 #   /home/node/.local konrad-code-tools   the agent binary (installed on first use)
 #   /home/node/.config konrad-code-config the agent's login + settings
 #   /var/lib/konrad-containers  konrad-code-<repo>-containers  nested podman's
 #                     image store (--nested only)
+#   /opt/konrad-code/user  ~/.config/konrad/code/user on the host, read-only,
+#                     when present: the user's ~/.claude pieces (CLAUDE.md, skills/, …)
 #
 # Two stages in one file: as root, install the seal and drop to node with every
 # capability gone; as node, set up git, clone or fetch, install the agent if
@@ -29,6 +31,7 @@ CREDS="$WORK/.git-credentials"
 SESSIONS="$WORK/.sessions"   # parallel sessions' git worktrees (one per name)
 SEAL_TABLE=100
 NESTED_STORE=/var/lib/konrad-containers
+CODE_USER_LAYER=/opt/konrad-code/user   # bin/konrad's CODE_USER_LAYER_MOUNT
 
 # Output style mirrors image/entrypoint.sh (a launch reads as one sequence).
 if [ -t 2 ] && [ -z "${NO_COLOR:-}" ]; then
@@ -399,6 +402,31 @@ if [[ "${KONRAD_CODE_NESTED:-0}" == "1" ]]; then
     warn "nested podman can't read its store: ${store_msg:-$(tail -1 "$store_err")}"
   fi
   rm -f "$store_err"
+fi
+
+# The user's code layer (~/.config/konrad/code/user on the host, bound
+# read-only at $CODE_USER_LAYER when present) mirrors ~/.claude. Its pieces are
+# linked into Claude's config dir under the same paths: CLAUDE.md itself, and
+# skills/, agents/, commands/ and rules/ one entry at a time, not the folders,
+# which Claude writes into too (skills/synced/ holds the account's synced
+# skills). The layer is the one home for user-level config, so it wins over an
+# entry of the same name in the volume. Links from the last start are dropped
+# first, so whatever left the layer (or the whole layer) is gone too.
+# bin/konrad's code_user_layer already warned about anything node can't read.
+claude_cfg="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+mkdir -p "$claude_cfg"
+find "$claude_cfg" -maxdepth 2 -type l -lname "$CODE_USER_LAYER/*" -delete 2>/dev/null || true
+layer_linked=()
+for entry in "$CODE_USER_LAYER"/CLAUDE.md "$CODE_USER_LAYER"/{skills,agents,commands,rules}/*; do
+  [[ -e "$entry" ]] || continue   # an absent piece leaves its glob unexpanded
+  piece="${entry#"$CODE_USER_LAYER"/}"
+  mkdir -p "$claude_cfg/$(dirname "$piece")"
+  rm -rf "${claude_cfg:?}/$piece"
+  ln -sfn "$entry" "$claude_cfg/$piece"
+  layer_linked+=("$piece")
+done
+if (( ${#layer_linked[@]} )); then
+  step "yours · ~/.config/konrad/code/user: ${layer_linked[*]}"
 fi
 
 if [[ "${KONRAD_CODE_SHELL:-0}" == "1" ]]; then
