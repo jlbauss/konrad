@@ -581,10 +581,11 @@ eng_image_meta() {
 
 # Container lifecycle: force-remove, logs, existence. Force-remove and rm are
 # best-effort (teardown must never mask the agent's exit code).
-eng_rm_container() {
+eng_rm_container() { eng_rm_container_checked "$1" >/dev/null 2>&1 || true; }
+eng_rm_container_checked() {  # the same, but fails with the engine's error
   case "$KONRAD_ENGINE" in
-    podman)    podman rm -f "$1" >/dev/null 2>&1 || true ;;
-    container) container delete --force "$1" >/dev/null 2>&1 || true ;;
+    podman)    podman rm -f "$1" >/dev/null ;;
+    container) container delete --force "$1" >/dev/null ;;
   esac
 }
 eng_logs() {  # stdout+stderr of the container, merged
@@ -1289,8 +1290,18 @@ default_cpus() {
 # gets the hangup, so the trap would wedge the session that closing the
 # terminal used to end (probed on Podman). A live pid is a run in another
 # terminal and is kept. The workspace and the volumes keep their content.
+#
+# The engine client can outlive konrad too: over a dropped SSH session konrad
+# died of the hangup but its `podman run` lived on, reparented and no longer
+# reading. conmon then blocks writing the session's output to it, never reaps
+# the container's init, and `podman rm -f` fails with "given PID did not die
+# within timeout", leaving the container in Stopping and its session name taken
+# (probed nested: the same zombie init and conmon stuck in sock_alloc_send_pskb).
+# Killing the client closes the attach socket, which frees conmon. It's matched
+# on the container name in its argv, which no other process carries. A removal
+# that still fails is reported, never claimed as done.
 sweep_orphans() {
-  local name pid
+  local name pid err rm_hint
   while IFS= read -r name; do
     if [[ "$name" =~ ^konrad-(code-)?([0-9]+)$ ]]; then
       pid="${BASH_REMATCH[2]}"
@@ -1301,7 +1312,15 @@ sweep_orphans() {
     fi
     kill -0 "$pid" 2>/dev/null && continue
     info "stopping $name, a session left running by a closed terminal (your files are kept)"
-    eng_rm_container "$name"
+    if command -v pkill >/dev/null 2>&1; then
+      pkill -KILL -f -- "--name $name( |$)" 2>/dev/null || true
+    fi
+    if ! err="$(eng_rm_container_checked "$name" 2>&1)"; then
+      rm_hint="podman rm -f $name"
+      [[ "$KONRAD_ENGINE" == "container" ]] && rm_hint="container delete --force $name"
+      err="${err##*$'\n'}"
+      warn "couldn't remove $name: ${err:-unknown error}. Its session name stays taken until it's gone: end any leftover '$KONRAD_ENGINE run … --name $name' process, then run: $rm_hint"
+    fi
   done < <(eng_container_ls)
 }
 

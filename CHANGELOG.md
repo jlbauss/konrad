@@ -11,6 +11,10 @@ Entries stay terse — the *why* lives in the git commit log and the [ARCHITECTU
 
 ## [Unreleased]
 
+### Fixed
+
+- **A `konrad code` session whose terminal dropped (e.g. a lost SSH connection) no longer keeps its session name taken.** Its leftover `podman run` could wedge the container in `Stopping`, so every later launch said it was stopping the session, then fell back to `s2`; konrad now ends that leftover first, and warns with the fix if a removal still fails instead of claiming it worked.
+
 ## [0.33.1] - 2026-10-02
 
 ### Fixed
