@@ -102,7 +102,7 @@ No `ConnectPort` lines ([konrad-proxy-entrypoint.sh:72-74](image/konrad-proxy-en
 
 ## Not covered / future
 
-- **`SECURITY.md` (vulnerability-reporting policy)** — separate from this audit record; worth adding for a public beta.
+- **`SECURITY.md` (vulnerability-reporting policy)** — separate from this audit record; worth adding for a public beta. Since added: [SECURITY.md](SECURITY.md).
 - **Read-only root filesystem / writable-path minimization** — tracked as a post-beta hardening item in [ROADMAP.md](ROADMAP.md).
 - **Image signing (cosign/sigstore)** and installer checksum/signature — the `curl | sh` install trusts TLS today; signing is post-beta hardening.
 - **MCP tool surface** — no bundled MCP servers ship today; the surface is user-declared servers authenticated via `konrad mcp-auth` (firewall-off, no agent in the loop). Re-audit when a server is bundled.

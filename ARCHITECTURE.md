@@ -19,6 +19,7 @@ One audience and one job per file:
 | [CLAUDE.md](CLAUDE.md) | Instructions for AI agents working on konrad's source. |
 | [ROADMAP.md](ROADMAP.md) | Backlog (Inbox / Next / Later / Blocked). |
 | [CHANGELOG.md](CHANGELOG.md) | Released, user-facing changes (Keep a Changelog). |
+| [SECURITY.md](SECURITY.md) | How to report a vulnerability, and what counts as one. |
 | [VERSION](VERSION) | Single source of the version; drives image tags. |
 | [LICENSE](LICENSE) · [REUSE.toml](REUSE.toml) · [LICENSES/](LICENSES/) | AGPL-3.0; per-file copyright/license (REUSE spec). |
 
