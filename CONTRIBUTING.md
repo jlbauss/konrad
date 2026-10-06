@@ -108,7 +108,7 @@ Trunk-based: `main` is always deployable — what's at `ghcr.io/jlbauss/konrad:l
 
 **Reviewing an agent's MR.** An agent in `konrad code` pushes its branch as a draft MR whose description is its write-up, including the probes only you can run (each with a baseline first). **Read the diff before you run any of the branch's code on your host** — `git pull` + `./scripts/selftest.sh`, an installer run, even a `konrad-dev` launch executes the agent's code with your rights and no sandbox, which is exactly the deferred escape `konrad code` otherwise prevents. Then run the probes, ticking each one's checkbox in the MR description as it passes (GitLab records the tick in the MR's activity), mark the MR ready, and merge.
 
-For a higher-risk change, optionally push the branch to the GitHub mirror and open a PR there to get a `:pr-<num>` test image first (see *Testing a change as an image* below); merge on GitLab once it checks out.
+The image check for a change is the agent's own: it builds, smokes and self-tests the image in its `konrad code --nested` box and reports that under *Validation run*. For a higher-risk change you can still get a CI-built `:pr-<num>` image (see *Testing a change as an image* below), but only by hand: the push mirror carries protected branches only, so push the branch to the GitHub repo yourself and open a PR there; merge on GitLab once it checks out.
 
 **Collaborators** (have GitLab repo access) — the same loop: branch on the repo, push, and open a **GitLab MR**; `main` is protected, so the MR is the only way in. The maintainer merges it.
 
@@ -117,7 +117,7 @@ For a higher-risk change, optionally push the branch to the GitHub mirror and op
 1. **Fork** the GitLab repo and branch off `main`.
 2. Commit (bump `VERSION`, follow the commit style below) and push to your fork.
 3. Open a **GitLab MR** against `main` — that's the review surface.
-4. A fork MR gets human review automatically, but **no automatic image build**: the build runs on the GitHub mirror, which only mirrors the main repo's branches, not fork MRs. When the change is worth exercising in a container, the maintainer pulls your branch in (or pushes it to the mirror as `pr/<num>`) to produce a `:pr-<num>` image.
+4. A fork MR gets human review automatically, but **no automatic image build**: the build runs on the GitHub mirror, which carries only the main repo's protected branches. When the change is worth exercising in a container, the maintainer builds your branch locally, or pushes it to the GitHub repo by hand and opens a PR there to produce a `:pr-<num>` image.
 5. The maintainer merges on GitLab.
 
 **Testing a change as an image** (`:pr-<num>`). PR builds go through the same build → smoke gate as `main` but publish *only* to `:pr-<num>` — never `:latest` or a release tag. Because the GHCR package is public, once a PR image exists anyone can pull and run it, no GitHub access needed:
