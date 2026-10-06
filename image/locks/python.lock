@@ -16,11 +16,11 @@ dill==0.4.1
 doclang==0.7.3
 docling-core==2.99.0
 docling-ibm-models==4.0.3
-docling-parse==7.22.1
+docling-parse==7.22.2
 docling-slim==2.133.0
 et-xmlfile==2.0.0
-faker==40.40.0
-filelock==4.0.10
+faker==40.41.0
+filelock==4.0.12
 filetype==1.2.0
 flatbuffers==25.12.19
 fsspec==2026.9.0
