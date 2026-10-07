@@ -560,6 +560,13 @@ repo_name="${repo_path##*/}"
 # too, without a session of its own, and is stopped as soon as the answer is
 # recorded. Each step runs only while it's needed: the marker in the repo's
 # volume covers the interactive run, and a lost login asks again.
+# Server mode's flags, shared by setup and up: setup runs it with the same ones,
+# so any question they don't settle (an unset --spawn asks same-dir or
+# worktree) comes up there, where someone can answer, rather than in the
+# detached container. --no-create-session-in-dir: otherwise it pre-creates an
+# empty session that works in the clone itself, outside any worktree.
+rc_flags=(--spawn worktree --capacity "${KONRAD_CODE_CAPACITY:-3}"
+          --no-create-session-in-dir --permission-mode bypassPermissions)
 logged_in() { claude auth status --json 2>/dev/null | jq -e '.loggedIn == true' >/dev/null 2>&1; }
 rc_enabled() { jq -e '.remoteDialogSeen == true' "${CLAUDE_CONFIG_DIR:-$HOME}/.claude.json" >/dev/null 2>&1; }
 # claude can leave the terminal in raw mode when it's stopped, which would
@@ -597,7 +604,7 @@ EOF
   if ! rc_enabled; then
     # In the background, but reading the terminal: without job control it stays
     # in the terminal's foreground group, so the question reaches the user.
-    claude remote-control --no-create-session-in-dir </dev/tty &
+    claude remote-control "${rc_flags[@]}" </dev/tty &
     pid=$!
     while kill -0 "$pid" 2>/dev/null && ! rc_enabled; do sleep 0.5; done
     # Answered (or claude is gone): stop it the way Ctrl+C would, and with
@@ -627,8 +634,7 @@ if [[ "$KONRAD_CODE_MODE" == up ]]; then
   go "claude remote-control · $repo_path · up to ${KONRAD_CODE_CAPACITY:-3} sessions"
   while :; do
     started="$(date +%s)"
-    claude remote-control --spawn worktree --capacity "${KONRAD_CODE_CAPACITY:-3}" \
-      --no-create-session-in-dir --permission-mode bypassPermissions "$@" </dev/null &
+    claude remote-control "${rc_flags[@]}" "$@" </dev/null &
     pid=$!
     rc=0; wait "$pid" || rc=$?
     if (( stopping )); then

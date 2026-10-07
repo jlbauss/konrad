@@ -3011,7 +3011,7 @@ code_launch() {
                       -e "KONRAD_DEBUG=$KONRAD_DEBUG"
                       -e "CLAUDE_CONFIG_DIR=/home/node/.config/claude"
                       -e "TERM=${TERM:-xterm-256color}")
-  [[ "$mode" == up ]] && env_flags+=(-e "KONRAD_CODE_CAPACITY=$CODE_CAPACITY")
+  [[ "$mode" == up || "$mode" == setup ]] && env_flags+=(-e "KONRAD_CODE_CAPACITY=$CODE_CAPACITY")
   if command -v git >/dev/null 2>&1; then
     local gname gemail
     gname="$(git config --global --get user.name 2>/dev/null || true)"
