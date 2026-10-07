@@ -406,9 +406,13 @@ go "on ${cur:-a detached HEAD}"
 if gone .; then
   go "its remote branch is gone (merged?) · git switch --detach origin/$default_branch, then branch anew"
 fi
+# Only konrad's own sessions (the clone and $SESSIONS/*): server mode's
+# worktrees under <clone>/.claude/worktrees belong to `konrad code up`, which
+# counts them in `konrad code ls`, and the setup and up runs list nothing.
 others=""
 while read -r key path; do
-  [[ "$key" == worktree && "$path" != "$PWD" ]] || continue
+  [[ "$KONRAD_CODE_MODE" == session && "$key" == worktree && "$path" != "$PWD" ]] || continue
+  [[ "$path" == "$repo_dir" || "$path" == "$SESSIONS"/* ]] || continue
   name=primary; [[ "$path" == "$repo_dir" ]] || name="${path##*/}"
   b="$(git -C "$path" branch --show-current 2>/dev/null || true)"
   gone "$path" && b+=", merged?"
