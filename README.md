@@ -57,7 +57,8 @@ You need a container engine — konrad auto-selects the right one for your OS:
 | --- | --- | --- |
 | Linux | [Podman](https://podman.io/) | — |
 | Apple-Silicon macOS 26+ | Apple's [`container`](https://github.com/apple/container) | `container system start` |
-| Intel or older macOS | [Podman](https://podman.io/) | `podman machine init`, then `podman machine start` |
+
+These two are the supported platforms, and every change is tested on each one it can affect. On an Intel Mac or macOS before 26, konrad falls back to Podman (`podman machine init`, then `podman machine start`); that may work, but it isn't tested or supported.
 
 Optional: `git`, needed only for org-layer subscriptions — see [For organizations](#for-organizations).
 
@@ -178,7 +179,7 @@ konrad keeps the **image** and your subscribed **org layers** fresh on its own: 
 
 **Beta.** konrad works day-to-day and the build/publish pipeline is solid, but the surface area is still pre-1.0 — and the agent edits real files, so keep backups of anything irreplaceable. What that means today:
 
-- **Linux and macOS only, no Docker support yet.** Podman is the default; on macOS 26+ with Apple's [`container`](https://github.com/apple/container) CLI installed, konrad uses that native engine instead — no `podman machine` VM. Docker support is on the roadmap, untested. No Windows support — WSL is at your own discretion and untested.
+- **Supported: Linux with Podman, and Apple-Silicon macOS 26+ with Apple's [`container`](https://github.com/apple/container).** On other Macs konrad falls back to Podman in a `podman machine` VM, untested and unsupported. Docker support is on the roadmap, untested. No Windows support — WSL is at your own discretion and untested.
 - **Pre-1.0: expect churn, but versioned.** konrad uses [semantic versioning](CONTRIBUTING.md#versioning) — pre-1.0 that's `0.X.Y` (`X`/minor = new functionality or any user-visible change, `Y`/patch = fixes). The leading `0.` means config shapes, flags, and image internals can still change without a migration path; no stability promise until 1.0.
 - **No unit-test suite.** Every published image passes a CI smoke gate (binaries, Python deps, baked content, a docling round-trip) and an end-to-end self-test exists for contributors, but there's no unit coverage — regressions on less-traveled paths can still slip through.
 - **Local-model UX is still rough.** Tool-call parsing, context overflow, and model switching have known edges — the "works flawlessly on local models" shakedown is still a roadmap item.
@@ -372,7 +373,7 @@ opencode's sessions and conversation DB are **ephemeral** — gone on container 
 
 | Symptom                                                          | Likely cause                                | Fix                                                                                       |
 | ---------------------------------------------------------------- | ------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `Cannot connect to Podman` / `connection refused`                | Podman VM not running (macOS)               | `podman machine init` (once), then `podman machine start`                                 |
+| `Cannot connect to Podman` / `connection refused`                | Podman VM not running (unsupported Macs)    | `podman machine init` (once), then `podman machine start`                                 |
 | `cannot reach Apple's container service`                         | Apple `container` not started (macOS)       | `container system start` (or `KONRAD_ENGINE=podman` to use Podman instead)                |
 | A local model errors or never answers                            | Engine not serving, or model not declared   | Start the engine's server on its default port (LM Studio `:1234` via Developer → Start Server, Ollama `:11434`, llama.cpp `:8080`) and declare the loaded model — see [Configuration](#configuration). |
 | Agent can't find the file you mentioned                          | You ran `konrad` in the wrong directory     | The cwd is what gets mounted at `/workspace`. Always `cd` first.                          |
