@@ -1288,7 +1288,7 @@ default_cpus() {
 # apple/container: konrad and the engine client die of the hangup, but the
 # container's VM keeps running. It then holds whatever it had attached: the
 # firewall nets (which fw_sweep_orphans can't delete while it's attached, so
-# this runs first) and, under konrad code --nested, the store, a block volume
+# this runs first) and, under nested konrad code, the store, a block volume
 # only one VM can attach, so the next launch died with "The storage device
 # attachment is invalid". No HUP trap instead: bash runs a trap only once its
 # foreground child exits, and when konrad is the session leader the child never
@@ -2648,14 +2648,18 @@ host_ip_cidrs() {
 
 do_code() {
   dbg "do_code start"
-  local shell=0 nested=0 session=""
-  local usage="usage: $SELF code [--shell] [--nested] [--session <name>] <git-url> [claude args…]   (e.g. $SELF code https://gitlab.example.com/me/repo)"
+  local shell=0 nested=1 session=""
+  local usage="usage: $SELF code [--shell] [--no-nested] [--session <name>] <git-url> [claude args…]   (e.g. $SELF code https://gitlab.example.com/me/repo)"
   [[ "${1:-}" == help ]] && { printf '%s\n' "$usage"; return 0; }
   while [[ "${1:-}" == -* ]]; do
     case "$1" in
       -h|--help) printf '%s\n' "$usage"; return 0 ;;
       --shell)  shell=1; shift ;;
-      --nested) nested=1; shift ;;
+      --no-nested) nested=0; shift ;;
+      # Nesting is the default since 0.35.0; the old opt-in flag stays accepted.
+      --nested)
+        warn "--nested is deprecated: nested containers are the default now, so drop the flag (--no-nested opts out)."
+        nested=1; shift ;;
       --session)
         [[ $# -ge 2 ]] || die "--session needs a name"
         session="$2"; shift 2 ;;
@@ -2791,7 +2795,8 @@ do_code() {
   local vol_new=0
   eng_volume_exists "$vol" || vol_new=1
 
-  # --nested: the image store is a volume of this repo's own, so builds stay
+  # Nested (the default; --no-nested opts out): the image store is a volume of
+  # this repo's own, so builds stay
   # warm across runs (a cold konrad build ~2 min, warm ~8 s) and one repo's
   # images can't poison another's. On apple/container it's an ENGINE volume,
   # unlike the host dirs behind konrad's other stores: VirtioFS refuses the
@@ -2814,7 +2819,7 @@ do_code() {
     store_flags=(-v "$store_vol:/var/lib/konrad-containers")
     local relaxed="/proc masks"
     [[ "$KONRAD_ENGINE" == "podman" ]] && relaxed="no-new-privileges, /proc + /sys masks"
-    go "nested containers on · relaxed for this run: $relaxed · store $store_vol"
+    go "nested containers on · relaxed for this run: $relaxed · store $store_vol · --no-nested to opt out"
   fi
 
   # Named volumes, plus the read-only user code layer (code_user_layer). Each
@@ -2826,7 +2831,7 @@ do_code() {
   local nocopy=":nocopy"
   [[ "$KONRAD_ENGINE" == "container" ]] && nocopy=""
   # PID 1 is catatonit, for signals and reaping. Normally the engine's --init
-  # mounts the host's copy; under the confined --nested label that host binary
+  # mounts the host's copy; under the confined nested label that host binary
   # isn't an entrypoint container_engine_t may start from ("exec container
   # process /run/podman-init: Permission denied"), so it runs the image's own.
   local -a init_flags=(--init --entrypoint /usr/local/bin/konrad-code)
@@ -2848,6 +2853,11 @@ do_code() {
   dbg "about to run: ${run_cmd[*]}"
   local rc=0
   "${run_cmd[@]}" || rc=$?
+  # 126 = the engine couldn't start the container. With nesting on (the
+  # default), an unusual host is the likely cause: a missing tun device,
+  # restricted user namespaces, or an engine that is itself nested.
+  (( rc == 126 && nested )) \
+    && warn "the session didn't start. If the error above mentions /dev/net/tun, a permission or a namespace, nesting may not work on this host: run again with --no-nested."
   # 3 = the first clone failed (a wrong URL, or no access). A volume this run
   # created then holds nothing worth keeping, so don't leave it behind.
   if [[ "$rc" == 3 && "$vol_new" == 1 ]]; then
@@ -3656,18 +3666,19 @@ Subcommands:
                         token is stored on the konrad-secrets volume and reused
                         on every run:
                           $self mcp-auth wiki
-  $self code [--shell] [--nested] [--session <name>] <git-url> [claude args…]
+  $self code [--shell] [--no-nested] [--session <name>] <git-url> [claude args…]
                         Sealed coding-agent mode: Claude Code on a clone of a
                         forge repo, with open internet but no route to your
-                        machine or LAN, and NOTHING mounted from the host. The
-                        clone + a project access token (asked on first run) live
-                        in a per-repo volume; work comes back only as a pushed
-                        branch + merge request. Claude Code is installed on
-                        first use (you accept Anthropic's terms). '--shell'
-                        opens bash in the sealed clone instead. '--nested' lets
-                        the agent build and run containers (rootless podman,
-                        images kept in a per-repo volume); it relaxes some
-                        container hardening for that run — see the README.
+                        machine or LAN, and nothing writable mounted from the
+                        host. The clone + a project access token (asked on
+                        first run) live in a per-repo volume; work comes back
+                        only as a pushed branch + merge request. Claude Code is
+                        installed on first use (you accept Anthropic's terms).
+                        '--shell' opens bash in the sealed clone instead. The
+                        agent can build and run containers (rootless podman,
+                        images kept in a per-repo volume), which relaxes some
+                        container hardening — see the README; '--no-nested'
+                        turns that off for a run.
                         Run it again on the same repo from another terminal and
                         that session works in its own git worktree (s2, s3, …);
                         '--session <name>' picks or resumes one by name.

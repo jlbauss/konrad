@@ -67,9 +67,9 @@ You need:
 
 - **uv** and **node** (with `npx`) for `scripts/check.sh`, which fetches the lint tools at pinned versions on first use
 
-That's the whole host toolchain; there's deliberately no dev container (why: [ARCHITECTURE → konrad code](ARCHITECTURE.md#konrad-code)). In VS Code, accept the workspace's recommended extensions (markdownlint and shellcheck, both bundling their linter) — [.vscode/settings.json](.vscode/settings.json) applies the markdownlint fixes on save. For a shell with the agent's exact toolset and a nested Podman, nothing installed on your host, run `konrad code --shell --nested https://gitlab.git.nrw/jbauss2/konrad`: the same sealed box an agent works in, with its own clone.
+That's the whole host toolchain; there's deliberately no dev container (why: [ARCHITECTURE → konrad code](ARCHITECTURE.md#konrad-code)). In VS Code, accept the workspace's recommended extensions (markdownlint and shellcheck, both bundling their linter) — [.vscode/settings.json](.vscode/settings.json) applies the markdownlint fixes on save. For a shell with the agent's exact toolset and a nested Podman, nothing installed on your host, run `konrad code --shell https://gitlab.git.nrw/jbauss2/konrad`: the same sealed box an agent works in, with its own clone.
 
-**Agents work in `konrad code`, not in your checkout.** Launch one with `konrad code --nested https://gitlab.git.nrw/jbauss2/konrad`: a disposable container with its own clone, its own rootless Podman (so it builds, smoke-tests and self-tests the image itself) and open internet, but no host mounts and a sealed LAN; it hands work back only as a merge request ([ARCHITECTURE → konrad code](ARCHITECTURE.md#konrad-code)). The agent-side rules live in [CLAUDE.md](CLAUDE.md).
+**Agents work in `konrad code`, not in your checkout.** Launch one with `konrad code https://gitlab.git.nrw/jbauss2/konrad`: a disposable container with its own clone, its own rootless Podman (so it builds, smoke-tests and self-tests the image itself) and open internet, but no host mounts and a sealed LAN; it hands work back only as a merge request ([ARCHITECTURE → konrad code](ARCHITECTURE.md#konrad-code)). The agent-side rules live in [CLAUDE.md](CLAUDE.md).
 
 ## Local development loop
 
@@ -108,7 +108,7 @@ Trunk-based: `main` is always deployable — what's at `ghcr.io/jlbauss/konrad:l
 
 **Reviewing an agent's MR.** An agent in `konrad code` pushes its branch as a draft MR whose description is its write-up, including the probes only you can run (each with a baseline first). **Read the diff before you run any of the branch's code on your host** — `git pull` + `./scripts/selftest.sh`, an installer run, even a `konrad-dev` launch executes the agent's code with your rights and no sandbox, which is exactly the deferred escape `konrad code` otherwise prevents. Then run the probes, ticking each one's checkbox in the MR description as it passes (GitLab records the tick in the MR's activity), mark the MR ready, and merge.
 
-The image check for a change is the agent's own: it builds, smokes and self-tests the image in its `konrad code --nested` box and reports that under *Validation run*. For a higher-risk change you can still get a CI-built `:pr-<num>` image (see *Testing a change as an image* below), but only by hand: the push mirror carries protected branches only, so push the branch to the GitHub repo yourself and open a PR there; merge on GitLab once it checks out.
+The image check for a change is the agent's own: it builds, smokes and self-tests the image in its `konrad code` box and reports that under *Validation run*. For a higher-risk change you can still get a CI-built `:pr-<num>` image (see *Testing a change as an image* below), but only by hand: the push mirror carries protected branches only, so push the branch to the GitHub repo yourself and open a PR there; merge on GitLab once it checks out.
 
 **Collaborators** (have GitLab repo access) — the same loop: branch on the repo, push, and open a **GitLab MR**; `main` is protected, so the MR is the only way in. The maintainer merges it.
 

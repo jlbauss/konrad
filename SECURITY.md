@@ -17,7 +17,7 @@ Helpful to include:
 
 - `konrad --version` (CLI and image), the engine (Podman or apple/container) and the host OS.
 - What crosses the boundary, and the steps or a proof of concept to reproduce it.
-- Whether it needs a non-default setting (`--nested`, `KONRAD_WORKSPACE_GUARD=0`, an org layer, …).
+- Whether it needs a non-default setting (`KONRAD_WORKSPACE_GUARD=0`, `--no-firewall`, an org layer, …).
 
 ## What counts
 
