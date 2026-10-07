@@ -549,28 +549,52 @@ repo_name="${repo_path##*/}"
 # security notes), the login, the folder trust (which covers the clone's
 # worktrees, where server mode's sessions land) and the bypass-mode warning.
 # The folder trust and the bypass warning both default to "No, exit", and
-# neither is skipped by --dangerously-skip-permissions. Done once per repo:
-# the marker in the repo's volume says so, and a lost login asks again.
+# neither is skipped by --dangerously-skip-permissions. Server mode then asks
+# its own "Enable Remote Control?" once, which an interactive session's
+# --remote-control doesn't answer, so `claude remote-control` runs here once
+# too; unanswered, the detached server waits on it forever and never shows
+# up in the app. Done once per repo: the marker in the repo's volume says so,
+# and a lost login or a missing answer asks again.
+logged_in() { claude auth status --json 2>/dev/null | jq -e '.loggedIn == true' >/dev/null 2>&1; }
+rc_enabled() { jq -e '.remoteDialogSeen == true' "${CLAUDE_CONFIG_DIR:-$HOME}/.claude.json" >/dev/null 2>&1; }
 if [[ "$KONRAD_CODE_MODE" == setup ]]; then
-  logged_in() { claude auth status --json 2>/dev/null | jq -e '.loggedIn == true' >/dev/null 2>&1; }
-  if [[ -f "$UP_READY" ]] && logged_in; then
+  if [[ -f "$UP_READY" ]] && logged_in && rc_enabled; then
     step "ready to be up"
     exit 0
   fi
-  cat >&2 <<EOF
+  # Ctrl+C ends the claude in front, not this script: a trap that runs a
+  # command (unlike '') is reset to the default in claude itself.
+  trap ':' INT
+  if [[ ! -f "$UP_READY" ]] || ! logged_in; then
+    cat >&2 <<EOF
 
   ${_C_OK}One-time setup for konrad code up.${_C_OFF} Claude Code opens here once, so you can
   answer its first-run questions: log in if it asks, choose "Yes, I trust this
   folder" and "Yes, I accept" bypass-permissions mode (both default to "No").
-  When it shows /rc active, type /exit: konrad then starts $repo_name in the
-  background.
+  Then type /exit.
 
 EOF
-  read -r -p "  Press Enter to open Claude Code… " _ </dev/tty
-  rc=0
-  claude --dangerously-skip-permissions --remote-control "$repo_name" </dev/tty || rc=$?
-  logged_in || fatal "Claude Code isn't logged in (it exited with $rc) — run konrad code up again to retry"
-  : > "$UP_READY"
+    read -r -p "  Press Enter to open Claude Code… " _ </dev/tty
+    rc=0
+    claude --dangerously-skip-permissions </dev/tty || rc=$?
+    logged_in || fatal "Claude Code isn't logged in (it exited with $rc) — run konrad code up again to retry"
+    : > "$UP_READY"
+  fi
+  if ! rc_enabled; then
+    cat >&2 <<EOF
+
+  ${_C_OK}Last step: enable Remote Control.${_C_OFF} Claude Code's server mode asks once
+  whether to enable it, and in the background nobody could answer. Answer y;
+  once it shows the session URL, press Ctrl+C: konrad then starts $repo_name in
+  the background.
+
+EOF
+    read -r -p "  Press Enter to start Remote Control… " _ </dev/tty
+    rc=0
+    claude remote-control --spawn session --name "$repo_name" </dev/tty || rc=$?
+    rc_enabled || fatal "Remote Control wasn't enabled (it exited with $rc) — run konrad code up again to retry"
+  fi
+  trap - INT
   step "ready to be up"
   exit 0
 fi
@@ -584,6 +608,7 @@ if [[ "$KONRAD_CODE_MODE" == up ]]; then
   export CLAUDE_REMOTE_CONTROL_SESSION_NAME_PREFIX="$repo_name"
   stopping=0; pid=""; delay=10
   trap 'stopping=1; [[ -z "$pid" ]] || kill -TERM "$pid" 2>/dev/null || true' TERM INT
+  rc_enabled || warn "Remote Control's one-time question looks unanswered, so server mode may wait on it and never show up in the app — konrad code down, then konrad code up asks it"
   go "claude remote-control · $repo_path · up to ${KONRAD_CODE_CAPACITY:-3} sessions"
   while :; do
     started="$(date +%s)"

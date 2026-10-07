@@ -2690,8 +2690,8 @@ code_up_name() { printf 'konrad-up-%s' "${1#konrad-code-}"; }
 # listing, which pipefail would turn into a false "not running".
 code_up_running() { eng_container_ls_running | grep -x "$1" >/dev/null; }
 
-# Set the global CODE_HOSTNAME_FLAGS to --hostname $1, which Claude Code shows as
-# the device in the app. Skipped where the engine can't set one: Podman sharing
+# Set the global CODE_HOSTNAME_FLAGS to --hostname $1, which Claude Code uses as
+# the prefix of its session names in the app. Skipped where the engine can't set one: Podman sharing
 # its host's UTS namespace (konrad's own nested engine, inside konrad code) and
 # apple/container, until a probe shows it takes the flag.
 CODE_HOSTNAME_FLAGS=()
@@ -2985,8 +2985,8 @@ code_launch() {
   [[ "$mem_cap" != 0 ]] && res_flags+=(--memory "$mem_cap")
   [[ "$cpu_cap" != 0 ]] && res_flags+=(--cpus   "$cpu_cap")
 
-  # The device name in the Claude app: the repo for the up container, the repo
-  # and session for a terminal one.
+  # The session-name prefix in the Claude app: the repo for the up container,
+  # the repo and session for a terminal one.
   local repo="${url%.git}"; repo="${repo##*/}"
   case "$mode" in
     up)      code_hostname_flags "$repo" ;;
@@ -3114,7 +3114,7 @@ code_launch() {
       warn "$cname stopped right after starting — its log is above ($(code_self) code down ${url%.git} removes it)"
       return 1
     fi
-    step "${url%.git} is up · start a session in the Claude app or at claude.ai/code (device: ${CODE_HOSTNAME_FLAGS[1]:-its container ID}) · $(code_self) code down ${url%.git} stops it · log: $KONRAD_ENGINE logs $cname"
+    step "${url%.git} is up · open the ${repo} session in the Code tab of the Claude app or at claude.ai/code · $(code_self) code down ${url%.git} stops it · log: $KONRAD_ENGINE logs $cname"
   fi
   return "$rc"
 }
