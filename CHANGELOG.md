@@ -11,6 +11,8 @@ Entries stay terse — the *why* lives in the git commit log and the [ARCHITECTU
 
 ## [Unreleased]
 
+## [0.34.0] - 2026-10-07
+
 ### Added
 
 - **Your own instructions, skills and agents in every `konrad code` session.** `~/.config/konrad/code/user/` is your `~/.claude` for `konrad code`: bound in read-only, its `CLAUDE.md` is loaded as Claude Code's user-level instructions, on top of the repo's own, and its `skills/`, `agents/`, `commands/` and `rules/` work as in `~/.claude`. konrad refuses a symlinked folder and warns about symlinks inside it and about files the container can't read. See [README → Coding agents](README.md#coding-agents-konrad-code).
