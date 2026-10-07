@@ -19,12 +19,22 @@
 #   /opt/konrad-code/user  ~/.config/konrad/code/user on the host, read-only,
 #                     when present: the user's ~/.claude pieces (CLAUDE.md, skills/, …)
 #
-# Two stages in one file: as root, install the seal and drop to node with every
-# capability gone; as node, set up git, clone or fetch, install the agent if
-# missing, and exec it. See ARCHITECTURE → konrad code.
+# Two stages in one file: as root, install the seal, write the agent's note and
+# drop to node with every capability gone; as node, set up git, clone or fetch,
+# install the agent if missing, and exec it. See ARCHITECTURE → konrad code.
+#
+# KONRAD_CODE_MODE picks what stage 2 ends in:
+#   session  (default) a terminal session: claude, or bash under --shell
+#   setup    `konrad code up`'s attached first step: token, clone, install, and
+#            one interactive claude for the login, folder trust and Remote
+#            Control's confirmation; exits when the repo is ready to be up
+#   up       the detached repo container: claude's server mode under a restart
+#            loop, no terminal; each session started in the Claude app or at
+#            claude.ai/code gets its own worktree in <clone>/.claude/worktrees
 set -euo pipefail
 
 KONRAD_CODE_URL="${KONRAD_CODE_URL:-}"
+KONRAD_CODE_MODE="${KONRAD_CODE_MODE:-session}"
 KONRAD_DEBUG="${KONRAD_DEBUG:-0}"
 WORK=/workspace
 CREDS="$WORK/.git-credentials"
@@ -32,6 +42,12 @@ SESSIONS="$WORK/.sessions"   # parallel sessions' git worktrees (one per name)
 SEAL_TABLE=100
 NESTED_STORE=/var/lib/konrad-containers
 CODE_USER_LAYER=/opt/konrad-code/user   # bin/konrad's CODE_USER_LAYER_MOUNT
+# Claude Code's managed instructions file, read by every session (terminal,
+# server mode and the sessions it spawns). Written by root in stage 1, so the
+# agent can read it but not change it.
+MANAGED_NOTE=/etc/claude-code/CLAUDE.md
+# Written by a completed setup run; `up` refuses to start without it.
+UP_READY="$WORK/.konrad-up-ready"
 
 # Output style mirrors image/entrypoint.sh (a launch reads as one sequence).
 if [ -t 2 ] && [ -z "${NO_COLOR:-}" ]; then
@@ -144,6 +160,27 @@ if [[ "$(id -u)" == "0" ]]; then
   fi
   dbg "$(ip -4 rule; ip -4 route show table "$SEAL_TABLE")"
   step "egress · open, host + LAN sealed"
+  # A short environment note on top of the agent's own prompts: the facts it
+  # can't discover by itself (the git-only way back, the sealed LAN). A managed
+  # file rather than --append-system-prompt: server mode refuses that flag, and
+  # its sessions work in worktrees far from any file beside the clone. Branch-
+  # neutral, since the clone may not exist yet; the agent reads the default
+  # branch from git.
+  mkdir -p "${MANAGED_NOTE%/*}"
+  {
+    printf '# konrad code\n\nYou are running inside konrad code: a disposable container with open internet access but no route to the user'\''s machine or local network. The repository is a clone of %s; nothing you do here reaches the user except through the forge.\n\n' "$KONRAD_CODE_URL"
+    cat <<'EOF'
+- The default branch (`git symbolic-ref --short refs/remotes/origin/HEAD`) is protected, so work on a feature branch, commit, and open a merge request with: `git push -u origin <branch> -o merge_request.create -o merge_request.target=<default branch> -o merge_request.remove_source_branch`. The user reviews and merges it in the forge web UI.
+- Install project tooling you need at runtime (uv, npm, …).
+- Other sessions may work on this repo in parallel, each in its own git worktree of the same clone: stay in yours, leave their branches alone, and start new branches from `origin/<default branch>` rather than checking out the default branch (git refuses a branch another worktree has checked out).
+EOF
+    if [[ "${KONRAD_CODE_NESTED:-0}" == "1" ]]; then
+      cat <<'EOF'
+- Rootless podman is available: you can build and run containers here (images persist in this repo's store across sessions and are shared with parallel ones, so don't prune images you didn't build). They share this container's sealed network, so they reach the internet but not the user's machine or LAN either.
+EOF
+    fi
+  } > "$MANAGED_NOTE" || fatal "could not write $MANAGED_NOTE"
+  chmod 0644 "$MANAGED_NOTE"
   if [[ "${KONRAD_CODE_NESTED:-0}" == "1" ]]; then
     # Rootless nested Podman (--nested). On Podman, bin/konrad's flags already
     # did the work (--device, unmask, the store volume); apple/container has no
@@ -174,7 +211,11 @@ fi
 
 # ── Stage 2 (node): git, clone/fetch, agent install, launch ──────────────────
 [[ -n "$KONRAD_CODE_URL" ]] || fatal "KONRAD_CODE_URL not set (start this through 'konrad code <git-url>')"
-[[ -t 0 ]] || fatal "konrad code needs an interactive terminal"
+case "$KONRAD_CODE_MODE" in
+  session|setup) [[ -t 0 ]] || fatal "konrad code needs an interactive terminal" ;;
+  up) ;;   # detached: no terminal, so nothing below may ask
+  *) fatal "unknown KONRAD_CODE_MODE '$KONRAD_CODE_MODE'" ;;
+esac
 # grep reads to the end, not -q: under pipefail an early exit can SIGPIPE ip
 # while it still writes the rules after ours, and that 141 read as "no seal".
 ip -4 rule 2>/dev/null | grep "lookup $SEAL_TABLE" >/dev/null \
@@ -220,6 +261,10 @@ export XDG_CONFIG_HOME="$HOME/.config"
 asked=0
 ask_token() {
   local token
+  if [[ "$KONRAD_CODE_MODE" == up ]]; then
+    warn "a new token needs a terminal: konrad code down, then konrad code up asks for one"
+    return 0
+  fi
   asked=1
   read -r -s -p "  Paste the token (input hidden; Enter to skip for a public repo): " token </dev/tty
   printf '\n' >&2
@@ -271,7 +316,9 @@ check_token() {
 }
 
 # First run: explain the token and the branch protection, then ask.
-if [[ ! -f "$CREDS" ]]; then
+if [[ ! -f "$CREDS" && "$KONRAD_CODE_MODE" == up ]]; then
+  fatal "no token stored for this repo yet — konrad code up asks for it in its setup step first"
+elif [[ ! -f "$CREDS" ]]; then
   cat >&2 <<EOF
 
   ${_C_OK}First run for $repo_host/$repo_path.${_C_OFF} The agent pushes through a project
@@ -328,9 +375,11 @@ default_branch="${default_branch#origin/}"; default_branch="${default_branch:-ma
 # detached at the default branch on first use and resumed after. Worktrees
 # share the clone's objects and its token, and git refuses to check out one
 # branch in two of them — the guard parallel agents need.
+# The up container and its setup run work from the clone too: server mode puts
+# each of its sessions in a worktree of its own, under <clone>/.claude/worktrees.
 session="${KONRAD_CODE_SESSION:-primary}"
 work_dir="$repo_dir"
-if [[ "$session" != primary ]]; then
+if [[ "$KONRAD_CODE_MODE" == session && "$session" != primary ]]; then
   work_dir="$SESSIONS/$session"
   git config --global --add safe.directory "$work_dir"
   git -C "$repo_dir" worktree prune || true
@@ -387,6 +436,8 @@ if [[ "${KONRAD_CODE_NESTED:-0}" == "1" ]]; then
   # two sessions on one db reset each other's running containers ("Exited 292
   # years ago") and hand out the same locks — scripts/probe-shared-store.sh.
   # The primary session keeps libpod's default, so stores from before carry on.
+  # The up container is session `up` here (bin/konrad reserves the name), so it
+  # never shares a database with a terminal session.
   if [[ "$session" != primary ]]; then
     mkdir -p "$NESTED_STORE/sessions/$session"
     printf '[engine]\nstatic_dir = "%s/libpod"\nvolume_path = "%s/volumes"\n' \
@@ -444,6 +495,9 @@ fi
 # The agent is installed on first use, never shipped: its license lets the user
 # install it, not konrad redistribute it. The official installer drops it into
 # ~/.local (the konrad-code-tools volume), where it also self-updates.
+if [[ "$KONRAD_CODE_MODE" == up ]] && ! command -v claude >/dev/null 2>&1; then
+  fatal "Claude Code isn't installed — konrad code up installs it in its setup step first"
+fi
 if ! command -v claude >/dev/null 2>&1; then
   cat >&2 <<'EOF'
 
@@ -486,12 +540,72 @@ EOF
   step "Claude Code installed"
 fi
 
-# A short environment note on top of the agent's own prompts: the facts it can't
-# discover by itself (the git-only way back, the sealed LAN). Nothing else.
-note="You are running inside konrad code: a disposable container with open internet access but no route to the user's machine or local network. The working directory is a fresh clone of $KONRAD_CODE_URL; nothing you do here reaches the user except through the forge. '$default_branch' is protected, so work on a feature branch, commit, and open a merge request with: git push -u origin <branch> -o merge_request.create -o merge_request.target=$default_branch -o merge_request.remove_source_branch. The user reviews and merges it in the forge web UI. Install project tooling you need at runtime (uv, npm, …). Other konrad code sessions may work on this repo in parallel, each in its own git worktree of the same clone under $WORK (this one: $session, at $work_dir): stay in yours, leave their branches alone, and start new branches from origin/$default_branch rather than checking out '$default_branch' (git refuses a branch another worktree has checked out)."
-if [[ "${KONRAD_CODE_NESTED:-0}" == "1" ]]; then
-  note+=" Rootless podman is available: you can build and run containers here (images persist in this repo's store across sessions and are shared with parallel ones, so don't prune images you didn't build); they share this container's sealed network, so they reach the internet but not the user's machine or LAN either."
+
+repo_name="${repo_path##*/}"
+
+# Setup (`konrad code up`'s attached first step). Server mode has no terminal,
+# so everything that asks happens here first: the token, clone and install
+# above, then one interactive claude for its first-run questions (theme,
+# security notes), the login, the folder trust (which covers the clone's
+# worktrees, where server mode's sessions land) and the bypass-mode warning.
+# The folder trust and the bypass warning both default to "No, exit", and
+# neither is skipped by --dangerously-skip-permissions. Done once per repo:
+# the marker in the repo's volume says so, and a lost login asks again.
+if [[ "$KONRAD_CODE_MODE" == setup ]]; then
+  logged_in() { claude auth status --json 2>/dev/null | jq -e '.loggedIn == true' >/dev/null 2>&1; }
+  if [[ -f "$UP_READY" ]] && logged_in; then
+    step "ready to be up"
+    exit 0
+  fi
+  cat >&2 <<EOF
+
+  ${_C_OK}One-time setup for konrad code up.${_C_OFF} Claude Code opens here once, so you can
+  answer its first-run questions: log in if it asks, choose "Yes, I trust this
+  folder" and "Yes, I accept" bypass-permissions mode (both default to "No").
+  When it shows /rc active, type /exit: konrad then starts $repo_name in the
+  background.
+
+EOF
+  read -r -p "  Press Enter to open Claude Code… " _ </dev/tty
+  rc=0
+  claude --dangerously-skip-permissions --remote-control "$repo_name" </dev/tty || rc=$?
+  logged_in || fatal "Claude Code isn't logged in (it exited with $rc) — run konrad code up again to retry"
+  : > "$UP_READY"
+  step "ready to be up"
+  exit 0
+fi
+
+# Up: Claude Code's server mode, under a restart loop. It exits on its own after
+# about ten minutes offline, and apple/container has no restart policy, so the
+# loop brings it back (a restarted server resumes its sessions). The loop waits
+# on claude in the background, so a stop's SIGTERM reaches claude itself and it
+# can clean up: worktrees with nothing in them go, ones holding work stay.
+if [[ "$KONRAD_CODE_MODE" == up ]]; then
+  export CLAUDE_REMOTE_CONTROL_SESSION_NAME_PREFIX="$repo_name"
+  stopping=0; pid=""; delay=10
+  trap 'stopping=1; [[ -z "$pid" ]] || kill -TERM "$pid" 2>/dev/null || true' TERM INT
+  go "claude remote-control · $repo_path · up to ${KONRAD_CODE_CAPACITY:-3} sessions"
+  while :; do
+    started="$(date +%s)"
+    claude remote-control --spawn worktree --capacity "${KONRAD_CODE_CAPACITY:-3}" \
+      --permission-mode bypassPermissions --name "$repo_name" "$@" </dev/null &
+    pid=$!
+    rc=0; wait "$pid" || rc=$?
+    if (( stopping )); then
+      wait "$pid" 2>/dev/null || true   # let it finish cleaning up
+      say "stopped"
+      exit 0
+    fi
+    # Back off when it keeps failing fast (no network, a lost login), so the
+    # log doesn't fill; a run that held for five minutes resets the delay.
+    (( $(date +%s) - started > 300 )) && delay=10
+    warn "server mode exited ($rc) — restarting in ${delay}s"
+    sleep "$delay" & pid=$!
+    wait "$pid" || true
+    (( stopping )) && { say "stopped"; exit 0; }
+    (( delay = delay * 2 > 300 ? 300 : delay * 2 ))
+  done
 fi
 
 go "claude · $repo_path"
-exec claude --dangerously-skip-permissions --append-system-prompt "$note" "$@"
+exec claude --dangerously-skip-permissions "$@"

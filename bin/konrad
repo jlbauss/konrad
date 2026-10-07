@@ -613,6 +613,25 @@ eng_container_ls() {
     container) container ls --all 2>/dev/null | awk 'NR>1 {print $1}' || true ;;
   esac
 }
+# The same, running containers only.
+eng_container_ls_running() {
+  case "$KONRAD_ENGINE" in
+    podman)    podman ps --format '{{.Names}}' 2>/dev/null || true ;;
+    container) container ls 2>/dev/null | awk 'NR>1 {print $1}' || true ;;
+  esac
+}
+eng_stop_container() {  # $1 = name, $2 = seconds before the engine kills it
+  case "$KONRAD_ENGINE" in
+    podman)    podman stop -t "$2" "$1" >/dev/null ;;
+    container) container stop -t "$2" "$1" >/dev/null ;;
+  esac
+}
+eng_exec() {  # non-interactive: eng_exec <name> <cmd…>
+  case "$KONRAD_ENGINE" in
+    podman)    podman exec "$@" ;;
+    container) container exec "$@" ;;
+  esac
+}
 
 # Wall-clock ceiling for a single network create, so a wedged engine fails fast
 # instead of hanging forever. Applied only when a `timeout` binary is present
@@ -1253,14 +1272,15 @@ host_cpu_count() {
 # host total. The 8G ceiling keeps konrad from crowding a co-resident local model
 # (or other host work) on a big machine — docling fits comfortably; raise it with
 # KONRAD_MEMORY for heavy OCR. Emitted as <n>G when a whole GiB, else <n>M. Falls
-# back to 4G.
+# back to 4G. $1 raises the ceiling (MiB) for a container that holds several
+# agents at once (konrad code up).
 default_memory() {
-  local total half
+  local total half ceiling="${1:-8192}"
   total="$(host_mem_mib)"
   if [[ ! "$total" =~ ^[0-9]+$ ]] || (( total <= 0 )); then printf '4G'; return 0; fi
   half=$(( total / 2 ))
   if (( half < 2048 ));  then half=2048;  fi
-  if (( half > 8192 )); then half=8192; fi
+  if (( half > ceiling )); then half="$ceiling"; fi
   if (( half > total )); then half="$total"; fi
   if (( half % 1024 == 0 )); then printf '%sG' "$(( half / 1024 ))"; else printf '%sM' "$half"; fi
   return 0
@@ -1291,7 +1311,8 @@ default_cpus() {
 
 # Remove agent containers whose konrad is gone. Each launch names its agent
 # konrad-<pid> (podman_run) or konrad-code-<pid>-… (do_code) after its konrad, so
-# one that outlives that pid is an orphan. Closing the terminal makes one on
+# one that outlives that pid is an orphan (konrad code up's konrad-up-…
+# container outlives its konrad on purpose; no pattern here matches it). Closing the terminal makes one on
 # apple/container: konrad and the engine client die of the hangup, but the
 # container's VM keeps running. It then holds whatever it had attached: the
 # firewall nets (which fw_sweep_orphans can't delete while it's attached, so
@@ -2653,10 +2674,52 @@ host_ip_cidrs() {
   return 0
 }
 
+# konrad code up: a repo that stays up. One detached container per repo runs
+# Claude Code's server mode, and each session started in the Claude app or at
+# claude.ai/code gets its own worktree in it. The container outlives the konrad
+# that started it, so its name carries no pid (sweep_orphans' patterns never
+# match it): konrad-up-<the repo volume's name, minus konrad-code->, --profile
+# included. A marker per up repo under the state dir records that it should be
+# up, so a container a host reboot ended is noticed, and holds the URL that
+# `ls` shows.
+CODE_UP_DIR="$KONRAD_STATE_DIR/code-up"
+# The command line a hint names: konrad, with this run's --profile.
+code_self() { printf '%s' "$SELF${KONRAD_PROFILE:+ --profile $KONRAD_PROFILE}"; }
+code_up_name() { printf 'konrad-up-%s' "${1#konrad-code-}"; }
+# grep without -q reads to the end: an early exit could SIGPIPE the engine
+# listing, which pipefail would turn into a false "not running".
+code_up_running() { eng_container_ls_running | grep -x "$1" >/dev/null; }
+
+# Set the global CODE_HOSTNAME_FLAGS to --hostname $1, which Claude Code shows as
+# the device in the app. Skipped where the engine can't set one: Podman sharing
+# its host's UTS namespace (konrad's own nested engine, inside konrad code) and
+# apple/container, until a probe shows it takes the flag.
+CODE_HOSTNAME_FLAGS=()
+code_hostname_flags() {
+  local h
+  CODE_HOSTNAME_FLAGS=()
+  [[ "$KONRAD_ENGINE" == podman ]] || return 0
+  if grep -qsE '^[[:space:]]*utsns[[:space:]]*=[[:space:]]*"host"' \
+       /etc/containers/containers.conf "${XDG_CONFIG_HOME:-$HOME/.config}/containers/containers.conf"; then
+    dbg "the engine shares its host's UTS namespace — no --hostname"
+    return 0
+  fi
+  h="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9\n' '-' | cut -c1-63 | sed 's/^-*//; s/-*$//')"
+  [[ -n "$h" ]] && CODE_HOSTNAME_FLAGS=(--hostname "$h")
+  return 0
+}
+
 do_code() {
   dbg "do_code start"
+  case "${1:-}" in
+    up)   shift; do_code_up "$@"; return ;;
+    down) shift; do_code_down "$@"; return ;;
+    ls)   shift; do_code_ls "$@"; return ;;
+  esac
   local shell=0 nested=1 session=""
-  local usage="usage: $SELF code [--shell] [--no-nested] [--session <name>] <git-url> [claude args…]   (e.g. $SELF code https://gitlab.example.com/me/repo)"
+  local usage="usage: $SELF code [--shell] [--no-nested] [--session <name>] <git-url> [claude args…]   (e.g. $SELF code https://gitlab.example.com/me/repo)
+       $SELF code up [--no-nested] [--capacity <n>] <git-url>   keep the repo up for sessions from the Claude app
+       $SELF code down <git-url>   ·   $SELF code ls"
   [[ "${1:-}" == help ]] && { printf '%s\n' "$usage"; return 0; }
   while [[ "${1:-}" == -* ]]; do
     case "$1" in
@@ -2678,8 +2741,115 @@ do_code() {
   [[ $# -ge 1 ]] || die "$usage"
   [[ -z "$session" ]] || code_session_valid "$session" \
     || die "session names are 1–32 of a-z, 0-9 and '-', starting with a letter or digit (got '$session')"
-  local url vol store_vol tools_vol="$CODE_TOOLS_VOLUME" config_vol="$CODE_CONFIG_VOLUME"
+  # `up` names the up container's own container database in the nested store.
+  [[ "$session" != up ]] || die "the session name 'up' is reserved for konrad code up — pick another"
+  local url
   url="$(code_normalize_url "$1")"; shift
+  local rc=0
+  code_launch session "$nested" "$shell" "$session" "$url" "$@" || rc=$?
+  exit "$rc"
+}
+
+# konrad code up [--no-nested] [--capacity <n>] <git-url> [server-mode args…]
+CODE_CAPACITY=3   # sessions the up container serves at once (--capacity)
+do_code_up() {
+  local nested=1
+  local usage="usage: $SELF code up [--no-nested] [--capacity <n>] <git-url>"
+  while [[ "${1:-}" == -* ]]; do
+    case "$1" in
+      -h|--help) printf '%s\n' "$usage"; return 0 ;;
+      --no-nested) nested=0; shift ;;
+      --capacity)
+        [[ $# -ge 2 ]] || die "--capacity needs a number"
+        CODE_CAPACITY="$2"; shift 2 ;;
+      --capacity=*) CODE_CAPACITY="${1#--capacity=}"; shift ;;
+      --) shift; break ;;
+      *)  die "$usage" ;;
+    esac
+  done
+  [[ $# -ge 1 ]] || die "$usage"
+  [[ "$CODE_CAPACITY" =~ ^[1-9][0-9]?$ && "$CODE_CAPACITY" -le 32 ]] \
+    || die "--capacity takes 1–32 sessions (got '$CODE_CAPACITY')"
+  local url vol name
+  url="$(code_normalize_url "$1")"; shift
+  vol="$(code_volume_name "$url")"
+  [[ -n "$KONRAD_PROFILE" ]] && vol+="-$KONRAD_PROFILE"
+  name="$(code_up_name "$vol")"
+  if code_up_running "$name"; then
+    info "${url%.git} is already up ($name) — $(code_self) code down ${url%.git} stops it"
+    return 0
+  fi
+  # Setup first, attached: token, clone, install and the one interactive claude
+  # each need a terminal, which the detached server doesn't have. Quick once
+  # done. Without nesting: it starts no containers.
+  local rc=0
+  code_launch setup 0 0 primary "$url" || rc=$?
+  (( rc == 0 )) || exit "$rc"
+  code_launch up "$nested" 0 up "$url" "$@" || rc=$?
+  (( rc == 0 )) || exit "$rc"
+  mkdir -p "$CODE_UP_DIR"
+  printf 'url=%s\nprofile=%s\n' "$url" "$KONRAD_PROFILE" > "$CODE_UP_DIR/$name"
+}
+
+# konrad code down <git-url>: stop the repo's up container. Claude gets time to
+# end its sessions: worktrees with nothing in them go, ones with work stay.
+do_code_down() {
+  [[ $# -eq 1 && "$1" != -* ]] || die "usage: $SELF code down <git-url>"
+  local url vol name err
+  url="$(code_normalize_url "$1")"
+  vol="$(code_volume_name "$url")"
+  [[ -n "$KONRAD_PROFILE" ]] && vol+="-$KONRAD_PROFILE"
+  name="$(code_up_name "$vol")"
+  require_engine
+  rm -f "$CODE_UP_DIR/$name"
+  if ! eng_container_ls | grep -x "$name" >/dev/null; then
+    info "${url%.git} isn't up"
+    return 0
+  fi
+  if code_up_running "$name"; then
+    go "stopping $name (its sessions get 30 s to finish)"
+    eng_stop_container "$name" 30 || true
+  fi
+  err="$(eng_rm_container_checked "$name" 2>&1)" \
+    || die "couldn't remove $name: ${err##*$'\n'}"
+  step "${url%.git} is down · worktrees holding work stay in the clone's .claude/worktrees ($(code_self) code --shell ${url%.git} to look)"
+}
+
+# konrad code ls: the repos konrad code up started, whether each is still up,
+# and how many worktrees its sessions left in the clone.
+do_code_ls() {
+  [[ $# -eq 0 ]] || die "usage: $SELF code ls"
+  require_engine
+  local f name url profile repo n pre any=0
+  for f in "$CODE_UP_DIR"/konrad-up-*; do
+    [[ -f "$f" ]] || continue
+    any=1
+    name="${f##*/}"
+    url="$(sed -n 's/^url=//p' "$f")"
+    profile="$(sed -n 's/^profile=//p' "$f")"
+    pre="$SELF"; [[ -n "$profile" ]] && pre+=" --profile $profile"
+    if code_up_running "$name"; then
+      repo="${url%.git}"; repo="${repo##*/}"
+      n="$(eng_exec "$name" ls -1A "/workspace/$repo/.claude/worktrees" 2>/dev/null | grep -c . || true)"
+      step "${url%.git} · up · ${n:-0} worktree(s) in .claude/worktrees"
+    else
+      warn "${url%.git} should be up but isn't running (a host reboot?) — $pre code up ${url%.git} starts it again"
+    fi
+  done
+  (( any )) || info "no repo is up — $SELF code up <git-url> starts one"
+  # Worktrees pile up: a stopped session's worktree stays while it holds work.
+  (( any )) && go "prune old worktrees from a shell: $SELF code --shell <git-url>, then git worktree list / git worktree remove"
+  return 0
+}
+
+# Start one konrad code container. $1 is the mode the entrypoint runs in:
+# session (a terminal session), setup (up's attached first step) or up (the
+# detached server); then nested (0/1), shell (0/1), the session name, the
+# normalized URL, and arguments for claude. Returns the engine's exit code.
+code_launch() {
+  local mode="$1" nested="$2" shell="$3" session="$4" url="$5"
+  shift 5
+  local vol store_vol tools_vol="$CODE_TOOLS_VOLUME" config_vol="$CODE_CONFIG_VOLUME"
   vol="$(code_volume_name "$url")"
   store_vol="$vol-containers"
   # --profile gives konrad code a whole separate set — clone, install AND login
@@ -2689,40 +2859,69 @@ do_code() {
     vol+="-$KONRAD_PROFILE"; tools_vol+="-$KONRAD_PROFILE"; config_vol+="-$KONRAD_PROFILE"
     store_vol+="-$KONRAD_PROFILE"
   fi
+  local up_name
+  up_name="$(code_up_name "$vol")"
   [[ -t 0 && -t 1 ]] || die "konrad code is interactive — run it from a terminal."
-  if [[ "$KONRAD_FIREWALL" != 1 || -n "$KONRAD_ALLOW_HOST" ]]; then
-    warn "--no-firewall / --allow-host don't apply to konrad code (its egress is open, minus host and LAN)."
+  if [[ "$mode" != up ]]; then
+    if [[ "$KONRAD_FIREWALL" != 1 || -n "$KONRAD_ALLOW_HOST" ]]; then
+      warn "--no-firewall / --allow-host don't apply to konrad code (its egress is open, minus host and LAN)."
+    fi
+    launch_preflight
+    code_user_layer   # up reuses what its setup run found
   fi
-  launch_preflight
-  code_user_layer
   # An image from before konrad code has no konrad-code entrypoint; the engine
   # would fail to exec it (apple/container with a crash trace). Refuse up front
   # — only when the labels are readable at all (the read is best-effort), so a
-  # failed read never blocks a good image.
-  if [[ -n "$(eng_image_label "$IMAGE_NAME" org.opencontainers.image.title)" \
-        && -z "$(eng_image_label "$IMAGE_NAME" io.konrad.code)" ]]; then
-    local fix="$SELF update"
-    is_dev && fix="$SELF rebuild"
-    die "the image $IMAGE_NAME ($KONRAD_ENGINE) predates konrad code — update it first: $fix"
+  # failed read never blocks a good image. `up` needs the entrypoint's modes,
+  # interface version 2.
+  local fix="$SELF update" code_if
+  is_dev && fix="$SELF rebuild"
+  if [[ -n "$(eng_image_label "$IMAGE_NAME" org.opencontainers.image.title)" ]]; then
+    code_if="$(eng_image_label "$IMAGE_NAME" io.konrad.code)"
+    [[ -n "$code_if" ]] \
+      || die "the image $IMAGE_NAME ($KONRAD_ENGINE) predates konrad code — update it first: $fix"
+    [[ "$mode" == session || "$code_if" -ge 2 ]] 2>/dev/null \
+      || die "the image $IMAGE_NAME ($KONRAD_ENGINE) predates konrad code up — update it first: $fix"
   fi
-  # Pick the session before anything is created: dead runs are swept first, so
-  # what's left in the listing is live. Two runs racing for the same free name
-  # both get past this; the engine then refuses the second's container name.
-  sweep_orphans
-  local rid live
+  local rid live cname
   rid="$(code_repo_id "$vol")"
-  live="$(code_live_sessions "$rid")"
-  if [[ -z "$session" ]]; then
-    session="$(code_pick_session "$rid")"
-  elif grep -qx "$session" <<<"$live"; then
-    die "session '$session' of this repo is already running in another terminal — pick another name, or leave out --session for a free one"
-  fi
-  code_brand "$url" "$vol"
-  if [[ "$session" != primary ]]; then
-    local others=""
-    [[ -n "$live" ]] && others=" · also running: $(paste -sd, - <<<"$live")"
-    go "session $session (its own worktree)$others · resume with --session $session"
-  fi
+  case "$mode" in
+    session)
+      # Pick the session before anything is created: dead runs are swept first,
+      # so what's left in the listing is live. Two runs racing for the same free
+      # name both get past this; the engine then refuses the second's name.
+      sweep_orphans
+      live="$(code_live_sessions "$rid")"
+      if [[ -z "$session" ]]; then
+        session="$(code_pick_session "$rid")"
+      elif grep -qx "$session" <<<"$live"; then
+        die "session '$session' of this repo is already running in another terminal — pick another name, or leave out --session for a free one"
+      fi
+      cname="konrad-code-$$-$rid-$session"
+      code_brand "$url" "$vol"
+      if [[ "$session" != primary ]]; then
+        local others=""
+        [[ -n "$live" ]] && others=" · also running: $(paste -sd, - <<<"$live")"
+        go "session $session (its own worktree)$others · resume with --session $session"
+      fi
+      if code_up_running "$up_name"; then
+        go "this repo is also up · sessions from the Claude app work in the clone's .claude/worktrees"
+      elif [[ -f "$CODE_UP_DIR/$up_name" ]]; then
+        warn "this repo was up, but its container is gone (a host reboot?) — $(code_self) code up ${url%.git} starts it again"
+      fi
+      ;;
+    setup)
+      # pid-named like a terminal session, so a closed terminal's run is swept.
+      sweep_orphans
+      cname="konrad-code-$$-$rid-up-setup"
+      code_brand "$url" "$vol"
+      ;;
+    up)
+      # Left over from a crash or a reboot: a stopped container keeps its name.
+      eng_container_ls | grep -x "$up_name" >/dev/null && eng_rm_container "$up_name"
+      cname="$up_name"
+      ;;
+  esac
 
   # Seal privileges: the entrypoint starts as root ONLY to install the host/LAN
   # routes, then drops to node with the bounding set cleared (exec_as_node). On
@@ -2744,6 +2943,11 @@ do_code() {
     priv_flags+=(--cap-drop=ALL --cap-add=NET_ADMIN --cap-add=SETUID
                  --cap-add=SETGID --cap-add=SETPCAP)
     [[ "$KONRAD_PIDS_LIMIT" != 0 ]] && priv_flags+=(--pids-limit "$KONRAD_PIDS_LIMIT")
+    # The up container's stop must reach claude so it can end its sessions and
+    # clean up their worktrees. The init (PID 1, root) forwards the SIGTERM to
+    # the entrypoint, which runs as node: signalling another user's process
+    # takes KILL. Only the init keeps it; the drop clears node's bounding set.
+    [[ "$mode" == up ]] && priv_flags+=(--cap-add=KILL)
     if (( nested )); then
       # Rootless nested Podman (probe-verified, scripts/probe-nested.sh). The
       # file-capability uid mappers need no-new-privileges off (node's bounding
@@ -2768,12 +2972,27 @@ do_code() {
     (( nested )) && priv_flags+=(--cap-add SYS_ADMIN)
   fi
 
+  # The up container holds several agents at once, so its default memory cap
+  # may go higher (half the host RAM up to 16G, not 8G).
   local mem_cap cpu_cap
-  mem_cap="${KONRAD_MEMORY:-$(default_memory)}"
+  if [[ "$mode" == up ]]; then
+    mem_cap="${KONRAD_MEMORY:-$(default_memory 16384)}"
+  else
+    mem_cap="${KONRAD_MEMORY:-$(default_memory)}"
+  fi
   cpu_cap="${KONRAD_CPUS:-$(default_cpus)}"
   local -a res_flags=()
   [[ "$mem_cap" != 0 ]] && res_flags+=(--memory "$mem_cap")
   [[ "$cpu_cap" != 0 ]] && res_flags+=(--cpus   "$cpu_cap")
+
+  # The device name in the Claude app: the repo for the up container, the repo
+  # and session for a terminal one.
+  local repo="${url%.git}"; repo="${repo##*/}"
+  case "$mode" in
+    up)      code_hostname_flags "$repo" ;;
+    session) code_hostname_flags "$repo-$session" ;;
+    *)       CODE_HOSTNAME_FLAGS=() ;;
+  esac
 
   # The host's git identity, so the agent's commits are attributed to the user
   # (metadata only — no host file is read into the container).
@@ -2781,12 +3000,14 @@ do_code() {
   host_nets="$(host_ip_cidrs | tr '\n' ' ')"
   dbg "host networks handed to the seal: ${host_nets:-<none>}"
   local -a env_flags=(-e "KONRAD_CODE_URL=$url" -e "KONRAD_CODE_SHELL=$shell"
+                      -e "KONRAD_CODE_MODE=$mode"
                       -e "KONRAD_CODE_HOST_NETS=$host_nets"
                       -e "KONRAD_CODE_NESTED=$nested"
                       -e "KONRAD_CODE_SESSION=$session"
                       -e "KONRAD_DEBUG=$KONRAD_DEBUG"
                       -e "CLAUDE_CONFIG_DIR=/home/node/.config/claude"
                       -e "TERM=${TERM:-xterm-256color}")
+  [[ "$mode" == up ]] && env_flags+=(-e "KONRAD_CODE_CAPACITY=$CODE_CAPACITY")
   if command -v git >/dev/null 2>&1; then
     local gname gemail
     gname="$(git config --global --get user.name 2>/dev/null || true)"
@@ -2810,8 +3031,8 @@ do_code() {
   # overlay store (probe-verified); the root prelude hands it to node.
   # Parallel sessions share the store on Podman (each keeps its own container
   # database — see the entrypoint). On apple/container the store is a block
-  # volume only one VM can attach, so a second session there gets a store of
-  # its own, cold on its first build.
+  # volume only one VM can attach, so a second session there, and the up
+  # container, get a store of its own, cold on its first build.
   local -a store_flags=()
   local store_new=0
   if (( nested )); then
@@ -2844,8 +3065,14 @@ do_code() {
   local -a init_flags=(--init --entrypoint /usr/local/bin/konrad-code)
   (( nested )) && [[ "$KONRAD_ENGINE" == "podman" ]] \
     && init_flags=(--entrypoint '["/usr/bin/catatonit","--","/usr/local/bin/konrad-code"]')
+  # A terminal session and setup are attached and removed on exit; the up
+  # container is detached and kept when it stops, so its logs survive a crash
+  # (konrad code down removes it).
+  local -a attach_flags=(--rm -it)
+  [[ "$mode" == up ]] && attach_flags=(-d)
   local -a run_cmd=(
-    "$KONRAD_ENGINE" run --rm -it --name "konrad-code-$$-$rid-$session"
+    "$KONRAD_ENGINE" run "${attach_flags[@]}" --name "$cname"
+    ${CODE_HOSTNAME_FLAGS[@]+"${CODE_HOSTNAME_FLAGS[@]}"}
     "${init_flags[@]}"
     "${priv_flags[@]}"
     ${res_flags[@]+"${res_flags[@]}"}
@@ -2859,7 +3086,11 @@ do_code() {
   )
   dbg "about to run: ${run_cmd[*]}"
   local rc=0
-  "${run_cmd[@]}" || rc=$?
+  if [[ "$mode" == up ]]; then
+    "${run_cmd[@]}" >/dev/null || rc=$?
+  else
+    "${run_cmd[@]}" || rc=$?
+  fi
   # 126 = the engine couldn't start the container. With nesting on (the
   # default), an unusual host is the likely cause: a missing tun device,
   # restricted user namespaces, or an engine that is itself nested.
@@ -2874,7 +3105,18 @@ do_code() {
       else container volume delete "$store_vol" >/dev/null || true; fi
     fi
   fi
-  exit "$rc"
+  if [[ "$mode" == up && "$rc" == 0 ]]; then
+    # The seal, a fetch and the server's start take a few seconds; a container
+    # that's gone by then failed, and its log says why.
+    sleep 5
+    if ! code_up_running "$cname"; then
+      eng_logs "$cname" | tail -n 15 >&2 || true
+      warn "$cname stopped right after starting — its log is above ($(code_self) code down ${url%.git} removes it)"
+      return 1
+    fi
+    step "${url%.git} is up · start a session in the Claude app or at claude.ai/code (device: ${CODE_HOSTNAME_FLAGS[1]:-its container ID}) · $(code_self) code down ${url%.git} stops it · log: $KONRAD_ENGINE logs $cname"
+  fi
+  return "$rc"
 }
 
 # --- Org-layer subscriptions (konrad org) ------------------------------------
@@ -3690,6 +3932,14 @@ Subcommands:
                         that session works in its own git worktree (s2, s3, …);
                         '--session <name>' picks or resumes one by name.
                           $self code https://gitlab.example.com/me/repo
+  $self code up [--no-nested] [--capacity <n>] <git-url>
+                        Keep the repo up in the background: Claude Code's
+                        server mode, so you start sessions from the Claude app
+                        or claude.ai/code, each in its own git worktree (up to
+                        <n> at once, default 3). The first run asks for the
+                        token, the install and the login in this terminal.
+  $self code down <git-url>   Stop it (worktrees holding work are kept).
+  $self code ls               List the repos that are up.
   $self org add <git-url> [--name <n>] [--branch <b>]
                         Subscribe to an org config layer: clones the repo to
                         ~/.config/konrad/org/<name>/ and re-syncs it in the

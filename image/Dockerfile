@@ -431,8 +431,10 @@ COPY --chmod=0755 konrad-proxy-entrypoint.sh /usr/local/bin/konrad-proxy
 COPY --chmod=0755 konrad-code-entrypoint.sh /usr/local/bin/konrad-code
 # Marks the image as konrad-code-capable, so bin/konrad can refuse an older one
 # host-side (`image inspect`, no container start) instead of letting the engine
-# fail to exec a missing entrypoint — apple/container crashes on that.
-LABEL io.konrad.code="1"
+# fail to exec a missing entrypoint — apple/container crashes on that. The value
+# is the entrypoint's interface version: 2 adds KONRAD_CODE_MODE (setup, up),
+# which `konrad code up` needs.
+LABEL io.konrad.code="2"
 COPY --chmod=0755 konrad-defaults/ /etc/konrad/
 
 # NODE_DISABLE_COMPILE_CACHE / NPM_CONFIG_* keep npm and node from writing

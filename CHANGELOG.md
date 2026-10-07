@@ -11,6 +11,14 @@ Entries stay terse — the *why* lives in the git commit log and the [ARCHITECTU
 
 ## [Unreleased]
 
+### Added
+
+- **`konrad code up <git-url>` keeps a repo up for sessions started from the Claude app or claude.ai/code.** Each session gets its own git worktree and branch in a detached container with the same seal, token and nested containers as a terminal session; the first `up` asks for the token, the install and the login in the terminal once. `konrad code down <git-url>` stops it and keeps worktrees that hold work; `konrad code ls` lists the repos that are up. See [README → Coding agents](README.md#coding-agents-konrad-code).
+
+### Changed
+
+- **`konrad code`'s note to the agent moved from `--append-system-prompt` into Claude Code's managed `/etc/claude-code/CLAUDE.md`,** written as root, so the agent can't change it. Terminal sessions now also get the repo and session as the device name in the Claude app on Podman.
+
 ## [0.35.1] - 2026-10-08
 
 ### Changed
