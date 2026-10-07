@@ -2690,10 +2690,13 @@ code_up_name() { printf 'konrad-up-%s' "${1#konrad-code-}"; }
 # listing, which pipefail would turn into a false "not running".
 code_up_running() { eng_container_ls_running | grep -x "$1" >/dev/null; }
 
-# Set the global CODE_HOSTNAME_FLAGS to --hostname $1, which Claude Code uses as
-# the prefix of its session names in the app. Skipped where the engine can't set one: Podman sharing
-# its host's UTS namespace (konrad's own nested engine, inside konrad code) and
-# apple/container, until a probe shows it takes the flag.
+# Set the global CODE_HOSTNAME_FLAGS to --hostname $1, which Claude Code shows as
+# the device in the app. It keeps the repo path's slash (`owner/repo`, as the
+# app's session list shows the repo): the kernel limits a hostname's length,
+# not its characters, and Podman passes it through. Skipped where the engine
+# can't set one: Podman sharing its host's UTS namespace (konrad's own nested
+# engine, inside konrad code) and apple/container, until a probe shows it takes
+# the flag.
 CODE_HOSTNAME_FLAGS=()
 code_hostname_flags() {
   local h
@@ -2704,7 +2707,7 @@ code_hostname_flags() {
     dbg "the engine shares its host's UTS namespace — no --hostname"
     return 0
   fi
-  h="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9\n' '-' | cut -c1-63 | sed 's/^-*//; s/-*$//')"
+  h="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9./\n' '-' | cut -c1-63 | sed 's/^[-./]*//; s/[-./]*$//')"
   [[ -n "$h" ]] && CODE_HOSTNAME_FLAGS=(--hostname "$h")
   return 0
 }
@@ -2985,13 +2988,14 @@ code_launch() {
   [[ "$mem_cap" != 0 ]] && res_flags+=(--memory "$mem_cap")
   [[ "$cpu_cap" != 0 ]] && res_flags+=(--cpus   "$cpu_cap")
 
-  # The session-name prefix in the Claude app: the repo for the up container,
-  # the repo and session for a terminal one.
-  local repo="${url%.git}"; repo="${repo##*/}"
+  # The device name in the Claude app: owner/repo for the up container and its
+  # setup run (Claude Code keys some of its one-time answers to the hostname),
+  # owner/repo-session for a terminal one.
+  local repo_path="${url#https://*/}"; repo_path="${repo_path%.git}"
   case "$mode" in
-    up)      code_hostname_flags "$repo" ;;
-    session) code_hostname_flags "$repo-$session" ;;
-    *)       CODE_HOSTNAME_FLAGS=() ;;
+    up|setup) code_hostname_flags "$repo_path" ;;
+    session)  code_hostname_flags "$repo_path-$session" ;;
+    *)        CODE_HOSTNAME_FLAGS=() ;;
   esac
 
   # The host's git identity, so the agent's commits are attributed to the user
@@ -3114,7 +3118,9 @@ code_launch() {
       warn "$cname stopped right after starting — its log is above ($(code_self) code down ${url%.git} removes it)"
       return 1
     fi
-    step "${url%.git} is up · open the ${repo} session in the Code tab of the Claude app or at claude.ai/code · $(code_self) code down ${url%.git} stops it · log: $KONRAD_ENGINE logs $cname"
+    step "$repo_path is up"
+    go "start sessions on its device${CODE_HOSTNAME_FLAGS[1]:+ ${CODE_HOSTNAME_FLAGS[1]}} in the Code tab of the Claude app or at claude.ai/code"
+    go "stop it: $(code_self) code down ${url%.git} · its log: $KONRAD_ENGINE logs $cname"
   fi
   return "$rc"
 }

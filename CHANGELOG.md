@@ -17,7 +17,7 @@ Entries stay terse — the *why* lives in the git commit log and the [ARCHITECTU
 
 ### Changed
 
-- **`konrad code`'s note to the agent moved from `--append-system-prompt` into Claude Code's managed `/etc/claude-code/CLAUDE.md`,** written as root, so the agent can't change it. Terminal sessions now also get the repo and session as the device name in the Claude app on Podman.
+- **`konrad code`'s note to the agent moved from `--append-system-prompt` into Claude Code's managed `/etc/claude-code/CLAUDE.md`,** written as root, so the agent can't change it. Terminal sessions now also get `owner/repo-session` as the device name in the Claude app on Podman.
 
 ## [0.35.1] - 2026-10-08
 
