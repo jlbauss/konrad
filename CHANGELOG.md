@@ -11,6 +11,8 @@ Entries stay terse — the *why* lives in the git commit log and the [ARCHITECTU
 
 ## [Unreleased]
 
+## [0.36.0] - 2026-10-08
+
 ### Added
 
 - **`konrad code up <git-url>` keeps a repo up for sessions started from the Claude app or claude.ai/code.** Each session gets its own git worktree and branch in a detached container with the same seal, token and nested containers as a terminal session; the first `up` asks for the token, the install and the login in the terminal once. `konrad code down <git-url>` stops it and keeps worktrees that hold work; `konrad code ls` lists the repos that are up. See [README → Coding agents](README.md#coding-agents-konrad-code).
