@@ -11,6 +11,8 @@ Entries stay terse — the *why* lives in the git commit log and the [ARCHITECTU
 
 ## [Unreleased]
 
+## [0.35.0] - 2026-10-07
+
 ### Changed
 
 - **`konrad code` gives the agent nested containers by default.** It can build and run images without a flag; `konrad code --no-nested <git-url>` turns that off for a run. Nesting loosens some container hardening, but not the seal, the host mounts or the git-only way back; what it costs in practice is in [README → Coding agents](README.md#coding-agents-konrad-code).
