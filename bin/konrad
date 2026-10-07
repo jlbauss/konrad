@@ -2806,7 +2806,16 @@ do_code_down() {
   require_engine
   rm -f "$CODE_UP_DIR/$name"
   if ! eng_container_ls | grep -x "$name" >/dev/null; then
-    info "${url%.git} isn't up"
+    info "${url%.git} isn't up${KONRAD_PROFILE:+ under --profile $KONRAD_PROFILE}"
+    # --profile is part of the up container's name: point at the profiles the
+    # repo is up under, or the bare down above reads as a silent no-op.
+    local f profile
+    for f in "$CODE_UP_DIR"/konrad-up-*; do
+      [[ -f "$f" ]] || continue
+      grep -qx "url=$url" "$f" || continue
+      profile="$(sed -n 's/^profile=//p' "$f")"
+      go "it's up ${profile:+under --profile $profile }— $SELF${profile:+ --profile $profile} code down ${url%.git} stops it"
+    done
     return 0
   fi
   if code_up_running "$name"; then
@@ -2834,7 +2843,7 @@ do_code_ls() {
     if code_up_running "$name"; then
       repo="${url%.git}"; repo="${repo##*/}"
       n="$(eng_exec "$name" ls -1A "/workspace/$repo/.claude/worktrees" 2>/dev/null | grep -c . || true)"
-      step "${url%.git} · up · ${n:-0} worktree(s) in .claude/worktrees"
+      step "${url%.git}${profile:+ (--profile $profile)} · up · ${n:-0} worktree(s) in .claude/worktrees"
     else
       warn "${url%.git} should be up but isn't running (a host reboot?) — $pre code up ${url%.git} starts it again"
     fi
