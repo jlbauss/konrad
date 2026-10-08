@@ -11,6 +11,8 @@ Entries stay terse — the *why* lives in the git commit log and the [ARCHITECTU
 
 ## [Unreleased]
 
+## [0.35.1] - 2026-10-08
+
 ### Changed
 
 - **Two supported platforms: Linux with Podman, and Apple-Silicon macOS 26+ with Apple's `container`.** Every change is tested on each one it can affect. On Intel Macs and macOS before 26, konrad still falls back to Podman, but that's no longer tested or supported.
