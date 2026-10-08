@@ -18,6 +18,7 @@ Entries stay terse — the *why* lives in the git commit log and the [ARCHITECTU
 ### Fixed
 
 - **Your config layers load on SELinux hosts (Fedora and friends).** `~/.config/konrad/org/`, `user/` and `context/`, and `konrad code`'s `code/user/`, were bound into the container but SELinux kept the agent from reading them, so your settings, instructions and skills silently never showed up. konrad now relabels these folders for containers, and warns at startup if one still can't be read.
+- **`konrad code` no longer fails at random with "egress seal missing".** The seal was in place; the check that looks for it could misread it, so a start failed and the identical retry worked.
 
 ## [0.35.0] - 2026-10-07
 

@@ -1062,7 +1062,7 @@ fw_sweep_orphans() {
 fw_wait_ready() {
   local i
   for i in $(seq 1 100); do
-    if eng_logs "$FW_PROXY_NAME" | grep -q "Accepting connections"; then
+    if eng_logs "$FW_PROXY_NAME" | grep "Accepting connections" >/dev/null; then
       dbg "firewall: proxy ready"
       return 0
     fi

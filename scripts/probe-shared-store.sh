@@ -67,7 +67,7 @@ probe() {  # probe <mode> <expect: pass|fail>
     if "${@:2}" >/dev/null 2>&1; then echo "  ok    $1"; else echo "  FAIL  $1"; bad=$((bad + 1)); fi
   }
   running() { [[ "$(p "$1" inspect -f '{{.State.Status}}' "$2" 2>/dev/null)" == running ]]; }
-  locks_clean() { ! p A system locks 2>&1 | grep -q '^Lock conflicts have been detected'; }
+  locks_clean() { ! p A system locks 2>&1 | grep '^Lock conflicts have been detected' >/dev/null; }
 
   printf '\n== %s (expected to %s)\n' "$mode" "$expect"
   podman volume rm -f "$vol" >/dev/null 2>&1

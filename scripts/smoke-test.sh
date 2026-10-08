@@ -136,7 +136,7 @@ in_image test -x /usr/local/bin/konrad-code \
   || fail "konrad-code missing or non-executable (konrad code entrypoint)"
 # ...and the label bin/konrad's preflight keys on (grep over the inspect JSON:
 # the one shape docker, podman and apple/container all print).
-"$ENGINE" image inspect "$IMAGE" 2>/dev/null | grep -q '"io.konrad.code"' \
+"$ENGINE" image inspect "$IMAGE" 2>/dev/null | grep '"io.konrad.code"' >/dev/null \
   || fail "io.konrad.code label missing — konrad code would refuse this image"
 # konrad code --nested: rootless podman, with the uid mappers as the ONLY
 # privileged binaries (file capabilities, inert unless --nested keeps

@@ -175,7 +175,9 @@ fi
 # ── Stage 2 (node): git, clone/fetch, agent install, launch ──────────────────
 [[ -n "$KONRAD_CODE_URL" ]] || fatal "KONRAD_CODE_URL not set (start this through 'konrad code <git-url>')"
 [[ -t 0 ]] || fatal "konrad code needs an interactive terminal"
-ip -4 rule 2>/dev/null | grep -q "lookup $SEAL_TABLE" \
+# grep reads to the end, not -q: under pipefail an early exit can SIGPIPE ip
+# while it still writes the rules after ours, and that 141 read as "no seal".
+ip -4 rule 2>/dev/null | grep "lookup $SEAL_TABLE" >/dev/null \
   || fatal "egress seal missing — konrad code must start as root so it can seal the host (start it through 'konrad code')"
 # The drop must have left exactly the bounding set this run asked for: nothing,
 # or setuid+setgid (0xc0) under --nested. Anything wider refuses to run.
