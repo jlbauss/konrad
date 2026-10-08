@@ -17,7 +17,7 @@ doclang==0.7.3
 docling-core==2.100.0
 docling-ibm-models==4.0.3
 docling-parse==7.22.2
-docling-slim==2.134.0
+docling-slim==2.135.0
 et-xmlfile==2.0.0
 faker==40.41.0
 filelock==4.0.12
@@ -90,7 +90,7 @@ safetensors==0.8.0
 scipy==1.18.1
 semchunk==3.2.5
 setuptools==84.0.0
-shapely==2.1.2
+shapely==2.2.0
 shellingham==1.5.4
 six==1.17.0
 soupsieve==2.10
