@@ -15,6 +15,10 @@ Entries stay terse — the *why* lives in the git commit log and the [ARCHITECTU
 
 - **Two supported platforms: Linux with Podman, and Apple-Silicon macOS 26+ with Apple's `container`.** Every change is tested on each one it can affect. On Intel Macs and macOS before 26, konrad still falls back to Podman, but that's no longer tested or supported.
 
+### Fixed
+
+- **Your `konrad code` layer loads on SELinux hosts (Fedora and friends).** `~/.config/konrad/code/user/` was bound into sessions but SELinux kept the agent from reading it, so your `CLAUDE.md` and skills silently never showed up. konrad now relabels the folder for containers, and a session warns if it still can't read it.
+
 ## [0.35.0] - 2026-10-07
 
 ### Changed

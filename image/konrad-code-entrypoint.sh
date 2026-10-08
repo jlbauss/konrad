@@ -416,6 +416,11 @@ fi
 claude_cfg="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 mkdir -p "$claude_cfg"
 find "$claude_cfg" -maxdepth 2 -type l -lname "$CODE_USER_LAYER/*" -delete 2>/dev/null || true
+# Bound but unreadable (an unrelabelled bind on an SELinux host) would
+# otherwise skip every piece below without a word.
+if [[ -d "$CODE_USER_LAYER" && ! ( -r "$CODE_USER_LAYER" && -x "$CODE_USER_LAYER" ) ]]; then
+  warn "can't read your code layer (~/.config/konrad/code/user) in here — this session runs without it"
+fi
 layer_linked=()
 for entry in "$CODE_USER_LAYER"/CLAUDE.md "$CODE_USER_LAYER"/{skills,agents,commands,rules}/*; do
   [[ -e "$entry" ]] || continue   # an absent piece leaves its glob unexpanded

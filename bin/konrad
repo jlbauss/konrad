@@ -2583,6 +2583,11 @@ code_session_valid() { [[ "$1" =~ ^[a-z0-9][a-z0-9-]{0,31}$ ]]; }
 #     host, so they dangle there (safe, but they silently don't load);
 #   - on Podman, files the agent can't read are flagged: without a keep-id
 #     userns the host user is container root and node reads as "other".
+# On Podman the bind is relabelled (:z): on an SELinux host the dir keeps its
+# home label (config_home_t), which neither container_t nor container_engine_t
+# may search, so unrelabelled the layer is mounted but invisible. Shared (z),
+# not private (Z): the up container and every session bind it at once, each
+# with its own MCS pair, and a private label would lock out all but the last.
 CODE_LAYER_FLAGS=()
 code_user_layer() {
   CODE_LAYER_FLAGS=()
@@ -2600,8 +2605,12 @@ code_user_layer() {
     [[ -n "$found" ]] \
       && warn "konrad code can't read these in $dir (needs world-readable, e.g. chmod -R o+rX): $(paste -sd, - <<<"$found")"
   fi
-  ro_bind "$dir" "$CODE_USER_LAYER_MOUNT"
-  CODE_LAYER_FLAGS=("${RO_BIND[@]}")
+  if [[ "$KONRAD_ENGINE" == "podman" ]]; then
+    CODE_LAYER_FLAGS=(-v "$dir:$CODE_USER_LAYER_MOUNT:ro,z")
+  else
+    ro_bind "$dir" "$CODE_USER_LAYER_MOUNT"
+    CODE_LAYER_FLAGS=("${RO_BIND[@]}")
+  fi
 }
 # The sessions running on repo id $1, one per line. Run after sweep_orphans, so
 # every listed container belongs to a live konrad.
