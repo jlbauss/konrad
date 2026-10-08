@@ -691,12 +691,19 @@ eng_volume_rm() {
 # global array because bash 3.2 has no namerefs). Callers splice
 # "${RO_BIND[@]}" into their run argv. (A literal comma in a source path would
 # break the --mount key=value syntax — none of konrad's mount sources have one.)
+# On Podman the bind is also relabelled shared (z): on an SELinux host a dir
+# under ~/.config keeps its home label (config_home_t), which no container type
+# may search, so unrelabelled a config layer is mounted but unreadable and the
+# entrypoints skip it without a word. Shared, not private (Z): the agent, the
+# firewall sidecar and parallel sessions bind the same dirs at once, each with
+# its own MCS pair. Sources already under a container label (the workspace's
+# guarded entries, engine volumes) keep the label they have.
 RO_BIND=()
 ro_bind() {
   if [[ "$KONRAD_ENGINE" == "container" ]]; then
     RO_BIND=(--mount "type=bind,source=$1,target=$2,readonly")
   else
-    RO_BIND=(-v "$1:$2:ro")
+    RO_BIND=(-v "$1:$2:ro,z")
   fi
 }
 
@@ -1370,7 +1377,7 @@ EOF
   # and :U (chown the volume to the mapped user); apple/container supports neither
   # (VirtioFS maps UIDs, no SELinux, and its -v rejects suffixes), so they're
   # empty there. Read-ONLY binds don't use these — they
-  # go through ro_bind(), which picks :ro vs --mount …,readonly per engine.
+  # go through ro_bind(), which picks :ro,z vs --mount …,readonly per engine.
   local vol_relabel=":z" vol_chown=":U"
   if [[ "$KONRAD_ENGINE" == "container" ]]; then
     vol_relabel=""; vol_chown=""
@@ -2583,11 +2590,6 @@ code_session_valid() { [[ "$1" =~ ^[a-z0-9][a-z0-9-]{0,31}$ ]]; }
 #     host, so they dangle there (safe, but they silently don't load);
 #   - on Podman, files the agent can't read are flagged: without a keep-id
 #     userns the host user is container root and node reads as "other".
-# On Podman the bind is relabelled (:z): on an SELinux host the dir keeps its
-# home label (config_home_t), which neither container_t nor container_engine_t
-# may search, so unrelabelled the layer is mounted but invisible. Shared (z),
-# not private (Z): the up container and every session bind it at once, each
-# with its own MCS pair, and a private label would lock out all but the last.
 CODE_LAYER_FLAGS=()
 code_user_layer() {
   CODE_LAYER_FLAGS=()
@@ -2605,12 +2607,8 @@ code_user_layer() {
     [[ -n "$found" ]] \
       && warn "konrad code can't read these in $dir (needs world-readable, e.g. chmod -R o+rX): $(paste -sd, - <<<"$found")"
   fi
-  if [[ "$KONRAD_ENGINE" == "podman" ]]; then
-    CODE_LAYER_FLAGS=(-v "$dir:$CODE_USER_LAYER_MOUNT:ro,z")
-  else
-    ro_bind "$dir" "$CODE_USER_LAYER_MOUNT"
-    CODE_LAYER_FLAGS=("${RO_BIND[@]}")
-  fi
+  ro_bind "$dir" "$CODE_USER_LAYER_MOUNT"   # relabelled on Podman, see ro_bind
+  CODE_LAYER_FLAGS=("${RO_BIND[@]}")
 }
 # The sessions running on repo id $1, one per line. Run after sweep_orphans, so
 # every listed container belongs to a live konrad.

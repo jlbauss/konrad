@@ -142,6 +142,13 @@ TARGET_JSONC="$OPENCODE_CFG/opencode.jsonc"
 # agents/skills/instructions overlays, fonts) walks this same sorted list so
 # precedence can't drift between channels.
 org_layers=()
+# A layer that's bound but unreadable (an unrelabelled bind on an SELinux host)
+# would drop out of every channel below without a word, so say so.
+for d in "$ORG_CFG" "$USER_CFG" /context; do
+  if [[ -d "$d" && ! ( -r "$d" && -x "$d" ) ]]; then
+    warn "can't read $d in here — this session runs without it"
+  fi
+done
 for d in "$ORG_CFG"/*/; do
   [[ -d "$d" ]] && org_layers+=("${d%/}")
 done

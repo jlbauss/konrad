@@ -17,7 +17,7 @@ Entries stay terse — the *why* lives in the git commit log and the [ARCHITECTU
 
 ### Fixed
 
-- **Your `konrad code` layer loads on SELinux hosts (Fedora and friends).** `~/.config/konrad/code/user/` was bound into sessions but SELinux kept the agent from reading it, so your `CLAUDE.md` and skills silently never showed up. konrad now relabels the folder for containers, and a session warns if it still can't read it.
+- **Your config layers load on SELinux hosts (Fedora and friends).** `~/.config/konrad/org/`, `user/` and `context/`, and `konrad code`'s `code/user/`, were bound into the container but SELinux kept the agent from reading them, so your settings, instructions and skills silently never showed up. konrad now relabels these folders for containers, and warns at startup if one still can't be read.
 
 ## [0.35.0] - 2026-10-07
 
