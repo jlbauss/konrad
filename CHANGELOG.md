@@ -11,13 +11,15 @@ Entries stay terse — the *why* lives in the git commit log and the [ARCHITECTU
 
 ## [Unreleased]
 
+## [0.37.0] - 2026-10-18
+
 ### Changed
 
 - **`konrad code up` keeps a session of the repo's own,** named after the repo, as Claude Code's server mode does by default. It works in a worktree of its own and takes one slot, so `--capacity` now defaults to 4.
 
 ### Fixed
 
-- **`konrad code up` brings its sessions back after a restart.** Sessions started from the Claude app or claude.ai/code no longer show "environment deleted" after the server restarts on its own or a quick `konrad code down` and `up`.
+- **`konrad code up` brings its sessions back after a restart.** Before, every restart left them as "environment deleted". Now the repo's own session comes back after any restart, a `konrad code down` and `up` included, and sessions started from the Claude app or claude.ai/code carry on after a crash; a `down` still ends those, as Claude Code's server mode does when stopped.
 
 ## [0.36.0] - 2026-10-08
 
