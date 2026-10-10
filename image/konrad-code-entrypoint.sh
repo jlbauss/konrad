@@ -39,6 +39,7 @@ KONRAD_DEBUG="${KONRAD_DEBUG:-0}"
 WORK=/workspace
 CREDS="$WORK/.git-credentials"
 SESSIONS="$WORK/.sessions"   # parallel sessions' git worktrees (one per name)
+UP_HOME="$WORK/.konrad-up"   # server mode's own worktree, under <owner>/<repo>
 SEAL_TABLE=100
 NESTED_STORE=/var/lib/konrad-containers
 CODE_USER_LAYER=/opt/konrad-code/user   # bin/konrad's CODE_USER_LAYER_MOUNT
@@ -375,20 +376,32 @@ default_branch="${default_branch#origin/}"; default_branch="${default_branch:-ma
 # detached at the default branch on first use and resumed after. Worktrees
 # share the clone's objects and its token, and git refuses to check out one
 # branch in two of them — the guard parallel agents need.
-# The up container and its setup run work from the clone too: server mode puts
-# each of its sessions in a worktree of its own, under <clone>/.claude/worktrees.
+# The up container and its setup run work from a worktree of their own,
+# $UP_HOME/<owner>/<repo>, for server mode's resume record: Claude Code keeps it
+# only while the server pre-creates a session in its directory, and without the
+# record every restart registers a new environment, which strands the sessions
+# in the app. That session works in this worktree rather than in the clone,
+# where a terminal session may be working. The path carries the repo because
+# Claude Code keys the record by directory in the config volume, which every
+# repo shares. Server mode puts the sessions started from the app in worktrees
+# of the clone, under <clone>/.claude/worktrees.
 session="${KONRAD_CODE_SESSION:-primary}"
-work_dir="$repo_dir"
+work_dir="$repo_dir"; work_name=""
 if [[ "$KONRAD_CODE_MODE" == session && "$session" != primary ]]; then
-  work_dir="$SESSIONS/$session"
+  work_dir="$SESSIONS/$session"; work_name="session $session"
+elif [[ "$KONRAD_CODE_MODE" != session ]]; then
+  work_dir="$UP_HOME/$repo_path"; work_name="server mode"
+fi
+if [[ -n "$work_name" ]]; then
   git config --global --add safe.directory "$work_dir"
   git -C "$repo_dir" worktree prune || true
   if [[ -e "$work_dir/.git" ]]; then
-    step "session $session · resumed its worktree"
+    step "$work_name · resumed its worktree"
   else
+    mkdir -p "$(dirname "$work_dir")"
     git -C "$repo_dir" worktree add --quiet --detach "$work_dir" "origin/$default_branch" \
-      || fatal "could not create the worktree for session $session"
-    step "session $session · new worktree at origin/$default_branch"
+      || fatal "could not create the worktree for $work_name"
+    step "$work_name · new worktree at origin/$default_branch"
   fi
 fi
 cd "$work_dir"
@@ -563,10 +576,11 @@ repo_name="${repo_path##*/}"
 # Server mode's flags, shared by setup and up: setup runs it with the same ones,
 # so any question they don't settle (an unset --spawn asks same-dir or
 # worktree) comes up there, where someone can answer, rather than in the
-# detached container. --no-create-session-in-dir: otherwise it pre-creates an
-# empty session that works in the clone itself, outside any worktree.
+# detached container. No --no-create-session-in-dir: it would cost the resume
+# record (see $UP_HOME above), so the server pre-creates its one session in
+# its own worktree.
 rc_flags=(--spawn worktree --capacity "${KONRAD_CODE_CAPACITY:-3}"
-          --no-create-session-in-dir --permission-mode bypassPermissions)
+          --permission-mode bypassPermissions)
 logged_in() { claude auth status --json 2>/dev/null | jq -e '.loggedIn == true' >/dev/null 2>&1; }
 rc_enabled() { jq -e '.remoteDialogSeen == true' "${CLAUDE_CONFIG_DIR:-$HOME}/.claude.json" >/dev/null 2>&1; }
 # claude can leave the terminal in raw mode when it's stopped, which would

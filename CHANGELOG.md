@@ -11,6 +11,10 @@ Entries stay terse — the *why* lives in the git commit log and the [ARCHITECTU
 
 ## [Unreleased]
 
+### Fixed
+
+- **`konrad code up` brings its sessions back after a restart.** Sessions started from the Claude app or claude.ai/code no longer show "environment deleted" when the server restarts on its own or you run `konrad code up` again within about four hours. The server now keeps one session of its own, in a worktree of its own.
+
 ## [0.36.0] - 2026-10-08
 
 ### Added
