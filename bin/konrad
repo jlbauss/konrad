@@ -2754,7 +2754,7 @@ do_code() {
 }
 
 # konrad code up [--no-nested] [--capacity <n>] <git-url> [server-mode args…]
-CODE_CAPACITY=3   # sessions the up container serves at once (--capacity)
+CODE_CAPACITY=4   # sessions the up container serves at once, its own included (--capacity)
 do_code_up() {
   local nested=1
   local usage="usage: $SELF code up [--no-nested] [--capacity <n>] <git-url>"

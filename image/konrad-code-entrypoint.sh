@@ -377,14 +377,13 @@ default_branch="${default_branch#origin/}"; default_branch="${default_branch:-ma
 # share the clone's objects and its token, and git refuses to check out one
 # branch in two of them — the guard parallel agents need.
 # The up container and its setup run work from a worktree of their own,
-# $UP_HOME/<owner>/<repo>, for server mode's resume record: Claude Code keeps it
-# only while the server pre-creates a session in its directory, and without the
-# record every restart registers a new environment, which strands the sessions
-# in the app. That session works in this worktree rather than in the clone,
-# where a terminal session may be working. The path carries the repo because
-# Claude Code keys the record by directory in the config volume, which every
-# repo shares. Server mode puts the sessions started from the app in worktrees
-# of the clone, under <clone>/.claude/worktrees.
+# $UP_HOME/<owner>/<repo>. Server mode keeps a session of its own in its
+# directory (the repo's own session, which it resumes after a restart; without
+# it, it keeps no resume record and every restart strands the sessions in the
+# app), and that session shouldn't share the clone with a terminal session. The
+# path carries the repo because Claude Code keys the resume record by directory
+# in the config volume, which every repo shares. Server mode puts the sessions
+# started from the app in worktrees of the clone, under <clone>/.claude/worktrees.
 session="${KONRAD_CODE_SESSION:-primary}"
 work_dir="$repo_dir"; work_name=""
 if [[ "$KONRAD_CODE_MODE" == session && "$session" != primary ]]; then
@@ -576,11 +575,11 @@ repo_name="${repo_path##*/}"
 # Server mode's flags, shared by setup and up: setup runs it with the same ones,
 # so any question they don't settle (an unset --spawn asks same-dir or
 # worktree) comes up there, where someone can answer, rather than in the
-# detached container. No --no-create-session-in-dir: it would cost the resume
-# record (see $UP_HOME above), so the server pre-creates its one session in
-# its own worktree.
-rc_flags=(--spawn worktree --capacity "${KONRAD_CODE_CAPACITY:-3}"
-          --permission-mode bypassPermissions)
+# detached container. The server keeps its default session, the repo's own,
+# named after the repo; --no-create-session-in-dir would cost the resume record
+# (see $UP_HOME above). That session takes one of the --capacity slots.
+rc_flags=(--spawn worktree --capacity "${KONRAD_CODE_CAPACITY:-4}"
+          --name "$repo_name" --permission-mode bypassPermissions)
 logged_in() { claude auth status --json 2>/dev/null | jq -e '.loggedIn == true' >/dev/null 2>&1; }
 rc_enabled() { jq -e '.remoteDialogSeen == true' "${CLAUDE_CONFIG_DIR:-$HOME}/.claude.json" >/dev/null 2>&1; }
 # claude can leave the terminal in raw mode when it's stopped, which would
@@ -645,7 +644,7 @@ if [[ "$KONRAD_CODE_MODE" == up ]]; then
   stopping=0; pid=""; delay=10
   trap 'stopping=1; [[ -z "$pid" ]] || kill -TERM "$pid" 2>/dev/null || true' TERM INT
   rc_enabled || warn "Remote Control's one-time question looks unanswered, so server mode may wait on it and never show up in the app — konrad code down, then konrad code up asks it"
-  go "claude remote-control · $repo_path · up to ${KONRAD_CODE_CAPACITY:-3} sessions"
+  go "claude remote-control · $repo_path · up to ${KONRAD_CODE_CAPACITY:-4} sessions"
   while :; do
     started="$(date +%s)"
     claude remote-control "${rc_flags[@]}" "$@" </dev/null &
