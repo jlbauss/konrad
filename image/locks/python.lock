@@ -19,7 +19,7 @@ docling-parse==7.22.2
 docling-slim==2.137.0
 et-xmlfile==2.0.0
 faker==40.43.0
-filelock==4.1.0
+filelock==4.1.1
 filetype==1.2.0
 flatbuffers==25.12.19
 fsspec==2026.9.0
@@ -57,15 +57,15 @@ pdf2image==1.17.0
 pdfminer-six==20260107
 pdfplumber==0.11.10
 pillow==12.3.0
-pillow-heif==1.8.0
+pillow-heif==1.8.1
 pluggy==1.6.0
 polyfactory==3.3.0
 protobuf==7.36.2
 psutil==7.2.2
 pyclipper==1.4.0
 pycparser==3.11
-pydantic==2.14.0
-pydantic-core==2.50.0
+pydantic==2.14.1
+pydantic-core==2.50.1
 pydantic-settings==2.15.0
 pygments==2.21.0
 pylatexenc==2.11
