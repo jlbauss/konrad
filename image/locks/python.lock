@@ -69,7 +69,7 @@ pydantic-core==2.50.1
 pydantic-settings==2.15.0
 pygments==2.21.0
 pylatexenc==2.11
-pypdf==6.20.0
+pypdf==6.20.1
 pypdfium2==5.14.0
 python-dateutil==2.9.0.post0
 python-docx==1.2.0
@@ -92,7 +92,7 @@ setuptools==84.0.0
 shapely==2.2.0
 shellingham==1.5.4
 six==1.17.0
-soupsieve==3.0.2
+soupsieve==3.0.3
 sympy==1.14.0
 tabulate==0.10.0
 tokenizers==0.23.3
