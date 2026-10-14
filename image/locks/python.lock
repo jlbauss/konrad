@@ -15,7 +15,7 @@ dill==0.4.1
 doclang==0.7.3
 docling-core==2.101.1
 docling-ibm-models==4.0.3
-docling-parse==7.22.2
+docling-parse==7.22.3
 docling-slim==2.138.0
 et-xmlfile==2.0.0
 faker==40.43.0
