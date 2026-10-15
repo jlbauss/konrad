@@ -156,6 +156,7 @@
   "routing-run": "api.routing.run",
   "runinfra": "api.runinfra.ai",
   "sakana": "api.sakana.ai",
+  "sambanova": "api.sambanova.ai",
   "sarvam": "api.sarvam.ai",
   "scaleway": "api.scaleway.ai",
   "scnet-token-plan": "api.scnet.cn",
