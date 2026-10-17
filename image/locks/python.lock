@@ -16,7 +16,7 @@ doclang==0.7.3
 docling-core==2.101.1
 docling-ibm-models==4.0.3
 docling-parse==7.22.3
-docling-slim==2.139.0
+docling-slim==2.140.0
 et-xmlfile==2.0.0
 faker==40.43.0
 filelock==4.2.0
@@ -69,7 +69,7 @@ pydantic-core==2.50.1
 pydantic-settings==2.16.0
 pygments==2.21.0
 pylatexenc==2.11
-pypdf==6.20.1
+pypdf==6.21.0
 pypdfium2==5.14.0
 python-dateutil==2.9.0.post0
 python-docx==1.2.0
@@ -99,7 +99,7 @@ tokenizers==0.23.3
 torch==2.14.1+cpu
 torchvision==0.29.1+cpu
 tqdm==4.70.1
-transformers==5.20.0
+transformers==5.20.1
 tree-sitter==0.26.0
 tree-sitter-c==0.24.2
 tree-sitter-javascript==0.25.0
