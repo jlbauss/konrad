@@ -11,6 +11,10 @@ Entries stay terse — the *why* lives in the git commit log and the [ARCHITECTU
 
 ## [Unreleased]
 
+### Changed
+
+- **`konrad code up` titles the repo's own session `<owner>/<repo>`** in the Claude app and at claude.ai/code, instead of only the repo's name.
+
 ## [0.37.0] - 2026-10-18
 
 ### Changed

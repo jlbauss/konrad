@@ -576,10 +576,11 @@ repo_name="${repo_path##*/}"
 # so any question they don't settle (an unset --spawn asks same-dir or
 # worktree) comes up there, where someone can answer, rather than in the
 # detached container. The server keeps its default session, the repo's own,
-# named after the repo; --no-create-session-in-dir would cost the resume record
-# (see $UP_HOME above). That session takes one of the --capacity slots.
+# titled owner/repo (the form the app lists the repo in, and unambiguous across
+# owners); --no-create-session-in-dir would cost the resume record (see
+# $UP_HOME above). That session takes one of the --capacity slots.
 rc_flags=(--spawn worktree --capacity "${KONRAD_CODE_CAPACITY:-4}"
-          --name "$repo_name" --permission-mode bypassPermissions)
+          --name "$repo_path" --permission-mode bypassPermissions)
 logged_in() { claude auth status --json 2>/dev/null | jq -e '.loggedIn == true' >/dev/null 2>&1; }
 rc_enabled() { jq -e '.remoteDialogSeen == true' "${CLAUDE_CONFIG_DIR:-$HOME}/.claude.json" >/dev/null 2>&1; }
 # claude can leave the terminal in raw mode when it's stopped, which would
