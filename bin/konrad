@@ -140,9 +140,8 @@ KONRAD_NOTICES_DIR="$KONRAD_STATE_DIR/notices"
 # can't be a workspace (see podman_run's guard) — it mints a fresh timestamped
 # dir here and binds THAT at /workspace. Under konrad's own XDG state so it sits
 # beside the logs, is swept by the same retention prune, and — load-bearing —
-# stays under $HOME, where the macOS Podman VM auto-shares it and apple/container
-# VirtioFS-remaps it (a host /tmp path could NOT be mounted on either). Newest
-# one is revealed by `konrad open`.
+# stays under $HOME, where apple/container VirtioFS-remaps it to the container
+# user (a host /tmp path wouldn't be). Newest one is revealed by `konrad open`.
 KONRAD_SCRATCH_DIR="$KONRAD_STATE_DIR/scratch"
 
 # Retention for konrad's own state that grows per launch — the log dir and the
@@ -319,11 +318,10 @@ KONRAD_PIDS_LIMIT="${KONRAD_PIDS_LIMIT:-1024}"
 KONRAD_WORKSPACE_GUARD="${KONRAD_WORKSPACE_GUARD:-1}"
 WORKSPACE_GUARD_ENTRIES=(.git .githooks .husky .vscode .devcontainer .claude .mcp.json)
 
-# Container engine. konrad runs on Podman everywhere, with one exception: on
-# Apple-Silicon macOS where Apple's `container` CLI (apple/container, macOS 26+)
-# is installed, that native engine is preferred — it drops the `podman machine`
-# VM entirely. Empty here → detect_engine() picks one at startup. Pin explicitly
-# with KONRAD_ENGINE=podman (stay on Podman on a Mac) or =container (force it).
+# Container engine: Podman on Linux, Apple's `container` (apple/container,
+# Apple-Silicon macOS 26+) on macOS — the two supported platforms. Empty here →
+# detect_engine() picks by OS at startup. KONRAD_ENGINE=podman|container pins
+# one; Podman on a Mac (in a `podman machine` VM) is unsupported and untested.
 # Every engine call below routes through an eng_* wrapper, since
 # the two CLIs are NOT subcommand-compatible (`container image pull` vs
 # `podman pull`, `container delete` vs `podman rm`, JSON-only inspect, no
@@ -360,9 +358,9 @@ _pull_arch() {
 # (image-label introspection on apple/container, which is JSON-only and not
 # contract-stable) degrade gracefully rather than failing the command.
 
-# Pick the engine. Podman unless we're on Apple Silicon macOS with the
-# `container` CLI present, where the native engine wins (no podman-machine VM).
-# An explicit KONRAD_ENGINE always overrides. Idempotent.
+# Pick the engine: `container` on macOS, Podman elsewhere. On a Mac without the
+# `container` CLI (or one that can't run it) require_engine's engine_missing
+# says what's needed. An explicit KONRAD_ENGINE always overrides. Idempotent.
 detect_engine() {
   if [[ -n "$KONRAD_ENGINE" ]]; then
     case "$KONRAD_ENGINE" in
@@ -370,8 +368,7 @@ detect_engine() {
       *) die "KONRAD_ENGINE must be 'podman' or 'container' (got '$KONRAD_ENGINE')." ;;
     esac
   fi
-  if [[ "$(uname -s)" == "Darwin" && "$(uname -m)" == "arm64" ]] \
-     && command -v container >/dev/null 2>&1; then
+  if [[ "$(uname -s)" == "Darwin" ]]; then
     KONRAD_ENGINE="container"
   else
     KONRAD_ENGINE="podman"
@@ -465,7 +462,7 @@ eng_image_id() {
 # The image's provenance labels — version (the CLI version baked at build),
 # revision (git short-sha), created (ISO build date) — read in ONE inspect and
 # returned tab-separated (empty fields on a miss). One call keeps the startup
-# banner cheap on macOS's podman-machine VM, and it's the shared source for both
+# banner cheap, and it's the shared source for both
 # brand() and do_version. Always exits 0 so callers can capture.
 eng_image_meta() {
   local ref="$1"
@@ -714,19 +711,18 @@ engine_missing() {
     cat >&2 <<'EOF'
 konrad: Apple's 'container' CLI is not installed.
 
-Install it from https://github.com/apple/container/releases, then:
+On macOS konrad runs on Apple's container, which needs an Apple-Silicon Mac
+with macOS 26 or later. Install it from
+https://github.com/apple/container/releases, then:
   container system start
-
-Or set KONRAD_ENGINE=podman to use Podman instead.
 EOF
   else
     cat >&2 <<'EOF'
 konrad: Podman is not installed.
 
-  macOS:  brew install podman && podman machine init && podman machine start
-  Linux:  https://podman.io/docs/installation
+Install it: https://podman.io/docs/installation
 
-See the README's Requirements section.
+See the README's Prerequisites section.
 EOF
   fi
   exit 1
@@ -735,22 +731,16 @@ EOF
 # Best-effort: bring a stopped engine up ourselves, so a not-running engine is a
 # self-healing pause instead of a wall. Returns 0 if the engine is reachable
 # afterwards, 1 if we couldn't start it (caller then prints manual guidance).
-# Only does what's safe + fast + idempotent: it never `machine init`s (that
-# downloads a multi-hundred-MB VM image — an opt-in the user should make), so a
-# never-initialized Podman, and native-Linux Podman (no machine to start), both
-# fall through to the guidance.
+# Only apple/container has a service konrad can start (`container system
+# start`, fast and idempotent); rootless Podman on Linux has none, so it falls
+# through to the guidance.
 eng_try_start() {
   case "$KONRAD_ENGINE" in
     container)
       info "starting Apple's container service…"
       container system start >/dev/null 2>&1 || return 1
       ;;
-    podman)
-      [[ "$(uname -s)" == "Darwin" ]] || return 1   # no machine on Linux
-      podman machine inspect >/dev/null 2>&1 || return 1   # not initialized → can't start
-      info "starting the Podman machine…"
-      podman machine start >/dev/null 2>&1 || return 1
-      ;;
+    *) return 1 ;;
   esac
   eng_running
 }
@@ -776,18 +766,13 @@ Try starting it by hand:
   container system start
 
 (First time: install it from https://github.com/apple/container/releases.)
-Or set KONRAD_ENGINE=podman to use Podman instead. Then re-run your command.
+Then re-run your command.
 EOF
   else
     cat >&2 <<'EOF'
-konrad: couldn't reach Podman (and couldn't start it automatically).
+konrad: couldn't reach Podman.
 
-On macOS the Podman VM may not be initialized yet. Set it up with:
-
-  podman machine init     # first time only (downloads a VM image)
-  podman machine start
-
-On Linux, check the Podman service. Then re-run your command.
+Check that 'podman info' works for your user, then re-run your command.
 EOF
   fi
   exit 1
@@ -886,9 +871,9 @@ prepare_scratch_workspace() {
 
 # True when the current directory IS the user's home dir. konrad can't bind
 # $HOME as the workspace: it hands the agent the entire home, and the mount is
-# refused outright on SELinux hosts (won't relabel $HOME) and the macOS Podman
-# VM (can't traverse ~/.Trash). Callers either redirect to a scratch workspace
-# (the interactive agent TUI) or refuse with the fix (podman_run's guard).
+# refused outright on SELinux hosts (won't relabel $HOME). Callers either
+# redirect to a scratch workspace (the interactive agent TUI) or refuse with the
+# fix (podman_run's guard).
 cwd_is_home() {
   local cwd home_real
   cwd="$(pwd -P)"
@@ -1271,8 +1256,8 @@ podman_run() {
 
   # Guard: refuse $HOME as the workspace. konrad bind-mounts the current dir into
   # the sandbox as /workspace; from your home folder that hands the agent your
-  # entire home, and the mount fails outright on some hosts (SELinux won't relabel
-  # $HOME; the macOS Podman VM can't traverse ~/.Trash). Name the fix, don't emit
+  # entire home, and the mount fails outright on SELinux hosts (they won't
+  # relabel $HOME). Name the fix, don't emit
   # a raw mount error. Skipped when a scratch workspace is already selected (the
   # agent TUI redirects there instead of erroring — see do_run).
   if [[ -z "${KONRAD_WORKSPACE_DIR:-}" ]] && cwd_is_home; then
@@ -1281,7 +1266,7 @@ konrad: refusing to run with your home directory as the workspace.
 
 konrad mounts the current directory into the sandbox as /workspace; from \$HOME
 that hands the agent your entire home folder, and the mount is refused outright
-on some hosts (SELinux, macOS Podman). cd into a project directory, or run
+on SELinux hosts. cd into a project directory, or run
 '$SELF scratch' for a throwaway workspace.
 EOF
     exit 1

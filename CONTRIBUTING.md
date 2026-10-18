@@ -62,7 +62,7 @@ konrad-dev rebuild
 
 You need:
 
-- A container engine — **Podman** on Linux (and inside `konrad code`), or Apple's **`container`** on Apple-Silicon macOS 26+. `konrad-dev rebuild` builds on whichever it runs on: Podman via buildah, apple/container via `container build` (straight into its own store — no Podman or `podman machine` VM needed on the Mac). Pin with `KONRAD_ENGINE=podman|container`. Docker is on the roadmap but not supported yet.
+- A container engine — **Podman** on Linux (and inside `konrad code`), or Apple's **`container`** on Apple-Silicon macOS 26+. `konrad-dev rebuild` builds on whichever it runs on: Podman via buildah, apple/container via `container build` (straight into its own store — no Podman needed on the Mac). Docker is on the roadmap but not supported yet.
 - `~/.local/bin` on your `$PATH`
 
 - **uv** and **node** (with `npx`) for `scripts/check.sh`, which fetches the lint tools at pinned versions on first use

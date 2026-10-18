@@ -216,10 +216,10 @@ fi
 # --- Pre-pull the image (delegated to the freshly-installed CLI) -------------
 # One source of truth, and the answer to "why doesn't the installer start the
 # engine like the CLI does": it now uses the CLI's path. `konrad pull-image`
-# already detects the engine, starts it when it can (podman machine / container
-# system start, via require_engine → eng_try_start — exactly what a normal run
-# does), and prints tailored guidance when it can't (engine missing or a Podman
-# VM not yet initialized). So the installer no longer duplicates engine
+# already detects the engine, starts it when it can (`container system start`
+# on macOS, via require_engine → eng_try_start — exactly what a normal run
+# does), and prints tailored guidance when it can't (engine missing or not
+# running). So the installer no longer duplicates engine
 # detection, install hints, or a warn-only "not running" branch — it asks the
 # CLI, which is what the user's first real run would do anyway.
 #
