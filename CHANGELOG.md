@@ -11,6 +11,10 @@ Entries stay terse — the *why* lives in the git commit log and the [ARCHITECTU
 
 ## [Unreleased]
 
+### Security
+
+- **The agent's file denies hold again.** opencode applies the last matching permission rule, and the baked `"**": "allow"` came after the denies, so the agent could read the secrets volume (`auth.json`) and edit `.env`, `.git/`, `*.key`, `*.pem`, `*.secret` and `node_modules/` files. The catch-alls now come first; `node_modules/` is denied at any depth, not only at a git root.
+
 ## [0.38.0] - 2026-10-18
 
 ### Changed

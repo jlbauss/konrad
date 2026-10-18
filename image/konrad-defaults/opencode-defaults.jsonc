@@ -124,19 +124,25 @@
   // auth.json (provider keys) lives there, and the firewall blocks exfil but not
   // a prompt-injected agent writing a key into the workspace, so keep it out of
   // reach. See ARCHITECTURE → Configuration & instructions.
+  //
+  // ORDER MATTERS: opencode applies the LAST rule whose pattern matches, so in
+  // each object the catch-all comes first and the exceptions after it; a
+  // catch-all listed last voids every rule above it. A layer that adds a rule
+  // appends it, so it lands after these and wins. smoke-test.sh calls the tools
+  // to prove the denies hold.
   "permission": {
     "edit": {
+      "**": "allow",
       "**/.env*": "deny",
       "**/.git/**": "deny",
       "**/*.key": "deny",
       "**/*.pem": "deny",
       "**/*.secret": "deny",
-      "node_modules/**": "deny",
-      "**": "allow"
+      "**/node_modules/**": "deny"
     },
     "external_directory": {
-      "/home/node/.opencode-secrets/**": "deny",
-      "**": "allow"
+      "**": "allow",
+      "/home/node/.opencode-secrets/**": "deny"
     },
     "bash": {
       "*": "allow",
