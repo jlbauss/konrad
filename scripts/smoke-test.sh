@@ -285,6 +285,83 @@ grep -qx 'wiki.acme.example' /tmp/allowed-hosts
 CONTAINER
 pass "org layers merge in order under user precedence; instructions copy; skill loads; firewall sees every layer"
 
+# --- 9. opencode honours konrad's config ---
+# opencode drops config keys it doesn't know without a word (exit 0, gone from
+# `opencode debug config`), and the lock bot auto-merges every opencode release,
+# so an upstream rename would strip konrad's permission rules while every other
+# gate stays green. So ask opencode itself, through the real entrypoint and the
+# baked layer alone (what a fresh install gets), what it resolved — and for the
+# denies, *call the tool* (`debug agent <name> --tool`), which runs it under
+# the agent's resolved permissions: that also catches rules that are present
+# but don't hold (opencode applies the last matching rule, so a catch-all listed
+# after a deny voids it). Every deny is paired with a control on the same tool
+# that must succeed, so a deny can't pass because the call broke for another
+# reason. `ask` auto-approves under --tool, so `rm -rf`'s ask is read off the
+# resolved rule list instead.
+info "opencode honours konrad's config (resolved config + enforced permissions)"
+"$ENGINE" run --rm -i "$IMAGE" bash -s <<'CONTAINER' || fail "opencode no longer honours konrad's config — see the failing check above (an opencode bump may have renamed a key)"
+set -euo pipefail
+cd /workspace
+no() { printf '  check failed: %s\n' "$*" >&2; exit 1; }
+
+# Resolved config: the keys konrad's UX rests on.
+cfg="$(mktemp)"
+opencode debug config > "$cfg" || no "opencode debug config failed"
+jq -e '.default_agent == "konrad"'      "$cfg" >/dev/null || no "default_agent is not konrad"
+jq -e '.agent.build.disable == true'    "$cfg" >/dev/null || no "built-in build agent not disabled"
+jq -e '.agent.plan.disable == true'     "$cfg" >/dev/null || no "built-in plan agent not disabled"
+jq -e '.autoupdate == false'            "$cfg" >/dev/null || no "autoupdate not off"
+
+# tool <agent> <tool> <params-json>: run one tool call as <agent>; the output
+# lands in $out. Returns the call's exit status.
+out="$(mktemp)"
+tool() { opencode debug agent "$1" --tool "$2" --params "$3" > "$out" 2>&1; }
+# The two refusals opencode prints: a deny on a pattern, and a tool denied
+# outright (removed from the agent). If upstream rewords them, denies stop
+# matching and this check fails loudly — the safe direction.
+REFUSED='prevents you from using this specific tool call|is disabled for agent'
+allowed() { tool "$@" || { cat "$out" >&2; no "control call refused or failed: $1 $2 $3"; }; }
+denied()  { if tool "$@"; then no "allowed, should be denied: $1 $2 $3"; fi
+            grep -E "$REFUSED" "$out" >/dev/null || { cat "$out" >&2; no "failed without a permission refusal: $1 $2 $3"; }; }
+
+# The secrets volume (auth.json) is out of the agent's reach.
+mkdir -p /home/node/.opencode-secrets /tmp/ctl
+echo probe > /home/node/.opencode-secrets/probe
+echo probe > /tmp/ctl/probe
+allowed konrad read '{"filePath":"/tmp/ctl/probe"}'
+denied  konrad read '{"filePath":"/home/node/.opencode-secrets/probe"}'
+allowed konrad bash '{"command":"cat /tmp/ctl/probe","description":"control"}'
+denied  konrad bash '{"command":"cat /home/node/.opencode-secrets/probe","description":"probe"}'
+
+# Edits to secrets and repo integrity are refused; ordinary files are not.
+allowed konrad write '{"filePath":"/workspace/ok.txt","content":"x"}'
+for f in .env .git/config id.key cert.pem token.secret node_modules/x.js; do
+  denied konrad write "{\"filePath\":\"/workspace/$f\",\"content\":\"x\"}"
+done
+
+# Root and host container/cluster control are refused.
+allowed konrad bash '{"command":"true","description":"control"}'
+for c in "sudo true" "podman ps" "docker ps" "kubectl version"; do
+  denied konrad bash "{\"command\":\"$c\",\"description\":\"probe\"}"
+done
+
+# The subagent's deltas hold on top of the baseline.
+allowed manual-transformer bash '{"command":"true","description":"control"}'
+denied  manual-transformer bash '{"command":"rm -rf /tmp/ctl","description":"probe"}'
+denied  manual-transformer webfetch '{"url":"https://example.com","format":"text"}'
+
+# Rules that --tool can't exercise, read off the resolved rule list (the last
+# rule for a permission/pattern is the one opencode applies).
+last() { opencode debug agent "$1" | sed -n '/^{/,$p' \
+           | jq -r --arg p "$2" --arg pat "$3" \
+               '[.permission[] | select(.permission == $p and .pattern == $pat)] | last | .action // "none"'; }
+[ "$(last konrad bash 'rm -rf *')"   = ask ]   || no "konrad: rm -rf is not ask"
+[ "$(last konrad question '*')"      = allow ] || no "konrad: question tool not allowed"
+[ "$(last konrad todowrite '*')"     = allow ] || no "konrad: todowrite not allowed"
+[ "$(last manual-transformer question '*')" = deny ] || no "manual-transformer: question not denied"
+CONTAINER
+pass "default agent, permission denies (called, with controls), asks and subagent deltas all hold"
+
 
 # --- All clear ---
 printf '\n\033[32mall checks passed for %s\033[0m\n' "$IMAGE"
