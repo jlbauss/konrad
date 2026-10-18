@@ -2682,8 +2682,10 @@ host_ip_cidrs() {
 # included. apple/container refuses a container name over 63 characters (a DNS
 # label), so a longer one keeps its first 52 and ends in a checksum of the
 # whole. A marker per up repo under the state dir records that it should be
-# up, so a container a host reboot ended is noticed, and holds the URL that
-# `ls` shows.
+# up, so a container a host reboot ended is noticed, and holds what `ls` shows
+# and `up --all` starts it again with: the URL, the profile, the flags and
+# server-mode arguments (one arg= line each), and KONRAD_MEMORY/KONRAD_CPUS when
+# they were set.
 CODE_UP_DIR="$KONRAD_STATE_DIR/code-up"
 # The command line a hint names: konrad, with this run's --profile.
 code_self() { printf '%s' "$SELF${KONRAD_PROFILE:+ --profile $KONRAD_PROFILE}"; }
@@ -2750,6 +2752,7 @@ do_code() {
   local shell=0 nested=1 session=""
   local usage="usage: $SELF code [--shell] [--no-nested] [--kvm] [--session <name>] <git-url> [claude args…]   (e.g. $SELF code https://gitlab.example.com/me/repo)
        $SELF code up [--no-nested] [--kvm] [--capacity <n>] <git-url>   keep the repo up for sessions from the Claude app
+       $SELF code up --all   start every repo that should be up (after a host restart)
        $SELF code down <git-url>   ·   $SELF code ls"
   [[ "${1:-}" == help ]] && { printf '%s\n' "$usage"; return 0; }
   while [[ "${1:-}" == -* ]]; do
@@ -2784,23 +2787,32 @@ do_code() {
 }
 
 # konrad code up [--no-nested] [--kvm] [--capacity <n>] <git-url> [server-mode args…]
+# konrad code up --all
 CODE_CAPACITY=4   # sessions the up container serves at once, its own included (--capacity)
+CODE_UP_SETUP_RAN=0   # 1 once up's setup run did the preflight (code_launch)
 do_code_up() {
-  local nested=1
-  local usage="usage: $SELF code up [--no-nested] [--kvm] [--capacity <n>] <git-url>"
+  local nested=1 all=0 flags=0
+  local usage="usage: $SELF code up [--no-nested] [--kvm] [--capacity <n>] <git-url>   ·   $SELF code up --all"
   while [[ "${1:-}" == -* ]]; do
     case "$1" in
       -h|--help) printf '%s\n' "$usage"; return 0 ;;
-      --no-nested) nested=0; shift ;;
-      --kvm) CODE_KVM=1; shift ;;
+      --all) all=1; shift ;;
+      --no-nested) nested=0; flags=1; shift ;;
+      --kvm) CODE_KVM=1; flags=1; shift ;;
       --capacity)
         [[ $# -ge 2 ]] || die "--capacity needs a number"
-        CODE_CAPACITY="$2"; shift 2 ;;
-      --capacity=*) CODE_CAPACITY="${1#--capacity=}"; shift ;;
+        CODE_CAPACITY="$2"; flags=1; shift 2 ;;
+      --capacity=*) CODE_CAPACITY="${1#--capacity=}"; flags=1; shift ;;
       --) shift; break ;;
       *)  die "$usage" ;;
     esac
   done
+  if (( all )); then
+    [[ $# -eq 0 && "$flags" == 0 ]] \
+      || die "--all takes no URL or flags: each repo comes back with the ones it was started with"
+    code_up_all
+    return
+  fi
   [[ $# -ge 1 ]] || die "$usage"
   [[ "$CODE_CAPACITY" =~ ^[1-9][0-9]?$ && "$CODE_CAPACITY" -le 32 ]] \
     || die "--capacity takes 1–32 sessions (got '$CODE_CAPACITY')"
@@ -2816,14 +2828,63 @@ do_code_up() {
   fi
   # Setup first, attached: token, clone, install and the one interactive claude
   # each need a terminal, which the detached server doesn't have. Quick once
-  # done. Without nesting: it starts no containers.
+  # done. Without nesting: it starts no containers. Without a terminal (`up
+  # --all` from a boot-time unit) nothing can be asked, so only a repo whose
+  # marker shows an earlier up got through setup starts, and setup is skipped.
   local rc=0
-  code_launch setup 0 0 primary "$url" || rc=$?
-  (( rc == 0 )) || exit "$rc"
+  if [[ -t 0 && -t 1 ]]; then
+    code_launch setup 0 0 primary "$url" || rc=$?
+    (( rc == 0 )) || exit "$rc"
+    CODE_UP_SETUP_RAN=1
+  else
+    [[ -f "$CODE_UP_DIR/$name" ]] \
+      || die "the first $SELF code up of a repo asks its setup questions in a terminal — run $(code_self) code up ${url%.git} from one"
+  fi
   code_launch up "$nested" 0 up "$url" "$@" || rc=$?
   (( rc == 0 )) || exit "$rc"
   mkdir -p "$CODE_UP_DIR"
-  printf 'url=%s\nprofile=%s\n' "$url" "$KONRAD_PROFILE" > "$CODE_UP_DIR/$name"
+  {
+    printf 'url=%s\nprofile=%s\ncapacity=%s\nnested=%s\nkvm=%s\n' \
+      "$url" "$KONRAD_PROFILE" "$CODE_CAPACITY" "$nested" "$CODE_KVM"
+    if [[ -n "${KONRAD_MEMORY:-}" ]]; then printf 'memory=%s\n' "$KONRAD_MEMORY"; fi
+    if [[ -n "${KONRAD_CPUS:-}" ]]; then printf 'cpus=%s\n' "$KONRAD_CPUS"; fi
+    local a
+    for a in "$@"; do printf 'arg=%s\n' "$a"; done
+  } > "$CODE_UP_DIR/$name"
+}
+
+# konrad code up --all: start every repo that should be up and isn't, the way
+# it was started (its marker), for a host that restarts: one line in a systemd
+# user unit or a launchd agent (README). Each repo runs as a konrad of its own,
+# so one that fails doesn't stop the others; a repo already up is left alone.
+# Without --profile it covers every profile, as `code ls` lists them.
+code_up_all() {
+  local f url profile v any=0 failed=""
+  local -a cmd envs
+  for f in "$CODE_UP_DIR"/konrad-up-*; do
+    [[ -f "$f" ]] || continue
+    profile="$(sed -n 's/^profile=//p' "$f")"
+    [[ -z "$KONRAD_PROFILE" || "$profile" == "$KONRAD_PROFILE" ]] || continue
+    any=1
+    url="$(sed -n 's/^url=//p' "$f")"
+    cmd=("$0")
+    [[ -n "$profile" ]] && cmd+=(--profile "$profile")
+    cmd+=(code up)
+    [[ "$(sed -n 's/^nested=//p' "$f")" == 0 ]] && cmd+=(--no-nested)
+    [[ "$(sed -n 's/^kvm=//p' "$f")" == 1 ]] && cmd+=(--kvm)
+    v="$(sed -n 's/^capacity=//p' "$f")"
+    [[ -n "$v" ]] && cmd+=(--capacity "$v")
+    cmd+=("$url")
+    while IFS= read -r v; do cmd+=("$v"); done < <(sed -n 's/^arg=//p' "$f")
+    envs=()
+    v="$(sed -n 's/^memory=//p' "$f")"; [[ -n "$v" ]] && envs+=("KONRAD_MEMORY=$v")
+    v="$(sed -n 's/^cpus=//p' "$f")"; [[ -n "$v" ]] && envs+=("KONRAD_CPUS=$v")
+    go "${url%.git}${profile:+ (--profile $profile)}"
+    env ${envs[@]+"${envs[@]}"} "${cmd[@]}" || failed+=" ${url%.git}"
+  done
+  (( any )) || { info "no repo should be up — $SELF code up <git-url> starts one"; return 0; }
+  [[ -z "$failed" ]] || die "couldn't start:$failed — the output above says why"
+  return 0
 }
 
 # konrad code down <git-url>: stop the repo's up container. Claude gets time to
@@ -2905,13 +2966,14 @@ code_launch() {
   fi
   local up_name
   up_name="$(code_up_name "$vol")"
-  [[ -t 0 && -t 1 ]] || die "konrad code is interactive — run it from a terminal."
-  if [[ "$mode" != up ]]; then
+  # The up container is detached: `up --all` may start it without a terminal.
+  [[ "$mode" == up || ( -t 0 && -t 1 ) ]] || die "konrad code is interactive — run it from a terminal."
+  if [[ "$mode" != up || "$CODE_UP_SETUP_RAN" == 0 ]]; then
     if [[ "$KONRAD_FIREWALL" != 1 || -n "$KONRAD_ALLOW_HOST" ]]; then
       warn "--no-firewall / --allow-host don't apply to konrad code (its egress is open, minus host and LAN)."
     fi
     launch_preflight
-    code_user_layer   # up reuses what its setup run found
+    code_user_layer   # up reuses what its setup run found, if it ran
   fi
   # An image from before konrad code has no konrad-code entrypoint; the engine
   # would fail to exec it (apple/container with a crash trace). Refuse up front
@@ -3996,6 +4058,8 @@ Subcommands:
                         <n> at once, default 4, its own session included). The
                         first run asks for the token, the install and the login
                         in this terminal.
+  $self code up --all   Start every repo that should be up and isn't, as it was
+                        started: for a host that restarts (see the README).
   $self code down <git-url>   Stop it (worktrees holding work are kept).
   $self code ls               List the repos that are up.
   $self org add <git-url> [--name <n>] [--branch <b>]
