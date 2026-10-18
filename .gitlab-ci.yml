@@ -196,8 +196,19 @@ resolve-locks:
       fi
 
       # npm itself comes from the base image (already pinned by base.lock);
-      # we only resolve opencode-ai here.
+      # we only resolve opencode-ai here, within the locked major: a new major
+      # is a deliberate manual edit to npm.lock, like base.lock's tag. Take the
+      # `latest` dist-tag while it's on that major, else the highest stable
+      # release in it.
+      OPENCODE_MAJOR="$(jq -r '."opencode-ai"' npm.lock | cut -d. -f1)"
       OPENCODE_VERSION="$(npm view opencode-ai version)"
+      if [ "${OPENCODE_VERSION%%.*}" != "$OPENCODE_MAJOR" ]; then
+        OPENCODE_VERSION="$(npm view "opencode-ai@^$OPENCODE_MAJOR" version --json \
+                              | jq -r 'if type == "array" then .[] else . end' \
+                              | sort -V | tail -n 1)"
+      fi
+      [ -n "$OPENCODE_VERSION" ] \
+        || { echo "could not resolve opencode-ai within major $OPENCODE_MAJOR" >&2; exit 1; }
       jq -n --arg opencode "$OPENCODE_VERSION" \
         '{"opencode-ai": $opencode}' > npm.lock.new
       if diff -q npm.lock npm.lock.new >/dev/null 2>&1; then
