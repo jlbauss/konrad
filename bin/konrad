@@ -3993,8 +3993,9 @@ Subcommands:
                         Keep the repo up in the background: Claude Code's
                         server mode, so you start sessions from the Claude app
                         or claude.ai/code, each in its own git worktree (up to
-                        <n> at once, default 3). The first run asks for the
-                        token, the install and the login in this terminal.
+                        <n> at once, default 4, its own session included). The
+                        first run asks for the token, the install and the login
+                        in this terminal.
   $self code down <git-url>   Stop it (worktrees holding work are kept).
   $self code ls               List the repos that are up.
   $self org add <git-url> [--name <n>] [--branch <b>]
