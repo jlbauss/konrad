@@ -224,7 +224,7 @@ konrad keeps the **image** and your subscribed **org layers** fresh on its own: 
 
 - **Supported: Linux with Podman, and Apple-Silicon macOS 26+ with Apple's [`container`](https://github.com/apple/container).** Other Macs aren't supported. Docker support is on the roadmap, untested. No Windows support — WSL is at your own discretion and untested.
 - **Pre-1.0: expect churn, but versioned.** konrad uses [semantic versioning](CONTRIBUTING.md#versioning) — pre-1.0 that's `0.X.Y` (`X`/minor = new functionality or any user-visible change, `Y`/patch = fixes). The leading `0.` means config shapes, flags, and image internals can still change without a migration path; no stability promise until 1.0.
-- **No unit-test suite.** Every published image passes a CI smoke gate (binaries, Python deps, baked content, a docling round-trip) and an end-to-end self-test exists for contributors, but there's no unit coverage — regressions on less-traveled paths can still slip through.
+- **Tested, not exhaustively.** Every published image passes a CI smoke gate (binaries, Python deps, baked content, a docling round-trip), the CLI's host-side logic has unit tests, and contributors rehearse the update path and run an end-to-end self-test, but less-traveled paths can still slip through.
 - **Local-model UX is still rough.** Tool-call parsing, context overflow, and model switching have known edges — the "works flawlessly on local models" shakedown is still a roadmap item.
 
 ## Configuration

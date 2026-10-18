@@ -84,10 +84,11 @@ konrad-dev shell                                        # exercise the dev image
 
 `konrad-dev` defaults to the `konrad:local` image (the one its own `rebuild` writes), so you exercise your dev build with no env var fiddling. The stable `konrad` next to it on `PATH` keeps pointing at `konrad:latest` — your day-to-day agent work is unaffected by whatever you're testing.
 
-There's no traditional unit-test suite. The validation gates are:
+The validation gates are:
 
-- `./scripts/check.sh` — the static gates in one command: `bash -n`, shellcheck, `reuse lint`, markdownlint, actionlint, hadolint, each at a version pinned in the script. GitLab CI runs the same script on every MR, so a green local run is a green pipeline. `./scripts/check.sh <gate>…` runs a subset.
+- `./scripts/check.sh` — the static gates and the unit tests in one command: `bash -n`, shellcheck, `reuse lint`, markdownlint, actionlint, hadolint, and `tests`, the [bats](https://github.com/bats-core/bats-core) suites in [tests/](tests/) (`bin/konrad`'s host-side functions under the script's own `set -euo pipefail`, and `merge-config.js`'s layering contract), each tool at a version pinned in the script; `tests` also needs `jq`. GitLab CI runs the same script on every MR, so a green local run is a green pipeline. `./scripts/check.sh <gate>…` runs a subset.
 - `./scripts/build-image.sh` — does the image build?
+- `./scripts/test-autoupdate.sh` — the update rehearsal: installs the previous release's CLI under a throwaway `HOME`, then runs a real `konrad update` and background refresh against a local registry holding `konrad:local` and this checkout's files instead of the forge. Run it after `konrad-dev rebuild` for any change to `bin/konrad`, `scripts/install.sh` or the update path. Podman only (the nested engine in `konrad code` is fine).
 - `./scripts/smoke-test.sh konrad:local` — does the image have the right binaries / Python deps / baked content, and does the docling round-trip work? CI runs this same script. (Engine-agnostic and deliberately `bin/konrad`-free — CI runs it under Docker, and it validates the *image artifact*, not the host CLI.)
 - `./scripts/selftest.sh` — the realistic end-to-end loop, and the right gate to hand an agent: it runs the smoke test, then drives a real `konrad run` *through `bin/konrad`* (uid mapping, workspace mount, config compose — the path a user actually takes) and asserts the agent answers. The **model comes from your own `~/.config/konrad` config** (override with `--model <slug>` / `KONRAD_SELFTEST_MODEL`, any provider); with no usable model/credential the model stage degrades to a SKIP, so a red result always means the *runtime* broke. One-time: populate the shared `konrad-secrets` volume via `konrad-dev` → `/connect`. Inside `konrad code` there's no provider key, so an agent's run always SKIPs the model stage; the real-model run is yours. Not a CI gate.
 - A live poke: `cd /tmp/konrad-test && konrad-dev --version` then `konrad-dev shell` to look around. Dump the full build manifest with `podman run --rm --entrypoint cat konrad:local /etc/konrad/build-manifest.json | jq .`.
@@ -178,6 +179,7 @@ konrad/
 │   ├── build-image.sh                 # Local build (KONRAD_VERSION + GIT_SHA build args)
 │   ├── check.sh                       # Static gates (lint, REUSE) — CI runs this same script
 │   ├── smoke-test.sh                  # Smoke gate — CI runs this same script
+│   ├── test-autoupdate.sh             # Update rehearsal: previous release → this checkout, local registry
 │   ├── install.sh              # curl|sh installer — fetches the CLI standalone, bakes VERSION in
 │   └── fetch-fonts.sh                 # One-shot — pulls fonts from upstream when bumping versions
 ├── examples/org-package/              # Git-native org-layer example repo (referenced from README)
@@ -236,4 +238,4 @@ Be kind, be specific, assume good faith. We follow the [Contributor Covenant v2.
 
 ## Backlog and known gaps
 
-See [ROADMAP.md](ROADMAP.md) for the full backlog and how items are prioritized — including the known shortcomings (Windows support, automated tests, multi-language UI) tracked there as accepted trade-offs. The user-facing [README Status section](README.md#status) summarises what to expect today.
+See [ROADMAP.md](ROADMAP.md) for the full backlog and how items are prioritized — including the known shortcomings (Windows support, multi-language UI) tracked there as accepted trade-offs. The user-facing [README Status section](README.md#status) summarises what to expect today.

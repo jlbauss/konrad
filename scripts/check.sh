@@ -8,10 +8,11 @@
 #     scripts/check.sh                    # every gate
 #     scripts/check.sh shellcheck reuse   # just these
 #
-# Gates: bash-n, shellcheck, reuse, markdownlint, actionlint, hadolint. Each
-# tool is fetched at a pinned version on first use (`uv tool run` for the
-# Python-packaged binaries, `npx` for markdownlint) and cached by uv/npm after
-# that, so the only prerequisites are uv, node and git. The pins below are
+# Gates: bash-n, shellcheck, reuse, markdownlint, actionlint, hadolint, and
+# tests (the bats suites in tests/, which also need jq). Each tool is fetched
+# at a pinned version on first use (`uv tool run` for the Python-packaged
+# binaries, `npx` for markdownlint and bats) and cached by uv/npm after that,
+# so the only prerequisites are uv, node, git and jq. The pins below are
 # bumped by hand; nothing else in the repo pins these tools.
 #
 # All selected gates run even when one fails; the exit code is non-zero if any
@@ -25,8 +26,9 @@ REUSE='reuse[charset-normalizer]==6.2.0'
 ACTIONLINT='actionlint-py==1.7.12.25'
 HADOLINT='hadolint-bin==2.15.1'
 MARKDOWNLINT='markdownlint-cli2@0.23.3'
+BATS='bats@1.13.0'
 
-ALL_GATES=(bash-n shellcheck reuse markdownlint actionlint hadolint)
+ALL_GATES=(bash-n shellcheck reuse markdownlint actionlint hadolint tests)
 
 # Every tracked shell script. bin/konrad has no .sh suffix, so it's named.
 shell_files() {
@@ -62,6 +64,11 @@ gate_markdownlint() {
 
 gate_actionlint() {
   uv tool run --quiet --from "$ACTIONLINT" actionlint
+}
+
+gate_tests() {
+  command -v jq >/dev/null || { echo "check.sh: tests need 'jq' on PATH" >&2; return 1; }
+  npx --yes "$BATS" tests/
 }
 
 gate_hadolint() {
