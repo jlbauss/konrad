@@ -117,7 +117,7 @@ The action verbs are subcommands; `konrad` with no subcommand launches the TUI.
 | `code [--shell] [--no-nested] [--kvm] [--session <name>] <git-url> [args…]` | *Preview.* Run Claude Code on a clone of a forge repo, with open internet but no access to your machine — see [Coding agents](#coding-agents-konrad-code). |
 | `code up [--no-nested] [--kvm] [--capacity <n>] <git-url>` / `code down <git-url>` / `code ls` | *Preview.* Keep a repo up in the background for sessions you start from the Claude app or claude.ai/code; stop it; list the repos that are up. |
 | `org add` / `list` / `sync` / `remove` | Manage org config-layer subscriptions — see [For organizations](#for-organizations). |
-| `update`               | Refresh the CLI itself, pull the latest image from `ghcr.io/jlbauss/konrad:latest`, and re-sync subscribed org layers. `update --check` compares without pulling. |
+| `update`               | Refresh the CLI itself, pull the latest image from `ghcr.io/jlbauss/konrad:latest`, and re-sync subscribed org layers. |
 | `reset`                | Wipe shared volumes + log dir. Prompts `[y/N]`; affects all workspaces. |
 | `uninstall`            | Remove the CLI binary + the image. Prompts `[y/N]`. Leaves user config, shared volumes, and log dir alone. |
 
@@ -216,7 +216,7 @@ konrad code https://gitlab.example.com/you/project
 
 konrad keeps the **image** and your subscribed **org layers** fresh on its own: at launch, at most once a day, it fires a background refresh (a `:latest` pull + an org-layer sync) that runs detached — it never blocks or delays a run, and a fresh image is picked up on the *next* launch (you'll see a one-line note when that happens). Offline? The refresh silently gives up and the run proceeds on what you already have. Tune or disable it with `KONRAD_REFRESH_INTERVAL` / `KONRAD_NO_AUTO_REFRESH` (see [Environment variables](#environment-variables-advanced)); read the last run's log at `~/.local/state/konrad/refresh.log`.
 
-`konrad update` still does the same refresh **now**, synchronously, *and* updates the CLI itself — the one piece the background refresh deliberately leaves alone (the CLI updates through its install channel, never by a background process rewriting the running script). `konrad update --check` compares local vs. registry without pulling.
+`konrad update` still does the same refresh **now**, synchronously, *and* updates the CLI itself — the one piece the background refresh deliberately leaves alone (the CLI updates through its install channel, never by a background process rewriting the running script).
 
 ## Status
 

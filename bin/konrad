@@ -342,110 +342,14 @@ dbg() {
   printf 'konrad [debug +%ss]: %s\n' "$SECONDS" "$*" >&2
 }
 
-# --- Registry probes (manifest preflight for update --check) ----------------
-#
-# `update --check` reads the registry's image-version label without pulling:
-# anon token → platform-specific manifest → config blob →
-# `org.opencontainers.image.version`, compared against the locally-installed
-# image to tell the user whether a pull would change anything. Registry-agnostic
-# in shape, but the token endpoint is ghcr.io-specific today (the only registry
-# konrad pulls from). jq + curl are soft-deps — missing either → silent skip.
-#
-# Pulls themselves no longer wrap a custom progress counter: each engine renders
-# its own native pull progress (Podman's per-layer bars on Linux, Apple's
-# `container` UX on macOS), which beats piping podman through an aggregator that
-# suppressed those bars. The pull goes straight through eng_pull().
-
-# Split `<registry>/<repo>:<tag>` into three space-separated tokens on stdout.
-# Defaults `tag` to `latest`. Repo may contain slashes; tokens won't.
-_parse_image_ref() {
-  local image_ref="$1" tag repo_part
-  case "$image_ref" in
-    *:*) tag="${image_ref##*:}"; repo_part="${image_ref%:*}" ;;
-    *)   tag="latest";            repo_part="$image_ref"      ;;
-  esac
-  printf '%s %s %s' "${repo_part%%/*}" "${repo_part#*/}" "$tag"
-}
-
-# Detect the target arch for podman pull. Podman's VM matches host arch on
-# both macOS and Linux, so `uname -m` on the host is the right answer.
+# The target arch for an apple/container pull (eng_pull): the VM matches the
+# host's arch, so `uname -m` on the host is the right answer.
 _pull_arch() {
   case "$(uname -m)" in
     x86_64|amd64)  printf 'amd64' ;;
     aarch64|arm64) printf 'arm64' ;;
     *)             printf 'amd64' ;;
   esac
-}
-
-# Fetch an anonymous pull-scoped bearer token for the given registry/repo.
-# Echoes the token or returns silently empty. ghcr.io only today.
-_registry_anon_token() {
-  local registry="$1" repo="$2" url
-  case "$registry" in
-    ghcr.io) url="https://ghcr.io/token?service=ghcr.io&scope=repository:${repo}:pull" ;;
-    *)       return 0 ;;
-  esac
-  curl -fsS --max-time 5 "$url" 2>/dev/null \
-    | jq -r '.token // .access_token // empty' 2>/dev/null
-}
-
-# Fetch the platform-specific image manifest JSON for ${registry}/${repo}:${tag}.
-# Echoes the JSON on stdout, or nothing on failure. Handles both single-
-# manifest and multi-arch manifest-list / OCI-index shapes.
-_registry_platform_manifest() {
-  local registry="$1" repo="$2" tag="$3" token="$4"
-  local arch accept manifest media_type platform_digest
-  arch="$(_pull_arch)"
-  accept='application/vnd.docker.distribution.manifest.list.v2+json,application/vnd.oci.image.index.v1+json,application/vnd.docker.distribution.manifest.v2+json,application/vnd.oci.image.manifest.v1+json'
-  manifest="$(curl -fsS --max-time 5 \
-                -H "Authorization: Bearer $token" \
-                -H "Accept: $accept" \
-                "https://${registry}/v2/${repo}/manifests/${tag}" 2>/dev/null)"
-  [[ -z "$manifest" ]] && return 0
-  media_type="$(printf '%s' "$manifest" | jq -r '.mediaType // empty' 2>/dev/null)"
-  case "$media_type" in
-    *manifest.list*|*image.index*)
-      platform_digest="$(printf '%s' "$manifest" \
-        | jq -r --arg a "$arch" '
-            .manifests[]
-            | select(.platform.architecture == $a
-                     and (.platform.os == "linux" or .platform.os == null))
-            | .digest' 2>/dev/null | head -1)"
-      [[ -z "$platform_digest" ]] && return 0
-      curl -fsS --max-time 5 \
-        -H "Authorization: Bearer $token" \
-        -H "Accept: $accept" \
-        "https://${registry}/v2/${repo}/manifests/${platform_digest}" 2>/dev/null
-      ;;
-    *)
-      printf '%s' "$manifest"
-      ;;
-  esac
-}
-
-# Fetch the `org.opencontainers.image.version` label from the registry's
-# platform-specific image config blob. Three HTTP calls (token, manifest,
-# config blob). Prints the label on stdout, or nothing on failure.
-# Always returns 0.
-registry_image_version() {
-  command -v jq   >/dev/null 2>&1 || return 0
-  command -v curl >/dev/null 2>&1 || return 0
-  local registry repo tag token pm config_digest
-  read -r registry repo tag <<<"$(_parse_image_ref "$1")"
-  token="$(_registry_anon_token "$registry" "$repo")"
-  [[ -z "$token" ]] && return 0
-  pm="$(_registry_platform_manifest "$registry" "$repo" "$tag" "$token")"
-  [[ -z "$pm" ]] && return 0
-  config_digest="$(printf '%s' "$pm" | jq -r '.config.digest // empty' 2>/dev/null)"
-  [[ -z "$config_digest" || "$config_digest" == "null" ]] && return 0
-  # -L follows redirects: GHCR (and most OCI registries) serve blobs by
-  # returning a 307 redirect to a CDN-signed URL. Manifest endpoints don't
-  # redirect, but `-L` is harmless there.
-  curl -fsSL --max-time 5 \
-    -H "Authorization: Bearer $token" \
-    "https://${registry}/v2/${repo}/blobs/${config_digest}" 2>/dev/null \
-    | jq -r '.config.Labels["org.opencontainers.image.version"] // empty' 2>/dev/null
-  return 0
 }
 
 # --- Container engine abstraction -------------------------------------------
@@ -3531,8 +3435,7 @@ do_version() {
   # the image line reports the short-sha + build date + the CLI it was built
   # from, the trio that actually identifies the running image, rather than an
   # image "version" that reads like it should track the CLI but doesn't. No skew
-  # warning by design; "is there something newer in the registry?" is what
-  # `konrad update --check` answers.
+  # warning by design; `konrad update` fetches whatever is newer.
   local c_brand='' c_dim='' c_off=''
   if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
     case "${COLORTERM:-}" in
@@ -3566,66 +3469,6 @@ do_version() {
   printf '  %scli:    %s%s\n'   "$c_dim" "$KONRAD_VERSION" "$c_off"
   printf '  %simage:  %s%s\n'   "$c_dim" "$image_value" "$c_off"
   printf '  %sengine: %s%s\n'   "$c_dim" "$KONRAD_ENGINE" "$c_off"
-}
-
-# Probe the registry (CLI source + image label) and report whether an update
-# is available. Two network calls (gitlab raw + ghcr manifest+config), both
-# capped at 5s via curl --max-time. Offline doesn't break the command — the
-# verdict degrades to "couldn't reach …" and exit stays 0.
-do_check_updates() {
-  printf 'konrad — checking for updates…\n'
-  printf '\n'
-
-  local cli_remote=""
-  if command -v curl >/dev/null 2>&1; then
-    cli_remote="$(curl -fsS --max-time 5 \
-                    'https://gitlab.git.nrw/jbauss2/konrad/-/raw/main/VERSION' 2>/dev/null \
-                  | head -1 | tr -d '[:space:]')"
-  fi
-
-  local image_local_ver="" image_remote_ver=""
-  if command -v "$KONRAD_ENGINE" >/dev/null 2>&1 \
-     && eng_running \
-     && eng_image_exists "$IMAGE_NAME"; then
-    image_local_ver="$(eng_image_label "$IMAGE_NAME" org.opencontainers.image.version)"
-  fi
-  image_remote_ver="$(registry_image_version "$REGISTRY_IMAGE" 2>/dev/null || true)"
-
-  printf '  CLI:    %s (local) → %s (registry)\n' \
-    "$KONRAD_VERSION" "${cli_remote:-unreachable}"
-  printf '  image:  %s (local) → %s (registry)\n' \
-    "${image_local_ver:-not pulled}" "${image_remote_ver:-unreachable}"
-  printf '\n'
-
-  # "Drift" only counts as actionable when *both* sides of a comparison are
-  # known (i.e. not "dev", not "unreachable", not "not pulled"). Anything
-  # ambiguous → "partial check" verdict.
-  local cli_drift=0 image_drift=0 cli_known=0 image_known=0
-  if [[ -n "$cli_remote" && "$KONRAD_VERSION" != "dev" ]]; then
-    cli_known=1
-    [[ "$KONRAD_VERSION" != "$cli_remote" ]] && cli_drift=1
-  fi
-  if [[ -n "$image_remote_ver" && -n "$image_local_ver" ]]; then
-    image_known=1
-    [[ "$image_local_ver" != "$image_remote_ver" ]] && image_drift=1
-  fi
-
-  if (( cli_drift || image_drift )); then
-    printf 'Update available — run: konrad update\n'
-    return 0
-  fi
-  if (( cli_known && image_known )); then
-    printf 'Up to date.\n'
-    # If CLI and image labels differ but both match the registry, the user
-    # is current — just sitting on the by-design drift from CLI-only
-    # patches. One line of context so it doesn't read as a problem.
-    if [[ -n "$image_local_ver" && "$KONRAD_VERSION" != "dev" \
-          && "$KONRAD_VERSION" != "$image_local_ver" ]]; then
-      printf '  (CLI patches alone do not trigger an image rebuild — drift is by design.)\n'
-    fi
-    return 0
-  fi
-  printf "Couldn't reach all sources — partial check. Try again when online.\n"
 }
 
 do_pull_image() {
@@ -3692,7 +3535,6 @@ do_update() {
     warn "neither curl nor wget available; refreshing the image only (CLI left as-is)."
     do_pull_image
     printf '\n'
-    do_check_updates
     return 0
   fi
   info "updating konrad…"
@@ -3710,10 +3552,8 @@ do_update() {
       | KONRAD_INSTALL_DIR="$install_dir" KONRAD_QUIET_INSTALL=1 sh
   fi
 
-  # Registry comparison from the freshly baked CLI. reread_baked_version picks up
-  # the version install.sh just wrote so the CLI: line is current; do_check_updates
-  # then does the local-vs-registry probe — more useful right after an update than
-  # the standalone digest/rev block (still at `konrad --version`).
+  # Pick up the version install.sh just wrote, so anything after this reports
+  # the CLI now on disk rather than the one this process started as.
   reread_baked_version
 }
 
@@ -3961,8 +3801,7 @@ so anything you're testing stays out of the way of the stable konrad next to it 
     cross_pointer="Your stable user CLI 'konrad' is unaffected by anything here. It lives next to
 this binary on PATH and pulls konrad:latest from ghcr.io ('konrad update' to refresh)."
   else
-    refresh_cmd="  $self update         Pull the latest image AND refresh the CLI itself.
-  $self update --check Compare local vs registry; print 'up to date' or 'update available'."
+    refresh_cmd="  $self update         Pull the latest image AND refresh the CLI itself."
     variant_blurb="konrad — the sandboxed coworking agent. Runs opencode in a rootless container."
     cross_pointer="Working on konrad itself? Install the contributor variant 'konrad-dev'
 alongside this stable CLI — see CONTRIBUTING.md."
@@ -4224,9 +4063,9 @@ while [[ $# -gt 0 ]]; do
     update)
       shift
       case "${1:-}" in
-        --check) ACTION="check-updates" ;;
         "")      ACTION="update" ;;
-        *)       die "update: unknown argument '$1' (only --check is accepted)" ;;
+        --check) die "update --check was removed in 0.39.0: 'konrad update' fetches only what changed, and 'konrad --version' shows what you have." ;;
+        *)       die "update: unknown argument '$1' (it takes none)" ;;
       esac
       break ;;
     reset)      ACTION="reset";      shift; reject_post_subcommand_args reset "$@";      break ;;
@@ -4281,7 +4120,6 @@ case "$ACTION" in
   org)           do_org ${RUN_ARGS[@]+"${RUN_ARGS[@]}"} ;;
   version)       do_version       ;;
   update)        do_update        ;;
-  check-updates) do_check_updates ;;
   pull-image)    do_pull_image    ;;
   rebuild)    do_rebuild    ;;
   reset)     do_reset     ;;
