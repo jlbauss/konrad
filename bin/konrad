@@ -3480,6 +3480,7 @@ reread_baked_version() {
   local v
   v="$(sed -n 's/^KONRAD_VERSION_BAKED="\(.*\)".*/\1/p' "$0" 2>/dev/null | head -1)"
   [[ -n "$v" ]] && KONRAD_VERSION="$v"
+  return 0
 }
 
 do_update() {
