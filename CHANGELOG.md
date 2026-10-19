@@ -11,6 +11,8 @@ Entries stay terse — the *why* lives in the git commit log and the [ARCHITECTU
 
 ## [Unreleased]
 
+## [0.39.0] - 2026-10-19
+
 ### Added
 
 - **`konrad code --kvm`** (and `code up --kvm`) passes the host's `/dev/kvm` into the session, so VMs there (QEMU, VM-based tests) run hardware-accelerated. Opt-in, Podman on Linux only.
