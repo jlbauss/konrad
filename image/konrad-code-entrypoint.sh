@@ -180,6 +180,18 @@ EOF
 - Rootless podman is available: you can build and run containers here (images persist in this repo's store across sessions and are shared with parallel ones, so don't prune images you didn't build). They share this container's sealed network, so they reach the internet but not the user's machine or LAN either.
 EOF
     fi
+    if [[ "${KONRAD_CODE_KVM:-0}" == "1" ]]; then
+      cat <<'EOF'
+- KVM is available (`/dev/kvm`): virtual machines (QEMU, VM-based tests) run hardware-accelerated. Give QEMU user-mode networking, not tap or bridge devices, which need privileges this container lacks.
+EOF
+      # A nested --device is a mount on the device file, which this container's
+      # SELinux type may not do on kvm_device_t; a /dev bind mounts on a dir.
+      if [[ "${KONRAD_CODE_NESTED:-0}" == "1" ]]; then
+        cat <<'EOF'
+- To give a nested container KVM, bind this container's `/dev` (`podman run -v /dev:/dev …`): `--device /dev/kvm` fails here with `crun: set propagation for dev/kvm: Permission denied`.
+EOF
+      fi
+    fi
   } > "$MANAGED_NOTE" || fatal "could not write $MANAGED_NOTE"
   chmod 0644 "$MANAGED_NOTE"
   if [[ "${KONRAD_CODE_NESTED:-0}" == "1" ]]; then
@@ -227,6 +239,15 @@ want_bnd=0000000000000000
 [[ "${KONRAD_CODE_NESTED:-0}" == "1" ]] && want_bnd=00000000000000c0
 [[ "$(awk '$1 == "CapBnd:" {print $2}' /proc/self/status)" == "$want_bnd" ]] \
   || fatal "unexpected capability bounding set after the drop — refusing to run"
+# --kvm: open the device for real, as node, so a mode or SELinux refusal shows
+# here rather than as a slow, emulated VM later.
+if [[ "${KONRAD_CODE_KVM:-0}" == "1" ]]; then
+  if { : <>/dev/kvm; } 2>/dev/null; then
+    step "KVM · /dev/kvm"
+  else
+    warn "--kvm: node can't open /dev/kvm — VMs will fall back to emulation"
+  fi
+fi
 
 repo_host="${KONRAD_CODE_URL#https://}"; repo_host="${repo_host%%/*}"
 repo_path="${KONRAD_CODE_URL#https://*/}"; repo_path="${repo_path%.git}"

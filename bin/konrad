@@ -2712,6 +2712,25 @@ code_hostname_flags() {
   return 0
 }
 
+# --kvm: hand the session the host's /dev/kvm, so VMs inside it (QEMU,
+# VM-based tests) run hardware-accelerated instead of emulated. Opt-in: it exposes
+# the host kernel's KVM code to the session. Podman on Linux only for now;
+# apple/container's --virtualization is unprobed (ROADMAP).
+CODE_KVM=0
+code_kvm_check() {
+  [[ "$KONRAD_ENGINE" == podman ]] \
+    || die "--kvm works with Podman on Linux only for now (Apple's container would need its --virtualization, not probed yet)"
+  [[ -c /dev/kvm ]] \
+    || die "--kvm: this host has no /dev/kvm (is virtualization on in the firmware, and the kvm module loaded?)"
+  # The session's node maps to a subordinate uid, which the host sees as
+  # "other", and --init-groups can't hand it the host's kvm group: only a
+  # world-read-writable /dev/kvm (systemd's default, 0666) opens to it.
+  local mode
+  mode="$(stat -c %a /dev/kvm)"
+  [[ "${mode: -1}" == [67] ]] \
+    || die "--kvm: /dev/kvm is mode $mode, but the session can open it only when it's world read-writable (0666, systemd's default) — check your distro's udev rule for kvm"
+}
+
 do_code() {
   dbg "do_code start"
   case "${1:-}" in
@@ -2720,8 +2739,8 @@ do_code() {
     ls)   shift; do_code_ls "$@"; return ;;
   esac
   local shell=0 nested=1 session=""
-  local usage="usage: $SELF code [--shell] [--no-nested] [--session <name>] <git-url> [claude args…]   (e.g. $SELF code https://gitlab.example.com/me/repo)
-       $SELF code up [--no-nested] [--capacity <n>] <git-url>   keep the repo up for sessions from the Claude app
+  local usage="usage: $SELF code [--shell] [--no-nested] [--kvm] [--session <name>] <git-url> [claude args…]   (e.g. $SELF code https://gitlab.example.com/me/repo)
+       $SELF code up [--no-nested] [--kvm] [--capacity <n>] <git-url>   keep the repo up for sessions from the Claude app
        $SELF code down <git-url>   ·   $SELF code ls"
   [[ "${1:-}" == help ]] && { printf '%s\n' "$usage"; return 0; }
   while [[ "${1:-}" == -* ]]; do
@@ -2729,6 +2748,7 @@ do_code() {
       -h|--help) printf '%s\n' "$usage"; return 0 ;;
       --shell)  shell=1; shift ;;
       --no-nested) nested=0; shift ;;
+      --kvm)    CODE_KVM=1; shift ;;
       # Nesting is the default since 0.35.0; the old opt-in flag stays accepted.
       --nested)
         warn "--nested is deprecated: nested containers are the default now, so drop the flag (--no-nested opts out)."
@@ -2742,6 +2762,7 @@ do_code() {
     esac
   done
   [[ $# -ge 1 ]] || die "$usage"
+  (( CODE_KVM )) && code_kvm_check
   [[ -z "$session" ]] || code_session_valid "$session" \
     || die "session names are 1–32 of a-z, 0-9 and '-', starting with a letter or digit (got '$session')"
   # `up` names the up container's own container database in the nested store.
@@ -2753,15 +2774,16 @@ do_code() {
   exit "$rc"
 }
 
-# konrad code up [--no-nested] [--capacity <n>] <git-url> [server-mode args…]
+# konrad code up [--no-nested] [--kvm] [--capacity <n>] <git-url> [server-mode args…]
 CODE_CAPACITY=4   # sessions the up container serves at once, its own included (--capacity)
 do_code_up() {
   local nested=1
-  local usage="usage: $SELF code up [--no-nested] [--capacity <n>] <git-url>"
+  local usage="usage: $SELF code up [--no-nested] [--kvm] [--capacity <n>] <git-url>"
   while [[ "${1:-}" == -* ]]; do
     case "$1" in
       -h|--help) printf '%s\n' "$usage"; return 0 ;;
       --no-nested) nested=0; shift ;;
+      --kvm) CODE_KVM=1; shift ;;
       --capacity)
         [[ $# -ge 2 ]] || die "--capacity needs a number"
         CODE_CAPACITY="$2"; shift 2 ;;
@@ -2773,6 +2795,7 @@ do_code_up() {
   [[ $# -ge 1 ]] || die "$usage"
   [[ "$CODE_CAPACITY" =~ ^[1-9][0-9]?$ && "$CODE_CAPACITY" -le 32 ]] \
     || die "--capacity takes 1–32 sessions (got '$CODE_CAPACITY')"
+  (( CODE_KVM )) && code_kvm_check
   local url vol name
   url="$(code_normalize_url "$1")"; shift
   vol="$(code_volume_name "$url")"
@@ -2941,6 +2964,7 @@ code_launch() {
   # for the drop, SETPCAP to clear the bounding set. apple/container runs each
   # container in its own VM and takes no cap-drop, like the existing seal.
   local -a priv_flags=(--user 0)
+  local kvm=0
   if [[ "$KONRAD_ENGINE" == "podman" ]]; then
     # Pin the bridge network so the interface is always eth0, and turn off the
     # reverse-path filter netavark sets on it (rp_filter=2): with private space
@@ -2976,6 +3000,11 @@ code_launch() {
                    --security-opt label=type:container_engine_t)
     else
       priv_flags+=(--security-opt=no-new-privileges)
+    fi
+    # The setup run starts no VMs, so it goes without.
+    if (( CODE_KVM )) && [[ "$mode" != setup ]]; then
+      priv_flags+=(--device /dev/kvm); kvm=1
+      go "KVM on · /dev/kvm passed through, so the host kernel's KVM is reachable from the session"
     fi
   else
     priv_flags+=(--cap-add NET_ADMIN)
@@ -3016,6 +3045,7 @@ code_launch() {
                       -e "KONRAD_CODE_MODE=$mode"
                       -e "KONRAD_CODE_HOST_NETS=$host_nets"
                       -e "KONRAD_CODE_NESTED=$nested"
+                      -e "KONRAD_CODE_KVM=$kvm"
                       -e "KONRAD_CODE_SESSION=$session"
                       -e "KONRAD_DEBUG=$KONRAD_DEBUG"
                       -e "CLAUDE_CONFIG_DIR=/home/node/.config/claude"
@@ -3930,7 +3960,7 @@ Subcommands:
                         token is stored on the konrad-secrets volume and reused
                         on every run:
                           $self mcp-auth wiki
-  $self code [--shell] [--no-nested] [--session <name>] <git-url> [claude args…]
+  $self code [--shell] [--no-nested] [--kvm] [--session <name>] <git-url> [claude args…]
                         Sealed coding-agent mode: Claude Code on a clone of a
                         forge repo, with open internet but no route to your
                         machine or LAN, and nothing writable mounted from the
@@ -3942,12 +3972,14 @@ Subcommands:
                         agent can build and run containers (rootless podman,
                         images kept in a per-repo volume), which relaxes some
                         container hardening — see the README; '--no-nested'
-                        turns that off for a run.
+                        turns that off for a run. '--kvm' passes the host's
+                        /dev/kvm through, so VMs inside run accelerated
+                        (Podman on Linux; exposes the host's KVM code).
                         Run it again on the same repo from another terminal and
                         that session works in its own git worktree (s2, s3, …);
                         '--session <name>' picks or resumes one by name.
                           $self code https://gitlab.example.com/me/repo
-  $self code up [--no-nested] [--capacity <n>] <git-url>
+  $self code up [--no-nested] [--kvm] [--capacity <n>] <git-url>
                         Keep the repo up in the background: Claude Code's
                         server mode, so you start sessions from the Claude app
                         or claude.ai/code, each in its own git worktree (up to
