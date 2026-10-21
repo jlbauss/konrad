@@ -4,7 +4,7 @@ annotated-types==0.8.0
 anyio==4.15.1
 attrs==26.1.0
 beautifulsoup4==4.15.0
-certifi==2026.10.18
+certifi==2026.10.19
 cffi==2.1.1
 charset-normalizer==3.5.2
 click==8.5.0
@@ -13,10 +13,10 @@ cryptography==50.0.2
 defusedxml==0.7.1
 dill==0.4.1
 doclang==0.7.3
-docling-core==2.103.0
+docling-core==2.103.1
 docling-ibm-models==4.0.3
 docling-parse==7.22.3
-docling-slim==2.140.0
+docling-slim==2.141.0
 et-xmlfile==2.0.0
 faker==40.43.0
 filelock==4.2.4
@@ -59,14 +59,14 @@ pdfplumber==0.11.10
 pillow==12.3.0
 pillow-heif==1.8.1
 pluggy==1.7.0
-polyfactory==3.3.0
+polyfactory==3.4.0
 protobuf==7.36.2
 psutil==7.2.2
 pyclipper==1.4.0
 pycparser==3.11
 pydantic==2.14.1
 pydantic-core==2.50.1
-pydantic-settings==2.16.0
+pydantic-settings==2.16.1
 pygments==2.21.0
 pylatexenc==2.11
 pypdf==6.21.1
@@ -88,7 +88,7 @@ rtree==1.4.1
 safetensors==0.8.0
 scipy==1.18.1
 semchunk==3.2.5
-setuptools==84.2.0
+setuptools==84.2.1
 shapely==2.2.0
 shellingham==1.5.4
 six==1.17.0
