@@ -2679,13 +2679,22 @@ host_ip_cidrs() {
 # claude.ai/code gets its own worktree in it. The container outlives the konrad
 # that started it, so its name carries no pid (sweep_orphans' patterns never
 # match it): konrad-up-<the repo volume's name, minus konrad-code->, --profile
-# included. A marker per up repo under the state dir records that it should be
+# included. apple/container refuses a container name over 63 characters (a DNS
+# label), so a longer one keeps its first 52 and ends in a checksum of the
+# whole. A marker per up repo under the state dir records that it should be
 # up, so a container a host reboot ended is noticed, and holds the URL that
 # `ls` shows.
 CODE_UP_DIR="$KONRAD_STATE_DIR/code-up"
 # The command line a hint names: konrad, with this run's --profile.
 code_self() { printf '%s' "$SELF${KONRAD_PROFILE:+ --profile $KONRAD_PROFILE}"; }
-code_up_name() { printf 'konrad-up-%s' "${1#konrad-code-}"; }
+code_up_name() {
+  local n="konrad-up-${1#konrad-code-}"
+  if (( ${#n} > 63 )); then
+    local cut="${n:0:52}"
+    n="${cut%[-.]}-$(code_repo_id "$n")"
+  fi
+  printf '%s' "$n"
+}
 # grep without -q reads to the end: an early exit could SIGPIPE the engine
 # listing, which pipefail would turn into a false "not running".
 code_up_running() { eng_container_ls_running | grep -x "$1" >/dev/null; }
