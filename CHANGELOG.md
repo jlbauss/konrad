@@ -11,6 +11,8 @@ Entries stay terse — the *why* lives in the git commit log and the [ARCHITECTU
 
 ## [Unreleased]
 
+## [0.39.1] - 2026-10-22
+
 ### Fixed
 
 - **`konrad code up` starts on apple/container for repos with a long URL.** The up container's name could exceed the engine's 63-character limit ("is not a valid container ID"); a longer name is now shortened with a checksum. Repos with short URLs keep their name.
