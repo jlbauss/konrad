@@ -481,6 +481,25 @@ if [[ "${KONRAD_CODE_NESTED:-0}" == "1" ]]; then
       "$NESTED_STORE/sessions/$session" "$NESTED_STORE/sessions/$session" > /tmp/konrad-session-containers.conf
     export CONTAINERS_CONF_OVERRIDE=/tmp/konrad-session-containers.conf
   fi
+  # The store has no size limit and podman never collects on its own: a
+  # rebuild leaves the image it replaced dangling, and an interrupted build
+  # leaves buildah working containers that pin their images. Remove both when
+  # older than a day, so a build another session is running right now keeps
+  # its own (the same sweep as scripts/build-image.sh, which also removes what
+  # konrad's own rebuild replaced). Other sessions' containers list as
+  # `storage`, not `buildah`, and image prune spares images they use. Cost:
+  # an untagged stage of a multi-stage build loses its cache after a day.
+  cutoff=$(( $(date +%s) - 86400 ))
+  swept=0
+  while read -r id created cmd; do
+    if [[ "$cmd" == buildah && "$created" -lt "$cutoff" ]] \
+         && podman rm --storage --force "$id" >/dev/null 2>&1; then
+      swept=$((swept + 1))
+    fi
+  done < <(podman ps -a --external --format '{{.ID}} {{.Created.Unix}} {{.Command}}' 2>/dev/null || true)
+  pruned="$(podman image prune -f --filter until=24h 2>/dev/null | grep -c . || true)"
+  (( swept + pruned == 0 )) \
+    || go "image store tidied · $pruned dangling image(s), $swept leftover build container(s) removed"
   # Informational only — a failing store must warn with podman's own error,
   # never end the run (under set -e + pipefail a bare pipeline here would).
   # Every line of it but the warnings, which podman prints on a healthy run too.
