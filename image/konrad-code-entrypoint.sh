@@ -171,7 +171,7 @@ if [[ "$(id -u)" == "0" ]]; then
   {
     printf '# konrad code\n\nYou are running inside konrad code: a disposable container with open internet access but no route to the user'\''s machine or local network. The repository is a clone of %s; nothing you do here reaches the user except through the forge.\n\n' "$KONRAD_CODE_URL"
     cat <<'EOF'
-- The default branch (`git symbolic-ref --short refs/remotes/origin/HEAD`) is protected, so work on a feature branch, commit, and open a merge request with: `git push -u origin <branch> -o merge_request.create -o merge_request.target=<default branch> -o merge_request.remove_source_branch`. The user reviews and merges it in the forge web UI.
+- The default branch (`git symbolic-ref --short refs/remotes/origin/HEAD`) is protected, so work on a feature branch, commit, and open a merge request with: `git push -u origin <branch> -o merge_request.create -o merge_request.target=<default branch> -o merge_request.remove_source_branch`. Pass the write-up with `-o merge_request.description="$(sed -z 's/\n/\\n/g' <file>)"`: git refuses newlines in a push option, and GitLab expands the `\n` back. Later pushes update it the same way, but only when the push moves a ref. The user reviews and merges it in the forge web UI.
 - Install project tooling you need at runtime (uv, npm, …).
 - Other sessions may work on this repo in parallel, each in its own git worktree of the same clone: stay in yours, leave their branches alone, and start new branches from `origin/<default branch>` rather than checking out the default branch (git refuses a branch another worktree has checked out).
 EOF
