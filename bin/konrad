@@ -3803,7 +3803,8 @@ do_uninstall() {
     cache_note="
   - intermediate build-cache images:
       • konrad-python-base:cache
-      • konrad-python-models:cache"
+      • konrad-python-models:cache
+      • konrad-venv-split:cache"
     desktop_note=""
   else
     other_name="konrad-dev"
@@ -3853,7 +3854,7 @@ EOF
   # regardless of the runtime engine — sweep them via podman whenever it's around.
   if is_dev && command -v podman >/dev/null 2>&1 && podman info >/dev/null 2>&1; then
     local img
-    for img in konrad-python-base:cache konrad-python-models:cache; do
+    for img in konrad-venv-split:cache konrad-python-models:cache konrad-python-base:cache; do
       if podman image exists "$img" 2>/dev/null; then
         podman image rm "$img" >/dev/null
         info "removed image $img"

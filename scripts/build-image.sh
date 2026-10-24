@@ -7,15 +7,20 @@
 # Usable without having the CLI installed yet. (The :latest / :0.x / :<sha>
 # tags are CI-only; this convenience build never writes them.)
 #
-# The Dockerfile uses a 3-stage build:
+# The Dockerfile builds these stages (plus uv-source, a plain image pull):
 #   python-base   — Python venv + docling-slim (no repo files)
 #   python-models — Docling model download     (no repo files)
+#   venv-split    — the venv partitioned into three COPY layers
 #   final         — full runtime image
 #
-# We tag the two intermediate stages so Podman's layer cache keeps them
+# We tag the three intermediate stages so Podman's layer cache keeps them
 # alive across `podman system prune` / `podman image prune`. Without tags
 # those stages are treated as dangling and get collected, forcing a full
 # model re-download on the next build.
+#
+# A rebuild only moves a tag, so the image it pointed at stays behind with
+# its parent chain (several GB per rebuild); the Podman path below removes
+# those once the build is done, and the leftovers of interrupted builds.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -96,6 +101,42 @@ fi
 command -v podman >/dev/null 2>&1 \
   || { printf 'konrad-build: podman is not installed.\n' >&2; exit 1; }
 
+# An interrupted build (Ctrl-C, SIGTERM, a SIGKILL from the OOM killer or a
+# stopped session) leaves its buildah working containers in storage, where
+# they pin their images for good; --force-rm only covers a failing step.
+# Remove those older than a day: no build runs that long, so a build running
+# right now elsewhere in a shared store keeps its own. Other engines'
+# containers in the store list as `storage`, never `buildah`, and stay. Not
+# `--filter until`, which podman ignores for storage containers; `--force`
+# because a killed build's containers still count as mounted.
+cutoff=$(( $(date +%s) - 86400 ))
+podman ps -a --external --format '{{.ID}} {{.Created.Unix}} {{.Command}}' 2>/dev/null \
+  | while read -r id created cmd; do
+      if [ "$cmd" = buildah ] && [ "$created" -lt "$cutoff" ]; then
+        podman rm --storage --force "$id" >/dev/null 2>&1 || true
+      fi
+    done || true
+
+# Remember what each tag points at now, and remove those images once this
+# run is over (also when it fails partway, for the tags it already moved).
+# Only an image no tag points at any more goes (an rmi by ID would delete a
+# tagged one too). `podman rmi` takes the parents nothing else uses with it
+# and keeps layers the new images share; it fails, harmlessly, on an image a
+# container still uses. Newest first, so a parent goes after its children.
+TAGS="konrad:local konrad-venv-split:cache konrad-python-models:cache konrad-python-base:cache"
+old_ids=""
+for tag in $TAGS; do
+  old_ids="$old_ids $(podman image inspect --format '{{.Id}}' "$tag" 2>/dev/null || true)"
+done
+remove_replaced() {
+  for id in $old_ids; do
+    if [ "$(podman image inspect --format '{{len .RepoTags}}' "$id" 2>/dev/null)" = 0 ]; then
+      podman rmi "$id" >/dev/null 2>&1 || true
+    fi
+  done
+}
+trap remove_replaced EXIT
+
 printf 'konrad-build: building python-base (Python venv + docling-slim)…\n'
 podman build --target python-base \
   --build-arg "BASE_IMAGE=$BASE_IMAGE" \
@@ -108,9 +149,15 @@ podman build --target python-models \
   --build-arg "UV_IMAGE=$UV_IMAGE" \
   -t konrad-python-models:cache "$CTX"
 
+printf 'konrad-build: building venv-split (the venv in three layers)…\n'
+podman build --target venv-split \
+  --build-arg "BASE_IMAGE=$BASE_IMAGE" \
+  --build-arg "UV_IMAGE=$UV_IMAGE" \
+  -t konrad-venv-split:cache "$CTX"
+
 printf 'konrad-build: building final runtime image konrad:local (konrad=%s sha=%s)…\n' \
   "$KONRAD_VERSION" "$GIT_SHA"
-exec podman build \
+podman build \
   --build-arg "BASE_IMAGE=$BASE_IMAGE" \
   --build-arg "UV_IMAGE=$UV_IMAGE" \
   --build-arg "KONRAD_VERSION=$KONRAD_VERSION" \
