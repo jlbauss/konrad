@@ -38,4 +38,4 @@ Out of scope:
 
 ## What to expect
 
-konrad is maintained by one person, so handling is best effort, without fixed response times. Only the latest release is supported (pre-1.0, see [README → Status](README.md#status)), and fixes ship as a new release. Once a fix is out, the issue is made public and the [CHANGELOG](CHANGELOG.md) notes it, crediting you if you'd like.
+konrad is a personal tool, maintained by one person and shared as it is ([README → Status](README.md#status)). Every report is read, and handled as time allows: there's no promise of a fix or a response time. Only the current `main` is supported, which is what `konrad update` installs; a fix ships when it's merged and is noted in the next release. Once a fix is out, the issue is made public and the [CHANGELOG](CHANGELOG.md) notes it, crediting you if you'd like.

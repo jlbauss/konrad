@@ -8,7 +8,7 @@
 
 [![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
 [![version](https://img.shields.io/badge/dynamic/yaml?url=https://gitlab.git.nrw/jbauss2/konrad/-/raw/main/VERSION&query=$&label=version&color=informational)](CHANGELOG.md)
-[![status](https://img.shields.io/badge/status-beta-yellow)](#status)
+[![status](https://img.shields.io/badge/status-personal%20tool-lightgrey)](#status)
 [![image](https://img.shields.io/badge/image-ghcr.io%2Fjlbauss%2Fkonrad-blue)](https://github.com/users/jlbauss/packages/container/package/konrad)
 
 </div>
@@ -30,7 +30,7 @@ What ships in the box:
 
 - **Document skills**, loaded via opencode's `skill` tool: `pdf` (extract / edit / annotate / fill / generate), `spreadsheets` (xlsx / csv reading, editing, creation), and `image-editing` (resize, crop, convert, watermark, …).
 - **Skills that keep results trustworthy:** `quality-assurance` (a verification cycle every producer skill runs before reporting a result) and `do-it-manually` (hands structured-but-irregular data to a careful manual-transformation subagent instead of debugging the Nth regex).
-- **Helper skills:** `frontend-design` (polished web pages and components), `grill-me` (stress-tests your plan by interviewing you), and `write-a-skill` (scaffold your own skills). More on the way — see [ROADMAP.md](ROADMAP.md).
+- **Helper skills:** `frontend-design` (polished web pages and components), `grill-me` (stress-tests your plan by interviewing you), and `write-a-skill` (scaffold your own skills).
 - **A planning contract** baked into the agent prompt: a single `.agent/task.md` per task with side effects, plus aggressive use of opencode's `todowrite` for live progress. Rationale in [the planning contract](ARCHITECTURE.md#the-planning-contract).
 - **A curated font palette** — seven SIL OFL families (Inter, Source Serif 4, Fraunces, JetBrains Mono, EB Garamond, IBM Plex Sans, Atkinson Hyperlegible) plus Debian's Noto core for broad non-Latin coverage, so generated PDFs / slides / typeset docs look intentional out of the box. Drop your own into `~/.config/konrad/user/fonts/` to extend.
 
@@ -62,7 +62,7 @@ These two are the supported platforms, and every change is tested on each one it
 
 Optional: `git`, needed only for org-layer subscriptions — see [For organizations](#for-organizations).
 
-(Docker support is on the roadmap, untested; Windows/WSL2 is untested and at your own discretion.)
+(Docker isn't supported; Windows/WSL2 is untested and at your own discretion.)
 
 ### Install
 
@@ -220,12 +220,12 @@ konrad keeps the **image** and your subscribed **org layers** fresh on its own: 
 
 ## Status
 
-**Beta.** konrad works day-to-day and the build/publish pipeline is solid, but the surface area is still pre-1.0 — and the agent edits real files, so keep backups of anything irreplaceable. What that means today:
+**A personal tool, shared as it is.** One person builds and maintains konrad for their own daily use, and publishes it in case it's useful to you too. It works day-to-day, but there's no plan for 1.0 and no promise of support, response times or platforms beyond the two below; issues, merge requests and [security reports](SECURITY.md) are welcome and handled as time allows. The agent edits real files, so keep backups of anything irreplaceable. What that means today:
 
-- **Supported: Linux with Podman, and Apple-Silicon macOS 26+ with Apple's [`container`](https://github.com/apple/container).** Other Macs aren't supported. Docker support is on the roadmap, untested. No Windows support — WSL is at your own discretion and untested.
-- **Pre-1.0: expect churn, but versioned.** konrad uses [semantic versioning](CONTRIBUTING.md#versioning) — pre-1.0 that's `0.X.Y` (`X`/minor = new functionality or any user-visible change, `Y`/patch = fixes). The leading `0.` means config shapes, flags, and image internals can still change without a migration path; no stability promise until 1.0.
+- **Supported: Linux with Podman, and Apple-Silicon macOS 26+ with Apple's [`container`](https://github.com/apple/container).** Other Macs aren't supported, nor is Docker. No Windows support — WSL is at your own discretion and untested.
+- **Versioned, not stable.** konrad uses [semantic versioning](CONTRIBUTING.md#versioning) as `0.X.Y` (`X`/minor = new functionality or any user-visible change, `Y`/patch = fixes). The leading `0.` means config shapes, flags, and image internals can change without a migration path. `konrad update` follows `main`, so you get a merged change before the release that names it.
 - **Tested, not exhaustively.** Every published image passes a CI smoke gate (binaries, Python deps, baked content, a docling round-trip), the CLI's host-side logic has unit tests, and contributors rehearse the update path and run an end-to-end self-test, but less-traveled paths can still slip through.
-- **Local-model UX is still rough.** Tool-call parsing, context overflow, and model switching have known edges — the "works flawlessly on local models" shakedown is still a roadmap item.
+- **Local-model UX is rough.** Tool-call parsing, context overflow, and model switching have known edges.
 
 ## Configuration
 
