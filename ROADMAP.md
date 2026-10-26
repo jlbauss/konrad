@@ -1,10 +1,25 @@
 # Roadmap
 
-konrad is a personal tool, shared as it is ([README → Status](README.md#status)). This list holds **at most ten items**: what keeps konrad safe and working for its own use, and what makes it smaller. An item comes in only when the maintainer asks for it, and a new one replaces an old one. Sizes are planning guesses, not commitments: `S` (hours), `M` (a day or two), `L` (several days). How the list is kept: [CONTRIBUTING → When to update what](CONTRIBUTING.md#when-to-update-what).
+konrad is a personal tool, shared as it is ([README → Status](README.md#status)). This list holds **at most ten items**: what automates the maintainer's checks, what keeps konrad safe and working for its own use, and what makes it smaller. An item comes in only when the maintainer asks for it, and a new one replaces an old one. Sizes are planning guesses, not commitments: `S` (hours), `M` (a day or two), `L` (several days). How the list is kept: [CONTRIBUTING → When to update what](CONTRIBUTING.md#when-to-update-what).
 
 The longer backlog this replaced (58 items, cut on 2026-10-26), with every design note and probe plan, is [in the history](https://gitlab.git.nrw/jbauss2/konrad/-/blob/7c4aaca0b01804e465d7980a3463674c9347996f/ROADMAP.md); bring an item back from there when it's needed.
 
 ## Next
+
+### Automate the maintainer's probes
+
+*First, because every probe a machine runs is one the maintainer doesn't: the agents that build konrad should get the host-side answer themselves, from a job log, instead of handing over a runbook.*
+
+- [ ] `M` **Host probes as jobs on a [Tart](https://github.com/cirruslabs/tart) runner, so an MR is tested on macOS and on a real Linux host before anyone merges it.** The box can't run macOS, and its Linux is a container, so the host-only checks (Apple's `container` paths, the seal on native networking, SELinux enforcing, systemd units and a reboot, the installer from the real forge) are the maintainer's today. A GitLab Tart executor on an Apple-silicon Mac gives each job a throwaway VM, so an MR's code never runs on the Mac itself, which a plain self-hosted runner would allow.
+  - **macOS guest:** `container system start`, then the bats suites on the BSD userland, `./scripts/smoke-test.sh`, and `bin/konrad`'s firewall, seal and `konrad code` paths. Apple's `container` inside the VM needs nested virtualization (to my knowledge M3+ and macOS 15+ on the host, a Tart flag, macOS 26 in the guest).
+  - **Linux guest (arm64) on the same runner:** Podman with SELinux enforcing, the seal probe ([scripts/probe-konrad-code.sh](scripts/probe-konrad-code.sh)), the nesting probe ([scripts/probe-nested.sh](scripts/probe-nested.sh)), a systemd user unit across a VM reboot (`konrad code up --all`). amd64 stays covered by CI's instance runners.
+  - **Probes become scripts first.** A runbook in an MR description can't run as a job; each boundary probe the agents write goes into `scripts/probe-*.sh`, baseline included, so a job and a human run the same thing.
+  - **Open:** Tart's licence terms; Apple's two-VMs-per-Mac limit caps concurrency; jobs queue while the Mac sleeps; which jobs run on every MR and which on demand; how the job's verdict reaches the MR (the public job log, which agents already read).
+  - **Probe first:** one manual job in a macOS guest running `container system start` and the smoke test, then the same in a Linux guest, then MR-triggered.
+- [ ] `S` **A capped provider key in `konrad code`, so an agent runs `selftest.sh`'s model stage itself.** Today the real-model run is always a maintainer probe. With open egress, safe means bounded, not unseen: a dedicated key on a hard spend limit (an OpenRouter key with a credit limit, or an Anthropic Console workspace with a monthly limit), short expiry, one cheap model, never the maintainer's own account.
+  - **Likely zero code; probe first.** A one-time `konrad-dev connect` in a `konrad code --shell` session should persist the key in the per-repo store's `konrad-secrets` volume; pin the model with `KONRAD_SELFTEST_MODEL`. Only the primary session sees it (others get their own `volume_path`). Probe: the model stage SKIPs without a key, PASSes after `connect`, survives a session restart, is absent from a parallel session.
+  - **Then docs:** the key as an accepted residual in ARCHITECTURE → konrad code; replace "the box holds no provider key, by design" in CLAUDE.md and CONTRIBUTING.
+  - **Only if no provider offers a hard cap:** a credential-injecting sidecar like the forge-token one (new maintenance surface, so not by default).
 
 ### `konrad code`: safer and simpler
 
@@ -61,23 +76,11 @@ The longer backlog this replaced (58 items, cut on 2026-10-26), with every desig
   - **Probe first, in the box:** build with `@opencode/cli` and today's config unchanged; then check what the guide doesn't cover: `opencode run` and its stdin handling, `opencode auth login` (`konrad connect`), the remote-MCP OAuth loopback port `konrad mcp-auth` publishes, the data dir and the `auth.json`/`mcp-auth.json` symlinks, the `instructions` globs the org-layer copy relies on, `opencode debug config` and `debug agent --tool` (the smoke guard), and v2's background service inside a `run --rm` container. Run the smoke guard against the v2 build first: it shows which keys v2 honours.
   - **Docs:** ARCHITECTURE → Configuration & instructions (merge rule, permission shape), environment.md, CLAUDE.md's quick facts on permissions.
 
-### Fewer maintainer probes
-
-- [ ] `S` **A capped provider key in `konrad code`, so an agent runs `selftest.sh`'s model stage itself.** Today the real-model run is always a maintainer probe. With open egress, safe means bounded, not unseen: a dedicated key on a hard spend limit (an OpenRouter key with a credit limit, or an Anthropic Console workspace with a monthly limit), short expiry, one cheap model, never the maintainer's own account.
-  - **Likely zero code; probe first.** A one-time `konrad-dev connect` in a `konrad code --shell` session should persist the key in the per-repo store's `konrad-secrets` volume; pin the model with `KONRAD_SELFTEST_MODEL`. Only the primary session sees it (others get their own `volume_path`). Probe: the model stage SKIPs without a key, PASSes after `connect`, survives a session restart, is absent from a parallel session.
-  - **Then docs:** the key as an accepted residual in ARCHITECTURE → konrad code; replace "the box holds no provider key, by design" in CLAUDE.md and CONTRIBUTING.
-  - **Only if no provider offers a hard cap:** a credential-injecting sidecar like the forge-token one (new maintenance surface, so not by default).
-- [ ] `M` **macOS in CI, so the macOS probes become jobs.** The box is Linux, and the maintainer's macOS probes are the slowest part of a handoff. Two steps, cheapest first:
-  - **(1) The bats suites on a hosted macOS runner.** The macOS bugs so far came from the BSD userland (`sed -i`, `stat`, `date`, `find`), which `tests/` exercises without containers. A job on the GitHub mirror's hosted Apple-silicon runners covers that for a small workflow file. Catch: the mirror carries protected branches only, so it runs after the merge.
-  - **(2) A [Tart](https://github.com/cirruslabs/tart) runner on an M3-or-newer Mac for the `container`-engine paths** (the seal, nesting, the store, `konrad code`). The GitLab Tart executor gives each job a throwaway macOS VM, so an MR's code never runs on the Mac itself, which a plain self-hosted runner would allow. Open: Apple's `container` inside the VM needs nested virtualization (to my knowledge M3+ and macOS 15+ on the host, a Tart flag, macOS 26 in the guest); Tart's licence terms; Apple's two-VMs-per-Mac limit caps concurrency; jobs queue while the Mac sleeps; which jobs run on MRs versus manually.
-  - **Probe first:** in a nested Tart VM, `container system start`, then `./scripts/smoke-test.sh` and `bin/konrad`'s firewall and seal path; then a Tart-executor runner registered to the project, running one manual job.
-
 ## Delete when it gets in the way
 
 *Candidates, not commitments: each goes when it next costs work, or never. Deleting beats replacing, since a replacement is new work of its own.*
 
 - **The desktop launcher's extras.** `install-desktop` is ~430 lines of `bin/konrad` (terminal choice, AppleScript for iTerm, icon rasterizing, regeneration on every update). The smallest version that still works is a `.desktop` with `Terminal=true` on Linux and a `.command` file on macOS.
 - **konrad's wrappers around opencode's own verbs.** `connect --custom` (~100 lines) and `mcp-auth` each wrap one opencode subcommand; a `konrad opencode <args>` passthrough with a small fail-closed table of sandbox settings would retire them (design in the history, *opencode's own verbs*).
-- **Probe history in ARCHITECTURE.md.** At 77 KB much of it is dates, versions and "found on …" that belongs in commits and MRs; keep each decision and its reason.
 - **The committed fonts (7.9 MB) and `scripts/fetch-fonts.sh`,** in favour of Debian's font packages, once PDF generation no longer needs reportlab's TrueType-only loading (details in the history, *Fonts from trixie only*).
 - **The inline model-discovery probe** ([discover-models.sh](image/konrad-defaults/discover-models.sh), its entrypoint block, the smoke assertion and the `KONRAD_NO_DISCOVERY` / `KONRAD_DISCOVERY_TIMEOUT` plumbing), once opencode ships native `/v1/models` discovery ([opencode#27554](https://github.com/anomalyco/opencode/pull/27554), open).
