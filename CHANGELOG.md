@@ -11,6 +11,29 @@ Entries stay terse — the *why* lives in the git commit log and the [ARCHITECTU
 
 ## [Unreleased]
 
+## [0.40.0] - 2026-10-26
+
+### Added
+
+- **`konrad code up --all` starts every repo that should be up and isn't,** each with the flags it was started with, and runs without a terminal once a repo's first `up` is done: on a host that restarts, run it at boot from a systemd user unit or a launchd agent. See [README → Coding agents](README.md#coding-agents-konrad-code).
+
+### Changed
+
+- **konrad is a personal tool, shared as it is:** no plan for 1.0, and no promise of support or of platforms beyond Linux with Podman and Apple-silicon macOS with Apple's `container`. See [README → Status](README.md#status).
+- **`konrad code`'s note to the agent says how to pass a merge request's description** in the push that opens it, and that later pushes update it only when they move a ref.
+
+### Removed
+
+- **The Podman fallback on macOS.** On a Mac konrad now always uses Apple's `container` (Apple silicon, macOS 26+), and says so when it's missing, instead of falling back to Podman in a `podman machine` VM, which was untested and unsupported.
+- **`konrad update --check`.** `konrad update` fetches only what changed and `konrad --version` shows what you have; the daily background refresh announces a new image on its own.
+
+### Fixed
+
+- **Image builds no longer fill the disk.** `konrad-dev rebuild` removes the images a rebuild replaced and the leftovers of interrupted builds, and tags its last intermediate stage (`konrad-venv-split:cache`) so it stays cached. Each nested `konrad code` session start removes dangling images and leftover build containers older than a day from the repo's image store, which had no limit.
+- **konrad no longer hangs when Homebrew upgraded Apple's `container` while its service ran.** The old service can't start containers or networks any more; konrad now notices (`container system status`: versions differ, or its install is gone) and stops with the fix. See [README → Troubleshooting](README.md#troubleshooting).
+- Short engine calls on Apple's `container` (status, network create and delete, container removal, the cleanup when a session ends) give up after `KONRAD_ENGINE_TIMEOUT` seconds (default 30) instead of hanging; they were unbounded on a Mac without GNU `timeout`.
+- `konrad --help` gave `konrad code up`'s default capacity as 3; it's 4 since 0.37.0.
+
 ## [0.39.1] - 2026-10-22
 
 ### Fixed
