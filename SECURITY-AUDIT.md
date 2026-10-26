@@ -7,7 +7,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 Point-in-time security review performed before the beta declaration, covering the surfaces named in the [ROADMAP](ROADMAP.md) item: container isolation, provider-credential handling, the egress/network boundary, filesystem boundaries, config-merge integrity, and the build/distribution supply chain.
 
-This file is the **audit record** (findings, rationale, and the probes that verify them). The **open, actionable items** live in [ROADMAP.md](ROADMAP.md) under Security & sandboxing — this file does not re-track them. Fixes are recorded in [CHANGELOG.md](CHANGELOG.md) when they ship.
+This file is the **audit record** (findings, rationale, and the probes that verify them). Open findings are **accepted residuals** unless [ROADMAP.md](ROADMAP.md) lists one; this file is their record and does not re-track them. Fixes are recorded in [CHANGELOG.md](CHANGELOG.md) when they ship.
 
 ## Method
 
@@ -103,6 +103,6 @@ No `ConnectPort` lines ([konrad-proxy-entrypoint.sh:72-74](image/konrad-proxy-en
 ## Not covered / future
 
 - **`SECURITY.md` (vulnerability-reporting policy)** — separate from this audit record; worth adding for a public beta. Since added: [SECURITY.md](SECURITY.md).
-- **Read-only root filesystem / writable-path minimization** — tracked as a post-beta hardening item in [ROADMAP.md](ROADMAP.md).
+- **Read-only root filesystem / writable-path minimization** — not planned; an accepted residual.
 - **Image signing (cosign/sigstore)** and installer checksum/signature — the `curl | sh` install trusts TLS today; signing is post-beta hardening.
 - **MCP tool surface** — no bundled MCP servers ship today; the surface is user-declared servers authenticated via `konrad mcp-auth` (firewall-off, no agent in the loop). Re-audit when a server is bundled.

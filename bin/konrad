@@ -44,8 +44,8 @@ IMAGE_NAME="${KONRAD_IMAGE:-$IMAGE_DEFAULT}"
 # update surface — require_image's first pull, do_pull_image, do_update, and the
 # background refresh worker — at a controlled image (a `:pr-<num>` candidate or a
 # local registry) instead of the real `:latest`, so a release can be rehearsed
-# before it's promoted. It's also the knob the ROADMAP's GitLab-registry mirror
-# will re-point. Unset in normal use.
+# before it's promoted. It's also the knob a move to another registry would
+# re-point. Unset in normal use.
 REGISTRY_IMAGE="${KONRAD_REGISTRY_IMAGE:-ghcr.io/jlbauss/konrad:latest}"
 
 # URL of the curl|sh installer. `konrad update` re-runs it after the
@@ -2702,7 +2702,7 @@ code_hostname_flags() {
 # --kvm: hand the session the host's /dev/kvm, so VMs inside it (QEMU,
 # VM-based tests) run hardware-accelerated instead of emulated. Opt-in: it exposes
 # the host kernel's KVM code to the session. Podman on Linux only for now;
-# apple/container's --virtualization is unprobed (ROADMAP).
+# apple/container's --virtualization is unprobed.
 CODE_KVM=0
 code_kvm_check() {
   [[ "$KONRAD_ENGINE" == podman ]] \
