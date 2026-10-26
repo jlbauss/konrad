@@ -392,6 +392,7 @@ Rarely needed — the flags cover day-to-day use. Collected here so the rest of 
 | `KONRAD_RETENTION_DAYS` | Days konrad keeps its own growing state — the log dir and scratch workspaces — before pruning untouched entries at launch. `0` disables pruning (keep everything). Default `30`. |
 | `KONRAD_NO_NOTICES=1` | Suppress the launch-time notice queue (background-refresh / org-hook news). For automation — a suppressed notice waits for a later interactive launch rather than being lost. |
 | `KONRAD_HOOK_TIMEOUT` | Seconds an org layer's `post-sync` hook may run before it's killed. Default `120`. |
+| `KONRAD_ENGINE_TIMEOUT` | Seconds a short engine call may take before konrad gives up on it: the firewall's network create, and on Apple `container` also the service status, network delete and container removal. Default `30`. |
 | `KONRAD_DEBUG=1` / `KONRAD_TRACE_FETCH=1` | Verbose launch / raw HTTP trace — see [Debugging opencode](#debugging-opencode). |
 
 ## State
@@ -418,6 +419,7 @@ opencode's sessions and conversation DB are **ephemeral** — gone on container 
 | Symptom                                                          | Likely cause                                | Fix                                                                                       |
 | ---------------------------------------------------------------- | ------------------------------------------- | ----------------------------------------------------------------------------------------- |
 | `cannot reach Apple's container service`                         | Apple `container` not started (macOS)       | `container system start`                                                                  |
+| `Apple's container service is out of date`, or a launch hangs at the firewall or `Starting container` | `brew upgrade container` ran while the service was running; the old service can't start containers or networks any more | `container system stop && container system start` (this stops running containers, other konrad sessions included). To avoid it, `brew pin container` and upgrade when nothing runs. |
 | A local model errors or never answers                            | Engine not serving, or model not declared   | Start the engine's server on its default port (LM Studio `:1234` via Developer → Start Server, Ollama `:11434`, llama.cpp `:8080`) and declare the loaded model — see [Configuration](#configuration). |
 | Agent can't find the file you mentioned                          | You ran `konrad` in the wrong directory     | The cwd is what gets mounted at `/workspace`. Always `cd` first.                          |
 | `refusing to run with your home directory as the workspace`      | You ran `konrad shell`/`konrad run` from `$HOME` | `cd` into a project directory, or use `konrad scratch` for a throwaway workspace. (`$HOME` can't be the workspace — it exposes everything and won't mount on SELinux / macOS. The bare `konrad` TUI now auto-redirects to a scratch workspace instead of erroring.) |

@@ -379,7 +379,7 @@ detect_engine() {
 eng_running() {
   case "$KONRAD_ENGINE" in
     podman)    podman info >/dev/null 2>&1 ;;
-    container) container system status >/dev/null 2>&1 ;;
+    container) bounded "$(engine_timeout)" container system status >/dev/null 2>&1 ;;
   esac
 }
 
@@ -491,7 +491,7 @@ eng_rm_container() { eng_rm_container_checked "$1" >/dev/null 2>&1 || true; }
 eng_rm_container_checked() {  # the same, but fails with the engine's error
   case "$KONRAD_ENGINE" in
     podman)    podman rm -f "$1" >/dev/null ;;
-    container) container delete --force "$1" >/dev/null ;;
+    container) bounded "$(engine_timeout)" container delete --force "$1" >/dev/null ;;
   esac
 }
 eng_logs() {  # stdout+stderr of the container, merged
@@ -511,20 +511,20 @@ eng_container_exists() {
 eng_container_ls() {
   case "$KONRAD_ENGINE" in
     podman)    podman ps -a --format '{{.Names}}' 2>/dev/null || true ;;
-    container) container ls --all 2>/dev/null | awk 'NR>1 {print $1}' || true ;;
+    container) bounded "$(engine_timeout)" container ls --all 2>/dev/null | awk 'NR>1 {print $1}' || true ;;
   esac
 }
 # The same, running containers only.
 eng_container_ls_running() {
   case "$KONRAD_ENGINE" in
     podman)    podman ps --format '{{.Names}}' 2>/dev/null || true ;;
-    container) container ls 2>/dev/null | awk 'NR>1 {print $1}' || true ;;
+    container) bounded "$(engine_timeout)" container ls 2>/dev/null | awk 'NR>1 {print $1}' || true ;;
   esac
 }
 eng_stop_container() {  # $1 = name, $2 = seconds before the engine kills it
   case "$KONRAD_ENGINE" in
     podman)    podman stop -t "$2" "$1" >/dev/null ;;
-    container) container stop -t "$2" "$1" >/dev/null ;;
+    container) bounded "$(( $2 + $(engine_timeout) ))" container stop -t "$2" "$1" >/dev/null ;;
   esac
 }
 eng_exec() {  # non-interactive: eng_exec <name> <cmd…>
@@ -534,35 +534,63 @@ eng_exec() {  # non-interactive: eng_exec <name> <cmd…>
   esac
 }
 
-# Wall-clock ceiling for a single network create, so a wedged engine fails fast
-# instead of hanging forever. Applied only when a `timeout` binary is present
-# (GNU coreutils, or Homebrew's `gtimeout`); stock macOS ships neither, so there
-# the create runs unbounded — the orphan sweep in fw_setup is what stops a wedge
-# forming in the first place. KONRAD_NET_TIMEOUT overrides the ceiling (seconds).
+# Wall-clock ceiling for a short-lived engine call, so a wedged engine fails
+# fast instead of hanging forever (seen on apple/container: a service whose
+# install was upgraded under it blocks every network create and delete; see
+# container_service_check). KONRAD_ENGINE_TIMEOUT overrides it (seconds).
+engine_timeout() {
+  local t="${KONRAD_ENGINE_TIMEOUT:-30}"
+  [[ "$t" =~ ^[1-9][0-9]*$ ]] || t=30
+  printf '%s' "$t"
+}
+
+# bounded <seconds> <cmd…>: run the command, killing it once the ceiling passes.
+# A shell watchdog rather than GNU `timeout`, which stock macOS lacks. Returns
+# 124 when the watchdog killed the command (as `timeout` does), else the
+# command's own status. The command runs in the background, so its stdin is
+# /dev/null: interactive calls (`run -it`) never go through here. The watchdog's
+# output goes to /dev/null so a `$(bounded …)` capture doesn't wait on it, and
+# its sleep is killed with it, so no stray process outlives the call.
 bounded() {
-  local secs="${KONRAD_NET_TIMEOUT:-60}"
-  if   command -v timeout  >/dev/null 2>&1; then timeout  "$secs" "$@"
-  elif command -v gtimeout >/dev/null 2>&1; then gtimeout "$secs" "$@"
-  else "$@"; fi
+  local secs="$1" pid wd rc=0; shift
+  "$@" &
+  pid=$!
+  ( s="" stop=0
+    trap 'stop=1; [[ -z "$s" ]] || { kill "$s"; wait "$s"; }' TERM
+    sleep "$secs" &
+    s=$!
+    [[ "$stop" == 0 ]] || { kill "$s"; wait "$s"; exit 1; }   # TERM came before $s was set
+    wait "$s" || exit 1
+    trap '' TERM
+    kill -TERM "$pid"
+    for _ in 1 2 3 4 5 6 7 8 9 10; do kill -0 "$pid" || exit 0; sleep 0.2; done
+    kill -KILL "$pid" || true
+    exit 0
+  ) >/dev/null 2>&1 &
+  wd=$!
+  wait "$pid" 2>/dev/null || rc=$?
+  kill -TERM "$wd" 2>/dev/null || true
+  if wait "$wd" 2>/dev/null; then return 124; fi
+  return "$rc"
 }
 
 # Networks. The internal (no-egress) net carries --internal on both engines.
 eng_network_create_internal() {
   case "$KONRAD_ENGINE" in
-    podman)    bounded podman network create --internal "$1" >/dev/null ;;
-    container) bounded container network create --internal "$1" >/dev/null ;;
+    podman)    bounded "$(engine_timeout)" podman network create --internal "$1" >/dev/null ;;
+    container) bounded "$(engine_timeout)" container network create --internal "$1" >/dev/null ;;
   esac
 }
 eng_network_create() {
   case "$KONRAD_ENGINE" in
-    podman)    bounded podman network create "$1" >/dev/null ;;
-    container) bounded container network create "$1" >/dev/null ;;
+    podman)    bounded "$(engine_timeout)" podman network create "$1" >/dev/null ;;
+    container) bounded "$(engine_timeout)" container network create "$1" >/dev/null ;;
   esac
 }
 eng_network_rm() {  # variadic, best-effort
   case "$KONRAD_ENGINE" in
     podman)    podman network rm "$@" >/dev/null 2>&1 || true ;;
-    container) container network delete "$@" >/dev/null 2>&1 || true ;;
+    container) bounded "$(engine_timeout)" container network delete "$@" >/dev/null 2>&1 || true ;;
   esac
 }
 # Names of this tool's firewall networks the engine currently knows, one per line
@@ -571,7 +599,7 @@ eng_network_rm() {  # variadic, best-effort
 eng_network_ls_konrad() {
   { case "$KONRAD_ENGINE" in
       podman)    podman network ls --format '{{.Name}}' 2>/dev/null ;;
-      container) container network ls 2>/dev/null | awk 'NR>1 {print $1}' ;;
+      container) bounded "$(engine_timeout)" container network ls 2>/dev/null | awk 'NR>1 {print $1}' ;;
     esac ; } | grep -E '^konrad-fw-(net|out)-[0-9]+$' || true
 }
 
@@ -745,13 +773,60 @@ eng_try_start() {
   eng_running
 }
 
+# One field of `container system status`'s table (a FIELD/VALUE row per line,
+# the value padded into its column) read from stdin; empty when the row is
+# missing, as on releases that print only "apiserver is running".
+_status_field() {
+  awk -v k="$1" '$1 == k { sub(/^[^ \t]+[ \t]+/, ""); sub(/[ \t]+$/, ""); print; exit }'
+}
+
+# apple/container only: is the running service still the installed one? It keeps
+# running from the install it started from, and when Homebrew upgrades
+# `container` under it and deletes the old install, the service can't launch its
+# helpers any more: every network create or delete and every `run` then blocks.
+# `container system status` shows it, as a server.version that differs from
+# client.version or a paths.installRoot that no longer exists. konrad stops with
+# the fix rather than restarting the service itself: a restart ends every running
+# container (another konrad session, a `konrad code up` repo), and it's one
+# command after an upgrade. Returns 1 when the service isn't reachable at all
+# (the caller starts it), 0 when it's fine; exits when the user has to act.
+container_service_check() {
+  local out rc=0 client server root why=""
+  out="$(bounded "$(engine_timeout)" container system status 2>/dev/null)" || rc=$?
+  if (( rc == 124 )); then
+    why="it didn't answer \`container system status\` within $(engine_timeout)s"
+  elif (( rc != 0 )); then
+    return 1
+  else
+    client="$(_status_field client.version <<<"$out")"
+    server="$(_status_field server.version <<<"$out")"
+    root="$(_status_field paths.installRoot <<<"$out")"
+    if [[ -n "$client" && -n "$server" && "$client" != "$server" ]]; then
+      why="it still runs container $server, but the installed CLI is $client"
+    elif [[ -n "$root" && ! -d "$root" ]]; then
+      why="it runs from $root, which no longer exists"
+    fi
+  fi
+  [[ -n "$why" ]] || return 0
+  notice_box blocked "Apple's container service needs a restart: $why." \
+    "container system stop && container system start, then re-run your command" \
+    "Usually Homebrew upgraded container while the service ran; until it restarts, it can't start containers or networks." \
+    "A restart stops the containers running on it (other konrad sessions, konrad code up repos)." \
+    "To keep it from happening: brew pin container, and upgrade it when nothing runs."
+  exit 1
+}
+
 # Engine-aware reachability check, used by both the runtime verbs and the build
 # (do_rebuild). The image now builds on whichever engine is selected — Podman via
 # buildah, apple/container via its BuildKit `container build` — so the same check
 # covers both; there's no longer a Podman-only build path needing its own guard.
 require_engine() {
   command -v "$KONRAD_ENGINE" >/dev/null 2>&1 || engine_missing
-  eng_running && return 0
+  if [[ "$KONRAD_ENGINE" == "container" ]]; then
+    container_service_check && return 0
+  else
+    eng_running && return 0
+  fi
   # Not reachable — try to bring it up ourselves before asking the user to.
   if eng_try_start; then
     dbg "engine $KONRAD_ENGINE started automatically"
@@ -1056,8 +1131,13 @@ fw_setup() {
   [[ "$FW_EGRESS_MANAGED" == "1" ]] && eng_network_rm "$FW_NET_EGRESS"
 
   dbg "firewall: creating internal network $FW_NET_INTERNAL (egress via $FW_NET_EGRESS)"
-  eng_network_create_internal "$FW_NET_INTERNAL" \
-    || die "egress firewall: could not create the internal network on the $KONRAD_ENGINE engine (it may be unreachable, or overloaded by leftover networks). Bypass with --no-firewall, or switch engines with KONRAD_ENGINE=podman."
+  local rc=0 hint=""
+  eng_network_create_internal "$FW_NET_INTERNAL" || rc=$?
+  if (( rc == 124 )) && [[ "$KONRAD_ENGINE" == "container" ]]; then
+    hint=" It didn't finish within $(engine_timeout)s; restart Apple's container service: container system stop && container system start."
+  fi
+  (( rc == 0 )) \
+    || die "egress firewall: could not create the internal network on the $KONRAD_ENGINE engine (it may be unreachable, or overloaded by leftover networks).$hint Bypass with --no-firewall, or switch engines with KONRAD_ENGINE=podman."
   if [[ "$FW_EGRESS_MANAGED" == "1" ]]; then
     eng_network_create "$FW_NET_EGRESS" \
       || die "egress firewall: could not create the egress network on the $KONRAD_ENGINE engine. Bypass with --no-firewall, or switch engines with KONRAD_ENGINE=podman."
@@ -1536,6 +1616,23 @@ _notice_sanitize() {
   sed $'s/\x1b\\[[0-9;?]*[A-Za-z]//g' 2>/dev/null | tr -d '[:cntrl:]' | cut -c1-200
 }
 
+# Draw a warn/blocked notice's frame on stderr: $1 = severity, $2 = summary,
+# $3 = fix (may be empty), then one detail line per further argument. Shared by
+# the notice queue and the engine checks that stop a launch (container_service_check).
+notice_box() {
+  local tag="warning" d
+  [[ "$1" == "blocked" ]] && tag="action needed"
+  {
+    printf '%s  ┌─ konrad · %s%s\n' "$_C_WARN" "$tag" "$_C_OFF"
+    printf '%s  │%s %s\n' "$_C_WARN" "$_C_OFF" "$2"
+    for d in "${@:4}"; do
+      printf '%s  │%s   %s\n' "$_C_WARN" "$_C_OFF" "$d"
+    done
+    [[ -n "$3" ]] && printf '%s  │%s   %sfix:%s %s\n' "$_C_WARN" "$_C_OFF" "$_C_GO" "$_C_OFF" "$3"
+    printf '%s  └─%s\n' "$_C_WARN" "$_C_OFF"
+  } >&2
+}
+
 # Render one notice file. $1 = file, $2 = source ("konrad" | "org:<name>").
 # info → one dim line (today's behavior, no regression); warn/blocked → a framed
 # block on stderr; blocked additionally waits for Enter — but ONLY on an
@@ -1544,7 +1641,7 @@ _notice_sanitize() {
 _notice_render() {
   local file="$1" source="$2"
   [[ -f "$file" ]] || return 0
-  local severity="info" summary="" fix="" line key val i
+  local severity="info" summary="" fix="" line key val
   local -a details=()
   local n=0
   while IFS= read -r line && (( n++ < 40 )); do   # cap lines from a buggy hook
@@ -1570,17 +1667,7 @@ _notice_render() {
     return 0
   fi
 
-  local color="$_C_WARN" tag="warning"
-  [[ "$severity" == "blocked" ]] && tag="action needed"
-  {
-    printf '%s  ┌─ konrad · %s%s\n' "$color" "$tag" "$_C_OFF"
-    printf '%s  │%s %s%s\n' "$color" "$_C_OFF" "$attrib" "$summary"
-    for (( i=0; i<${#details[@]}; i++ )); do
-      printf '%s  │%s   %s\n' "$color" "$_C_OFF" "${details[i]}"
-    done
-    [[ -n "$fix" ]] && printf '%s  │%s   %sfix:%s %s\n' "$color" "$_C_OFF" "$_C_GO" "$_C_OFF" "$fix"
-    printf '%s  └─%s\n' "$color" "$_C_OFF"
-  } >&2
+  notice_box "$severity" "${attrib}${summary}" "$fix" ${details[@]+"${details[@]}"}
 
   if [[ "$severity" == "blocked" && -t 0 \
         && "${KONRAD_NO_NOTICES:-0}" != "1" \
@@ -3165,6 +3252,18 @@ warn_old_org_layout() {
   return 0
 }
 
+# The hook itself, run by org_run_hook under bounded. `trap - INT HUP TERM`: the
+# background worker sets those to SIG_IGN (to survive the foreground exec) and
+# the hook would inherit it, making the watchdog's SIGTERM a no-op (its SIGKILL
+# is the backstop regardless). `exec`, so the watchdog signals the hook itself.
+_org_hook_exec() {
+  trap - INT HUP TERM
+  cd "$1" || exit 127
+  export KONRAD_NOTICE_DIR="$2" KONRAD_LAYER_NAME="$3"
+  export KONRAD_HOOK_INTERACTIVE="${KONRAD_HOOK_INTERACTIVE:-0}"
+  exec ./hooks/post-sync
+}
+
 # Run a layer's post-sync hook, when it ships one. Host-side ON PURPOSE — the
 # one place org code runs outside the sandbox (a wiki mirror into context/, or
 # per-member identity derivation, need the host): subscribing to a layer IS
@@ -3183,7 +3282,7 @@ warn_old_org_layout() {
 # konrad clears this layer's notices before each run; the hook re-creates what
 # still applies (same self-clearing rule as the rest of the queue). The hook is
 # time-bounded (KONRAD_HOOK_TIMEOUT, default 120s) so an unwatched hang can't
-# live until reboot — a portable watchdog, not GNU `timeout` (absent on macOS).
+# live until reboot — under bounded, the watchdog the engine calls use.
 # Free fallback: a non-zero exit that wrote no notice promotes the hook's last
 # captured lines into a warn attributed to the layer, so every existing layer
 # gains visibility with no change on its side.
@@ -3200,34 +3299,14 @@ org_run_hook() {
   local timeout="${KONRAD_HOOK_TIMEOUT:-120}"
   [[ "$timeout" =~ ^[0-9]+$ ]] || timeout=120
 
-  # Run the hook backgrounded, output to $tmp, killed by a watchdog after the
-  # bound. `trap - INT HUP TERM` in the child: the background worker sets those
-  # to SIG_IGN (to survive the foreground exec) and children inherit it, which
-  # would make the watchdog's SIGTERM a no-op — reset so the hook is killable
-  # (the SIGKILL escalation is the backstop regardless).
-  ( trap - INT HUP TERM
-    cd "$dir" || exit 127
-    KONRAD_NOTICE_DIR="$ndir" KONRAD_LAYER_NAME="$name" \
-    KONRAD_HOOK_INTERACTIVE="${KONRAD_HOOK_INTERACTIVE:-0}" \
-      ./hooks/post-sync
-  ) >"${tmp:-/dev/null}" 2>&1 &
-  local hook_pid=$!
-  local killed_flag="${tmp:+$tmp.killed}"
-  ( sleep "$timeout"; [[ -n "$killed_flag" ]] && : >"$killed_flag" 2>/dev/null
-    kill -TERM "$hook_pid" 2>/dev/null; sleep 3; kill -KILL "$hook_pid" 2>/dev/null ) 2>/dev/null &
-  local wd_pid=$!
-  local rc=0
-  wait "$hook_pid" 2>/dev/null || rc=$?
-  kill "$wd_pid" 2>/dev/null || true
-  wait "$wd_pid" 2>/dev/null || true
+  # Run the hook under the shared watchdog (bounded), output to $tmp.
+  local rc=0 timed_out=0
+  bounded "$timeout" _org_hook_exec "$dir" "$ndir" "$name" >"${tmp:-/dev/null}" 2>&1 || rc=$?
+  (( rc == 124 )) && timed_out=1
 
   # In interactive mode the streamed-to-$tmp output didn't reach the user live;
   # show it now (the background path already routes $tmp's echo to the log).
   [[ "${KONRAD_HOOK_INTERACTIVE:-0}" == "1" && -s "${tmp:-/dev/null}" ]] && cat "$tmp" >&2
-
-  local timed_out=0
-  [[ -n "$killed_flag" && -f "$killed_flag" ]] && timed_out=1
-  rm -f "$killed_flag" 2>/dev/null || true
 
   if (( timed_out )); then
     warn "org '$name': post-sync hook timed out after ${timeout}s — killed."
