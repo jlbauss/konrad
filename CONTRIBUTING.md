@@ -1,6 +1,6 @@
 # Contributing to konrad
 
-Thanks for your interest. konrad is beta software — the runtime and the daily-rebuild CI are solid, but the pre-1.0 surface area is still moving and the docs can lag the code in spots. Contributions of all sizes are welcome, especially the ones that surface gaps before more users do.
+Thanks for your interest. konrad is a personal tool, shared as it is ([README → Status](README.md#status)): one person maintains it for their own use, so issues and merge requests are welcome but come with no promise of review or response time. Small, focused changes stand the best chance.
 
 ## Before you start
 
@@ -99,15 +99,14 @@ The validation gates are:
 
 Trunk-based: `main` is always deployable — what's at `ghcr.io/jlbauss/konrad:latest` mirrors `main`'s current state. The primary repo is **GitLab** (`gitlab.git.nrw/jbauss2/konrad`, public). The GitHub mirror is **public for discoverability, but CI-and-releases only** — it exists because gitlab.git.nrw's shared runners can't run the privileged Podman build (see [ARCHITECTURE.md](ARCHITECTURE.md)), and [mirror-release.yml](.github/workflows/mirror-release.yml) recreates each GitLab release there off the mirrored tag. Contributions happen on GitLab; you never need a GitHub account to contribute.
 
-**Maintainer** (direct repo access) — every change lands through a **merge request**, whether you wrote it or an agent did; `main` is protected. The loop is **branch → develop → bump → MR → merge**:
+**Maintainer** (direct repo access) — every change lands through a **merge request**, whether you wrote it or an agent did; `main` is protected. The loop is **branch → develop → MR → merge**:
 
 1. **Branch** off the current main: `git fetch origin && git checkout -b feat/short-name origin/main`
 2. **Develop** and commit; `./scripts/check.sh` before pushing.
-3. **Bump** `VERSION` as the *last commit before merging*, not up front — with fast-forward merges the branch tip becomes `main`, so a late bump keeps the version matching the integrated change and shrinks the window where two in-flight branches collide on the `VERSION` line (what to bump: [Versioning](#versioning)).
-4. **Push and open the MR**: `git push -u origin feat/short-name -o merge_request.create -o merge_request.target=main -o merge_request.remove_source_branch`. The [MR template](.gitlab/merge_request_templates/Default.md) asks for summary, why, what was validated, the probes left for you, and the release impact.
-5. **Merge** in the web UI once the pipeline is green. The project merges fast-forward only (linear history, one commit per concern, no squash); the locks bot moves `main` almost daily, so most MRs need GitLab's one-click **Rebase** first. The source branch is deleted on merge.
+3. **Push and open the MR**: `git push -u origin feat/short-name -o merge_request.create -o merge_request.target=main -o merge_request.remove_source_branch`. The [MR template](.gitlab/merge_request_templates/Default.md) asks for summary, why, what was validated and the probes left for you. Leave `VERSION` and `CHANGELOG.md` alone: a release is its own MR ([Release commit](#commit-style)).
+4. **Merge** in the web UI once the pipeline is green. The project merges fast-forward only (linear history, one commit per concern, no squash); the locks bot moves `main` almost daily, so most MRs need GitLab's one-click **Rebase** first. The source branch is deleted on merge.
 
-**Reviewing an agent's MR.** An agent in `konrad code` pushes its branch as a draft MR whose description is its write-up, including the probes only you can run (each with a baseline first). **Read the diff before you run any of the branch's code on your host** — `git pull` + `./scripts/selftest.sh`, an installer run, even a `konrad-dev` launch executes the agent's code with your rights and no sandbox, which is exactly the deferred escape `konrad code` otherwise prevents. Then run the probes, ticking each one's checkbox in the MR description as it passes (GitLab records the tick in the MR's activity), mark the MR ready, and merge.
+**Reviewing an agent's MR.** An agent in `konrad code` pushes its branch as a draft MR whose description is its write-up, including any probes only you can run. It writes those only where a slip would cross a security boundary or delete data, each with a baseline first ([CLAUDE.md → Working with the user](CLAUDE.md#working-with-the-user)); for anything else it says how you'd notice in normal use. **Read the diff before you run any of the branch's code on your host** — `git pull` + `./scripts/selftest.sh`, an installer run, even a `konrad-dev` launch executes the agent's code with your rights and no sandbox, which is exactly the deferred escape `konrad code` otherwise prevents. Then run the probes, ticking each one's checkbox in the MR description as it passes (GitLab records the tick in the MR's activity), mark the MR ready, and merge.
 
 The image check for a change is the agent's own: it builds, smokes and self-tests the image in its `konrad code` box and reports that under *Validation run*. For a higher-risk change you can still get a CI-built `:pr-<num>` image (see *Testing a change as an image* below), but only by hand: the push mirror carries protected branches only, so push the branch to the GitHub repo yourself and open a PR there; merge on GitLab once it checks out.
 
@@ -116,7 +115,7 @@ The image check for a change is the agent's own: it builds, smokes and self-test
 **External contributors** (the public) — everything happens on GitLab:
 
 1. **Fork** the GitLab repo and branch off `main`.
-2. Commit (bump `VERSION`, follow the commit style below) and push to your fork.
+2. Commit (follow the commit style below; leave `VERSION` and `CHANGELOG.md` alone) and push to your fork.
 3. Open a **GitLab MR** against `main` — that's the review surface.
 4. A fork MR gets human review automatically, but **no automatic image build**: the build runs on the GitHub mirror, which carries only the main repo's protected branches. When the change is worth exercising in a container, the maintainer builds your branch locally, or pushes it to the GitHub repo by hand and opens a PR there to produce a `:pr-<num>` image.
 5. The maintainer merges on GitLab.
@@ -132,11 +131,11 @@ Branch naming: `feat/<short>`, `fix/<short>`, `docs/<short>`, `chore/<short>`. K
 
 ## Versioning
 
-The `VERSION` file at the repo root drives all image tagging. **Bump it in the same PR as your change.** Reviewer checks the bump matches the change's semver impact.
+The `VERSION` file at the repo root drives all image tagging. **Only a release bumps it** ([Release commit](#commit-style)), never a feature MR, so parallel MRs don't collide on it.
 
-Pre-1.0 rules (where we are today): `VERSION` holds `0.X.Y`. Bump **`Y` (patch)** for a bug fix with no surface change; bump **`X` (minor)** for new functionality or any user-visible change, resetting `Y` to 0. Doc-only, CI-only, and ROADMAP-only changes don't bump.
+`VERSION` holds `0.X.Y`. A release bumps **`Y` (patch)** when it holds only bug fixes with no surface change, and **`X` (minor)**, resetting `Y` to 0, when it holds new functionality or any user-visible change; a commit's breaking marker (`!` / `BREAKING CHANGE:` — see [Commit style](#commit-style)) counts as user-visible. Doc-only, CI-only and ROADMAP-only changes need no release.
 
-Post-1.0, `VERSION` holds full semver `X.Y.Z`: **MAJOR** for a breaking change to the user-facing surface (config schema needing migration, a removed/renamed flag or bundled skill, a base-image major bump), **MINOR** for additive (new skill/flag/config slot/env var), **PATCH** for fixes and floating-pin refreshes. A commit's breaking marker (`!` / `BREAKING CHANGE:` — see [Commit style](#commit-style)) forces at least the corresponding bump. **1.0** is a deliberate event — when "no breaking change without a major bump" is a credible promise, roughly gated on the roadmap's **Next** section — not a date.
+There's no plan for 1.0: it would promise no breaking change without a major bump, and a personal tool doesn't make that promise ([README → Status](README.md#status)).
 
 ### Image tags
 
@@ -144,7 +143,7 @@ CI publishes each build to `ghcr.io/jlbauss/konrad` under several tags:
 
 | Tag | Mutable? | Meaning |
 |---|---|---|
-| `:0.X` | rolling | newest passing build on the minor line — the **pin-a-line** handle: get patches, stop at the next `X`. Post-1.0 becomes `:X` (major line). |
+| `:0.X` | rolling | newest passing build on the minor line — the **pin-a-line** handle: get patches, stop at the next `X`. |
 | `:latest` | rolling | newest passing build overall — the **only tag the CLI reads** (`konrad update` pulls this) |
 | `:<short-sha>` | **immutable** | the one per-build handle that never moves — maps 1:1 to a commit. Use it for rollback, bisecting, and `scripts/layer-diff.sh`. |
 | `:pr-<num>` | per-PR | reviewer test image; never touches `:latest` or a line tag |
@@ -153,7 +152,7 @@ There is deliberately **no version- or date-derived image tag**. `VERSION` drive
 
 ### Git tags & releases
 
-Releases are cut on **GitLab** — the authoritative record — and mirrored to GitHub automatically: [mirror-release.yml](.github/workflows/mirror-release.yml) fires on each mirrored `v*` tag and recreates the release from the same CHANGELOG section (its `workflow_dispatch` backfills any tag that's missing one). Tags are **`vX.Y.Z`** (`v`-prefixed). The [`release` job in `.gitlab-ci.yml`](.gitlab-ci.yml) cuts the `v<VERSION>` tag + a GitLab Release automatically whenever a `chore(release):` bump to `VERSION` lands on main, pulling the release notes from the matching [CHANGELOG.md](CHANGELOG.md) section — which stays the authoritative record. So every `VERSION` bump (patch included) gets a tag; nothing to do by hand **except promote the CHANGELOG section in the bump commit** (see [Release commit](#when-to-update-what)) — the job fails closed if `## [<VERSION>]` is missing.
+Releases are cut on **GitLab** — the authoritative record — and mirrored to GitHub automatically: [mirror-release.yml](.github/workflows/mirror-release.yml) fires on each mirrored `v*` tag and recreates the release from the same CHANGELOG section (its `workflow_dispatch` backfills any tag that's missing one). Tags are **`vX.Y.Z`** (`v`-prefixed). The [`release` job in `.gitlab-ci.yml`](.gitlab-ci.yml) cuts the `v<VERSION>` tag + a GitLab Release automatically whenever a `chore(release):` bump to `VERSION` lands on main, pulling the release notes from the matching [CHANGELOG.md](CHANGELOG.md) section — which stays the authoritative record. So every `VERSION` bump (patch included) gets a tag; nothing to do by hand **except write the CHANGELOG section in the release commit** (see [Release commit](#commit-style)) — the job fails closed if `## [<VERSION>]` is missing.
 
 ## Repo layout — what goes where
 
@@ -216,15 +215,15 @@ Co-Authored-By: ...                               (when applicable)
 
 **Scope** — optional; use one where it adds signal, from: `cli`, `image`, `config`, `skills`, `ci`, `locks`, `roadmap`, `release`.
 
-**Breaking changes** — mark with `!` after the type/scope (e.g. `feat!:`) and/or a `BREAKING CHANGE:` footer. This drives the version bump: **MINOR pre-1.0** (no MAJOR slot yet), **MAJOR post-1.0** — see [Versioning](#versioning).
+**Breaking changes** — mark with `!` after the type/scope (e.g. `feat!:`) and/or a `BREAKING CHANGE:` footer. It makes the next release at least a **minor** bump — see [Versioning](#versioning).
 
-**Release commit** — the `VERSION` bump is `chore(release): <version>`, made as the last commit before merge (see [the maintainer flow](#branching-and-pull-requests)). **In that same commit, promote the CHANGELOG**: rename `## [Unreleased]` to `## [<version>] - <YYYY-MM-DD>` and open a fresh empty `## [Unreleased]` above it, so the [release job](#git-tags--releases) finds a matching section to publish. Bumping `VERSION` while the entries still sit under `## [Unreleased]` is the classic slip — the release job now **fails closed** on a missing `## [<version>]` section rather than shipping an empty release, so forgetting breaks the release loudly instead of silently.
+**Release commit** — a release is its own small MR, made when the maintainer wants one, with a single commit `chore(release): <version>`. **In that commit, bump `VERSION` and write the CHANGELOG section**: `## [<version>] - <YYYY-MM-DD>` below an empty `## [Unreleased]`, with a terse entry per user-facing change since the last tag, taken from the commits. The [release job](#git-tags--releases) publishes that section and **fails closed** when it's missing, rather than shipping an empty release. Between releases `konrad update` already delivers what's merged, since it installs from `main`.
 
 ## When to update what
 
-**ROADMAP.md** — a real idea worth keeping but not doing now → add it. A decision we made and are sticking with → don't add it (commit message is enough). A known shortcoming we've accepted as a trade-off → add it, so it doesn't get forgotten. When a roadmap item ships, delete its bullet and add a terse [CHANGELOG.md](CHANGELOG.md) entry in the same commit.
+**ROADMAP.md** — at most ten items: what keeps konrad safe and working for its own use, and what makes it smaller. An item comes in only when the maintainer wants it, and replaces an old one; an idea that doesn't make the cut lives in the commit or MR that raised it. A decision we made and are sticking with doesn't go there either (the commit message is enough). When an item ships, delete its bullet in the same commit.
 
-**CHANGELOG.md** — every user-facing change that ships under a `VERSION` bump → a terse entry under that version ([Keep a Changelog](https://keepachangelog.com/); agent-maintained, rationale stays in the commit). Doc/CI/contributor-only changes that don't bump usually don't need one.
+**CHANGELOG.md** — written in the release commit, from the commits since the last tag: a terse entry per user-facing change ([Keep a Changelog](https://keepachangelog.com/); agent-maintained, rationale stays in the commit). Feature MRs leave it alone; doc, CI and contributor-only changes usually get no entry.
 
 **README.md** — anything that changes how a user installs, runs, or thinks about konrad. A new subcommand or flag. A new external dependency (e.g. a tool the user has to install on the host).
 
@@ -238,4 +237,4 @@ Be kind, be specific, assume good faith. We follow the [Contributor Covenant v2.
 
 ## Backlog and known gaps
 
-See [ROADMAP.md](ROADMAP.md) for the full backlog and how items are prioritized — including the known shortcomings (Windows support, multi-language UI) tracked there as accepted trade-offs. The user-facing [README Status section](README.md#status) summarises what to expect today.
+See [ROADMAP.md](ROADMAP.md) for the short list of planned work. Known shortcomings (no Windows, no Docker, rough edges with local models) are listed in the user-facing [README Status section](README.md#status) and aren't planned.

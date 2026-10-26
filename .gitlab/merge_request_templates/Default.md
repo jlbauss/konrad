@@ -17,8 +17,4 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ## Maintainer probes
 
-<!-- What only the maintainer can run (host-only: a real model, apple/container, native networking, the installer from the forge), as a runbook to paste from a native checkout: setup (checkout the branch; `konrad-dev rebuild` or not), the binary (`konrad-dev`, never `konrad`), any pre-state cleanup, a baseline that proves the environment is right, then the one change under test, with the expected output of each, then cleanup. Open with one line per supported platform (Linux + Podman, macOS + Apple's `container`): required, and why, or not needed, and why. Format: CLAUDE.md → Working with the user. Write it as a task list: shared setup as plain text, then one `- [ ]` item per probe with its steps indented beneath, so the maintainer can tick each as it passes. "None" if nothing is host-only. -->
-
-## Release
-
-<!-- VERSION bump and CHANGELOG entry, or "none" (doc/CI/contributor-only). A bump is the last commit and promotes `## [Unreleased]` in the same commit. -->
+<!-- Only where a slip would cross a boundary: the seal and the firewall, the workspace guard, tokens and credentials, the installer and the update path, or anything that deletes images, volumes or files it didn't create (CLAUDE.md → Working with the user). Those get a runbook to paste from a native checkout: setup (checkout the branch; `konrad-dev rebuild` or not), the binary (`konrad-dev`, never `konrad`), any pre-state cleanup, a baseline that proves the environment is right, then the one change under test, with the expected output of each, then cleanup. Open with one line per supported platform (Linux + Podman, macOS + Apple's `container`): required, and why, or not needed, and why. Write it as a task list: shared setup as plain text, then one `- [ ]` item per probe with its steps indented beneath. For any other change, one line instead: how the maintainer will notice in normal use if it's wrong. -->
