@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Jan-Luca Bauß
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 # =============================================================================
 # konrad CI — build, smoke-test, publish the container image.
 #
@@ -7,8 +10,10 @@
 # "Pinning strategy" section for the why.
 #
 # Trigger model:
-#   - push to main when image/, scripts/smoke-test.sh, this file, or
-#     VERSION changes  → build + smoke + publish (rolling tags)
+#   - push to main when image/, scripts/smoke-test.sh or this file
+#     changes → build + smoke + publish (rolling tags). Not VERSION, so
+#     the release commit CI lands after a merge builds nothing: the image
+#     from the merge keeps the version before that release.
 #   - pull_request    → build + smoke + publish under :pr-<num>
 #   - workflow_dispatch from main → same as push (rolling tags)
 #   - workflow_dispatch from any other ref → build + smoke, NO publish
@@ -28,8 +33,8 @@
 #
 # Tag scheme (all pushed by every successful pipeline; each tag is a
 # multi-arch manifest list spanning linux/amd64 and linux/arm64). VERSION
-# pre-1.0 is `0.X.Y` (X = minor, Y = patch); the docs/design/versioning-
-# and-releases.md doc has the full rules.
+# pre-1.0 is `0.X.Y` (X = minor, Y = patch); CONTRIBUTING.md → Versioning
+# has the full rules.
 #   :<minor>           rolling; latest passing build on the 0.X line.
 #                      Derived from VER as ${VER%.*} (strips the trailing
 #                      .Y). The pin-a-line handle: users on `:0.X` get

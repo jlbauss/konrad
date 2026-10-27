@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Jan-Luca Bauß
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 # =============================================================================
 # konrad CI — mirror GitLab releases onto the GitHub mirror.
 #
