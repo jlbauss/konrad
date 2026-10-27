@@ -59,7 +59,7 @@ Durable rules for every agent in this repo — written here (not just in per-ses
 ### Docs
 
 - One audience per file; one canonical home per fact; others link, never duplicate. The map is the Repository guide in [ARCHITECTURE.md](ARCHITECTURE.md#repository-guide). User/project `AGENTS.md` overlays are additive, never replacements.
-- **ROADMAP.md holds at most ten items, and an agent adds one only when the maintainer asks.** A new item replaces an old one; ideas, findings and follow-ups you come across go in your final message instead. When an item ships, delete its bullet in the same commit. 2026-10-26: agents' roadmap edits (29 commits in eight weeks) had grown it to 58 items, about a hundred working days by its own estimates, for a one-person project. Use the `docs(roadmap)` prefix for ROADMAP-only edits.
+- **ROADMAP.md holds at most ten items, and an agent adds one only when the maintainer asks.** A new item replaces an old one; ideas, findings and follow-ups you come across go in your final message instead. When an item ships, delete its bullet in the same commit. The exception is [ROADMAP → Upstream workarounds and limitations](ROADMAP.md#upstream-workarounds-and-limitations), outside the cap: an upstream bug konrad works around (code it carries until upstream fixes it) or lives with goes there in the same commit, without asking, with the upstream link, what to check and what to remove, so the workaround can go once upstream moves. 2026-10-26: agents' roadmap edits (29 commits in eight weeks) had grown it to 58 items, about a hundred working days by its own estimates, for a one-person project. Use the `docs(roadmap)` prefix for ROADMAP-only edits.
 
 ### Commits, versioning & release
 

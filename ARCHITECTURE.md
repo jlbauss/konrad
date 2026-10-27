@@ -17,7 +17,7 @@ One audience and one job per file:
 | [ARCHITECTURE.md](ARCHITECTURE.md) | This file — system design and the *why*. |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Contributor guide — dev loop, branching, commit style, **versioning & releases**. |
 | [CLAUDE.md](CLAUDE.md) | Instructions for AI agents working on konrad's source. |
-| [ROADMAP.md](ROADMAP.md) | Backlog: at most ten items, and what to delete when it gets in the way. |
+| [ROADMAP.md](ROADMAP.md) | Backlog: at most ten items, what to delete when it gets in the way, and the upstream bugs konrad works around or lives with. |
 | [CHANGELOG.md](CHANGELOG.md) | Released, user-facing changes (Keep a Changelog). |
 | [SECURITY.md](SECURITY.md) | How to report a vulnerability, and what counts as one. |
 | [VERSION](VERSION) | Single source of the version; drives image tags. |

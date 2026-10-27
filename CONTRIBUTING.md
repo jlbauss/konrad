@@ -221,7 +221,7 @@ Co-Authored-By: ...                               (when applicable)
 
 ## When to update what
 
-**ROADMAP.md** — at most ten items: what automates the maintainer's checks, what keeps konrad safe and working for its own use, and what makes it smaller. An item comes in only when the maintainer wants it, and replaces an old one; an idea that doesn't make the cut lives in the commit or MR that raised it. A decision we made and are sticking with doesn't go there either (the commit message is enough). When an item ships, delete its bullet in the same commit.
+**ROADMAP.md** — at most ten items: what automates the maintainer's checks, what keeps konrad safe and working for its own use, and what makes it smaller. An item comes in only when the maintainer wants it, and replaces an old one; an idea that doesn't make the cut lives in the commit or MR that raised it. A decision we made and are sticking with doesn't go there either (the commit message is enough). When an item ships, delete its bullet in the same commit. Outside the cap, **Upstream workarounds and limitations** tracks every upstream bug konrad works around or lives with: a commit that adds a workaround, or documents a limitation instead, adds its bullet there (upstream link, what to check, what to remove), and the commit that removes it deletes the bullet.
 
 **CHANGELOG.md** — written in the release commit, from the commits since the last tag: a terse entry per user-facing change ([Keep a Changelog](https://keepachangelog.com/); agent-maintained, rationale stays in the commit). Feature MRs leave it alone; doc, CI and contributor-only changes usually get no entry.
 
