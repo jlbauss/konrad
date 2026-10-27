@@ -103,7 +103,7 @@ Trunk-based: `main` is always deployable — what's at `ghcr.io/jlbauss/konrad:l
 
 1. **Branch** off the current main: `git fetch origin && git checkout -b feat/short-name origin/main`
 2. **Develop** and commit; `./scripts/check.sh` before pushing.
-3. **Push and open the MR**: `git push -u origin feat/short-name -o merge_request.create -o merge_request.target=main -o merge_request.remove_source_branch`. The [MR template](.gitlab/merge_request_templates/Default.md) asks for summary, why, what was validated and the probes left for you. Leave `VERSION` and `CHANGELOG.md` alone: a release is its own MR ([Release commit](#commit-style)).
+3. **Push and open the MR**: `git push -u origin feat/short-name -o merge_request.create -o merge_request.target=main -o merge_request.remove_source_branch`. The [MR template](.gitlab/merge_request_templates/Default.md) asks for summary, why, what was validated and the probes left for you. Leave `VERSION` and `CHANGELOG.md` alone: CI releases after the merge ([Release commit](#commit-style)).
 4. **Merge** in the web UI once the pipeline is green. The project merges fast-forward only (linear history, one commit per concern, no squash); the locks bot moves `main` almost daily, so most MRs need GitLab's one-click **Rebase** first. The source branch is deleted on merge.
 
 **Reviewing an agent's MR.** An agent in `konrad code` pushes its branch as a draft MR whose description is its write-up, including any probes only you can run. It writes those only where a slip would cross a security boundary or delete data, each with a baseline first ([CLAUDE.md → Working with the user](CLAUDE.md#working-with-the-user)); for anything else it says how you'd notice in normal use. **Read the diff before you run any of the branch's code on your host** — `git pull` + `./scripts/selftest.sh`, an installer run, even a `konrad-dev` launch executes the agent's code with your rights and no sandbox, which is exactly the deferred escape `konrad code` otherwise prevents. Then run the probes, ticking each one's checkbox in the MR description as it passes (GitLab records the tick in the MR's activity), mark the MR ready, and merge.
@@ -133,7 +133,7 @@ Branch naming: `feat/<short>`, `fix/<short>`, `docs/<short>`, `chore/<short>`. K
 
 The `VERSION` file at the repo root drives all image tagging. **Only a release bumps it** ([Release commit](#commit-style)), never a feature MR, so parallel MRs don't collide on it.
 
-`VERSION` holds `0.X.Y`. A release bumps **`Y` (patch)** when it holds only bug fixes with no surface change, and **`X` (minor)**, resetting `Y` to 0, when it holds new functionality or any user-visible change; a commit's breaking marker (`!` / `BREAKING CHANGE:` — see [Commit style](#commit-style)) counts as user-visible. Doc-only, CI-only and ROADMAP-only changes need no release.
+`VERSION` holds `0.X.Y`, and the commit types since the last release pick the bump: **`X` (minor)**, resetting `Y` to 0, for a `feat` or a breaking change (`!` / `BREAKING CHANGE:`, any type — see [Commit style](#commit-style)); **`Y` (patch)** for a `fix` or `perf`. Any other type (docs, CI, ROADMAP, locks, tests, refactors) releases nothing.
 
 There's no plan for 1.0: it would promise no breaking change without a major bump, and a personal tool doesn't make that promise ([README → Status](README.md#status)).
 
@@ -152,7 +152,7 @@ There is deliberately **no version- or date-derived image tag**. `VERSION` drive
 
 ### Git tags & releases
 
-Releases are cut on **GitLab** — the authoritative record — and mirrored to GitHub automatically: [mirror-release.yml](.github/workflows/mirror-release.yml) fires on each mirrored `v*` tag and recreates the release from the same CHANGELOG section (its `workflow_dispatch` backfills any tag that's missing one). Tags are **`vX.Y.Z`** (`v`-prefixed). The [`release` job in `.gitlab-ci.yml`](.gitlab-ci.yml) cuts the `v<VERSION>` tag + a GitLab Release automatically whenever a `chore(release):` bump to `VERSION` lands on main, pulling the release notes from the matching [CHANGELOG.md](CHANGELOG.md) section — which stays the authoritative record. So every `VERSION` bump (patch included) gets a tag; nothing to do by hand **except write the CHANGELOG section in the release commit** (see [Release commit](#commit-style)) — the job fails closed if `## [<VERSION>]` is missing.
+Releases are cut on **GitLab** — the authoritative record — and mirrored to GitHub automatically: [mirror-release.yml](.github/workflows/mirror-release.yml) fires on each mirrored `v*` tag and recreates the release from the same CHANGELOG section (its `workflow_dispatch` backfills any tag that's missing one). Tags are **`vX.Y.Z`** (`v`-prefixed). Nothing is done by hand: after every merge to main, the `release-mr` job in [`.gitlab-ci.yml`](.gitlab-ci.yml) runs [scripts/release.sh](scripts/release.sh), which picks the [bump](#versioning) from the commits since the last `VERSION` change and has [git-cliff](https://git-cliff.org) ([cliff.toml](cliff.toml)) write their [CHANGELOG.md](CHANGELOG.md) section, and lands that as the [release commit](#commit-style) through an auto-merging MR. When it merges, the `release` job cuts the `v<VERSION>` tag and a GitLab Release with that section as its notes; it fails closed if `## [<VERSION>]` is missing.
 
 ## Repo layout — what goes where
 
@@ -179,14 +179,16 @@ konrad/
 │   ├── check.sh                       # Static gates (lint, REUSE) — CI runs this same script
 │   ├── smoke-test.sh                  # Smoke gate — CI runs this same script
 │   ├── test-autoupdate.sh             # Update rehearsal: previous release → this checkout, local registry
+│   ├── release.sh                     # Next VERSION + its CHANGELOG section (CI runs it after each merge)
 │   ├── install.sh              # curl|sh installer — fetches the CLI standalone, bakes VERSION in
 │   └── fetch-fonts.sh                 # One-shot — pulls fonts from upstream when bumping versions
 ├── examples/org-package/              # Git-native org-layer example repo (referenced from README)
 ├── .github/workflows/build-image.yml  # CI: build → smoke → publish (multi-arch amd64 + arm64)
-├── .gitlab-ci.yml                     # Static gates, lock-resolver bot, release job (source of truth; mirrors to GitHub)
+├── .gitlab-ci.yml                     # Static gates, lock-resolver bot, release bot and job (source of truth; mirrors to GitHub)
 ├── .gitlab/merge_request_templates/   # MR description template
 ├── ARCHITECTURE.md                     # System design and the *why* (consolidated)
-├── CHANGELOG.md                       # Released-change log (Keep a Changelog; agent-maintained)
+├── CHANGELOG.md                       # Released-change log (Keep a Changelog; written by CI)
+├── cliff.toml                         # git-cliff config: how a release's commits become its CHANGELOG section
 ├── ROADMAP.md                         # Backlog (shipped work → CHANGELOG.md)
 ├── CLAUDE.md                          # Repo instructions for agents working ON konrad
 ├── REUSE.toml                         # Per-file copyright/license by glob (REUSE spec)
@@ -198,7 +200,7 @@ If a change touches multiple concerns, prefer separate commits per concern. The 
 
 ## Commit style
 
-[Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/), applied fully — by discipline, checked at review (no tooling, exactly like the [VERSION](#versioning) bump).
+[Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/), applied fully — by discipline, checked at review. CI reads them: the types pick the [version bump](#versioning), and every `feat`, `fix` and `perf` subject becomes a [CHANGELOG.md](CHANGELOG.md) entry, word for word.
 
 ```text
 type(scope)?: imperative, lowercase subject, no trailing period
@@ -217,13 +219,15 @@ Co-Authored-By: ...                               (when applicable)
 
 **Breaking changes** — mark with `!` after the type/scope (e.g. `feat!:`) and/or a `BREAKING CHANGE:` footer. It makes the next release at least a **minor** bump — see [Versioning](#versioning).
 
-**Release commit** — a release is its own small MR, made when the maintainer wants one, with a single commit `chore(release): <version>`. **In that commit, bump `VERSION` and write the CHANGELOG section**: `## [<version>] - <YYYY-MM-DD>` below an empty `## [Unreleased]`, with a terse entry per user-facing change since the last tag, taken from the commits. The [release job](#git-tags--releases) publishes that section and **fails closed** when it's missing, rather than shipping an empty release. Between releases `konrad update` already delivers what's merged, since it installs from `main`.
+**Subjects are changelog entries** — so write a `feat`, `fix` or `perf` subject for the user who reads the release: what they can now do or what no longer goes wrong (`fix(cli): resume an apple/container pull that the registry cuts off`), not the function you changed. A fix users never saw (to a test, a script, an unreleased feature) is `test`, `chore` or `refactor`, or folds into the commit it fixes.
+
+**Release commit** — CI makes it: `chore(release): <version>`, bumping `VERSION` and adding `## [<version>] - <YYYY-MM-DD>` to CHANGELOG.md, through an auto-merging MR after every merge that has something to release ([Git tags & releases](#git-tags--releases)). Feature MRs never touch either file. A release that needs more than the subjects say (a migration note, say) gets it from a maintainer edit to the release MR before it merges, or to CHANGELOG.md after.
 
 ## When to update what
 
 **ROADMAP.md** — at most ten items: what automates the maintainer's checks, what keeps konrad safe and working for its own use, and what makes it smaller. An item comes in only when the maintainer wants it, and replaces an old one; an idea that doesn't make the cut lives in the commit or MR that raised it. A decision we made and are sticking with doesn't go there either (the commit message is enough). When an item ships, delete its bullet in the same commit. Outside the cap, **Upstream workarounds and limitations** tracks every upstream bug konrad works around or lives with: a commit that adds a workaround, or documents a limitation instead, adds its bullet there (upstream link, what to check, what to remove), and the commit that removes it deletes the bullet.
 
-**CHANGELOG.md** — written in the release commit, from the commits since the last tag: a terse entry per user-facing change ([Keep a Changelog](https://keepachangelog.com/); agent-maintained, rationale stays in the commit). Feature MRs leave it alone; doc, CI and contributor-only changes usually get no entry.
+**CHANGELOG.md** — written by CI in the release commit, one entry per `feat`, `fix` and `perf` subject since the last release ([Keep a Changelog](https://keepachangelog.com/); rationale stays in the commit). Feature MRs leave it alone.
 
 **README.md** — anything that changes how a user installs, runs, or thinks about konrad. A new subcommand or flag. A new external dependency (e.g. a tool the user has to install on the host).
 

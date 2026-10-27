@@ -1,0 +1,38 @@
+# SPDX-FileCopyrightText: 2026 Jan-Luca Bauß
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# git-cliff config: one CHANGELOG.md section from the commits since the last
+# release, written by scripts/release.sh (CONTRIBUTING → Git tags & releases).
+# A feat, fix or perf subject becomes the entry as written (lowercase, like
+# konrad), under Keep a Changelog's headings; every other type is left out.
+
+[changelog]
+header = ""
+body = """
+## [{{ version | trim_start_matches(pat="v") }}] - {{ timestamp | date(format="%Y-%m-%d") }}
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group | striptags | trim }}
+{% for commit in commits %}
+- {% if commit.breaking %}**Breaking:** {% endif %}{{ commit.message | split(pat="\n") | first | trim }}\
+{% endfor %}
+{% endfor %}
+"""
+footer = ""
+trim = true
+
+[git]
+conventional_commits = true
+filter_unconventional = true
+protect_breaking_commits = true
+filter_commits = true
+sort_commits = "oldest"
+# The <!-- n --> prefix orders the groups; the template strips it. A breaking
+# commit of any type (feat!:, refactor!:) changes what users had, so it goes
+# under Changed.
+commit_parsers = [
+  { field = "breaking", pattern = "true", group = "<!-- 1 -->Changed" },
+  { message = "^feat", group = "<!-- 0 -->Added" },
+  { message = "^perf", group = "<!-- 1 -->Changed" },
+  { message = "^fix", group = "<!-- 2 -->Fixed" },
+  { message = ".*", skip = true },
+]

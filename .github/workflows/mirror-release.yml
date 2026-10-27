@@ -76,7 +76,7 @@ jobs:
                 echo "::warning::$tag: no '## [$ver]' section in CHANGELOG.md — skipped in backfill sweep"
                 return 0
               fi
-              echo "::error::no '## [$ver]' section in CHANGELOG.md — promote the ## [Unreleased] entry, then re-run"
+              echo "::error::no '## [$ver]' section in CHANGELOG.md — add it on GitLab, then re-run"
               return 1
             fi
             echo "Creating GitHub release for $tag"

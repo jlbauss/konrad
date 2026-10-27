@@ -18,7 +18,7 @@ One audience and one job per file:
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Contributor guide — dev loop, branching, commit style, **versioning & releases**. |
 | [CLAUDE.md](CLAUDE.md) | Instructions for AI agents working on konrad's source. |
 | [ROADMAP.md](ROADMAP.md) | Backlog: at most ten items, what to delete when it gets in the way, and the upstream bugs konrad works around or lives with. |
-| [CHANGELOG.md](CHANGELOG.md) | Released, user-facing changes (Keep a Changelog). |
+| [CHANGELOG.md](CHANGELOG.md) | Released, user-facing changes (Keep a Changelog), written by CI from the commits at each release ([cliff.toml](cliff.toml)). |
 | [SECURITY.md](SECURITY.md) | How to report a vulnerability, and what counts as one. |
 | [VERSION](VERSION) | Single source of the version; drives image tags. |
 | [LICENSE](LICENSE) · [REUSE.toml](REUSE.toml) · [LICENSES/](LICENSES/) | AGPL-3.0; per-file copyright/license (REUSE spec). |

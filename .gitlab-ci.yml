@@ -324,29 +324,69 @@ check:
     - ./scripts/check.sh
 
 # =============================================================================
-# Tagged GitLab Releases — "tag what I bumped."
+# Releases — every merge that users would notice gets one.
 #
-# Releases live on GitLab (the GitHub mirror is CI-only). This job closes
-# the "we don't tag today" gap without touching how releases are authored:
-# the maintainer still hand-bumps VERSION (chore(release): …) and hand-curates
-# CHANGELOG.md. When that bump lands on main, this job creates the git tag
-# `v<VERSION>` at the merge commit and a GitLab Release whose notes are the
-# matching CHANGELOG section — no semantic-release, no generated changelog,
-# no version computation. CHANGELOG.md stays the source of truth.
+# release-mr runs after each push to main and prepares the next release with
+# scripts/release.sh: from the commits since the last VERSION change it picks
+# the bump (feat or breaking: minor; fix or perf: patch; nothing else releases)
+# and has git-cliff (cliff.toml) write the CHANGELOG.md section from their
+# subjects. It lands that as `chore(release): <version>` through an
+# auto-merging MR, like resolve-locks. When that merges, `release` below tags
+# it. Feature MRs never touch VERSION or CHANGELOG.md, so parallel MRs don't
+# collide on them (they did when every MR carried its own bump).
 #
-# Why GitLab CI (not the GitHub build workflow): tags + releases belong on
-# the source-of-truth forge, and this is a plain API call on the shared
-# runner — no privileged Podman, same as resolve-locks/reuse.
+# Force-push to one fixed branch: when main moves before the release MR
+# merges, the push pipeline of the new commit re-runs release-mr, which
+# replaces the MR's commit with one prepared on the new main, covering the new
+# commits too, and re-arms auto-merge — never a pile of MRs. The release
+# commit's own push finds nothing since the VERSION change and does nothing.
+# Full history (GIT_DEPTH 0): the range reaches back to the last release.
+# Needs BOT_PAT, set up for resolve-locks above.
+# =============================================================================
+release-mr:
+  image: node:26-alpine
+  tags: [docker]
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "web" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  variables:
+    GIT_STRATEGY: clone
+    GIT_DEPTH: "0"
+  before_script:
+    - apk add --no-cache bash git curl
+    - curl -fsSL https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh
+  script:
+    - |
+      set -eu
+      VERSION="$(./scripts/release.sh)"
+      if [ -z "$VERSION" ]; then
+        echo "No feat, fix or perf since the last release — nothing to release."
+        exit 0
+      fi
+      git config user.email "konrad-bot@gitlab.git.nrw"
+      git config user.name  "konrad-release-bot"
+      git commit -m "chore(release): $VERSION" VERSION CHANGELOG.md
+      git push --force \
+        -o merge_request.create \
+        -o merge_request.target=main \
+        -o merge_request.remove_source_branch \
+        -o merge_request.auto_merge \
+        -o "merge_request.title=chore(release): $VERSION" \
+        "https://oauth2:${BOT_PAT}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git" \
+        HEAD:refs/heads/bot/release
+
+# Tags what release-mr bumped: when a VERSION change lands on main, it creates
+# the git tag `v<VERSION>` at that commit and a GitLab Release whose notes are
+# the matching CHANGELOG.md section. Plain API calls on the shared runner; the
+# GitHub mirror copies the release (.github/workflows/mirror-release.yml).
 #
-# Trigger: a push to main that changes VERSION. A FF-merge of a feature
-# branch carries the chore(release) commit, so `changes: [VERSION]` fires
-# exactly once per release and never on doc/CI/roadmap-only pushes.
+# Trigger: a push to main that changes VERSION, which only a release commit
+# does, so it fires once per release.
 #
 # Auth: release-cli uses CI_JOB_TOKEN by default, which can create releases
 # in this project. If `v*` is a *protected* tag and the job token can't
 # create it, either grant the token's user the role or pass the existing
 # BOT_PAT: add `--private-token "$BOT_PAT"` to the release-cli call.
-# =============================================================================
 release:
   image: registry.gitlab.com/gitlab-org/release-cli:latest
   tags: [docker]
@@ -372,13 +412,12 @@ release:
         grab && started { print }
       ' CHANGELOG.md)"
       # Fail closed: a VERSION bump must carry a matching `## [<VERSION>]`
-      # CHANGELOG section. The easy slip is bumping VERSION but leaving the
-      # entry under `## [Unreleased]` — that used to ship a silent pointer-only
-      # release. Better to break the release loudly and fix the CHANGELOG than
+      # CHANGELOG section. A hand-made bump can miss it, and that used to ship
+      # a silent pointer-only release. Better to break the release loudly than
       # publish empty notes (recovery: add the section, then re-run this job).
       if [ -z "$NOTES" ]; then
-        echo "release: no '## [$VERSION]' section in CHANGELOG.md — promote the" \
-             "## [Unreleased] entry to '## [$VERSION] - <date>' before releasing." >&2
+        echo "release: no '## [$VERSION]' section in CHANGELOG.md — add" \
+             "'## [$VERSION] - <date>' with its entries, then re-run this job." >&2
         exit 1
       fi
 
