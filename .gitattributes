@@ -30,3 +30,7 @@ image/entrypoint.sh text eol=lf
 *.tar binary
 *.tar.gz binary
 *.tgz binary
+
+# A/B task inputs reach the agent byte for byte (a Windows export's CRLF and
+# cp1252 included).
+tests/ab/*/input/** binary

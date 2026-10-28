@@ -1,0 +1,1 @@
+export.csv is an export from our German accounting tool. Turn it into export.xlsx: one row for each line of the CSV with the same columns, dates as real dates, amounts and VAT rates as numbers rather than text, and a last row that sums the amounts with a formula. Keep the customer names exactly as they are.

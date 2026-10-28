@@ -9,6 +9,8 @@
     ".git",            // agents keep MR write-ups in .git/mr-description.md
     "LICENSES",        // upstream license texts, not ours to lint
     "examples",        // vendored / illustrative content
+    ".skill-eval",     // ab-test.sh results: agents' own task.md files, gitignored
+    "tests/ab",        // A/B task prompts are model input, written as a user would
     // Baked runtime skill/agent docs: a cosmetic reflow here forces an image
     // rebuild for no gain (ethos: no maintenance surface for nothing). They ride
     // intentional image changes, not a docs linter. Lint the human-facing docs.
