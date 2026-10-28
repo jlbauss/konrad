@@ -87,7 +87,7 @@ import pdfplumber       # region discovery
 import pdf2image        # rasterization
 import reportlab        # GENERATE route
 import openpyxl, pandas # xlsx skill
-import docx, pptx       # docx, powerpoint skills
+import docx, pptx       # Word and PowerPoint files
 import onnxruntime      # rapidocr engine
 print("ok")
 ' >/dev/null || fail "python skill imports failed"

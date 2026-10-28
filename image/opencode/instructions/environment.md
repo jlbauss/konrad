@@ -50,9 +50,9 @@ set: `image/locks/python.lock`. Skill scripts under
 
 ## Skills from other projects
 
-Some bundled skills (`xlsx`, `docx`, `powerpoint`) come unchanged from
-other projects and were written for other agents. Where they assume
-something else, this holds:
+Some bundled skills (`xlsx`) come unchanged from other projects and
+were written for other agents. Where they assume something else, this
+holds:
 
 - Their dependencies are already installed. Skip any `pip install`,
   `uv run` or `npm install -g` step (the firewall refuses it anyway),

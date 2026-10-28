@@ -192,12 +192,12 @@ Per-operation checklists live in konrad's own producer skills. For
 the PDF skill they're consolidated in `pdf/checklists.md` (watermark /
 highlight / blacken / FreeText / sticky note / box / rotate / FILL
 / GENERATE), with each route doc cross-linking to its relevant
-anchor. Skills konrad takes from upstream unchanged (`xlsx`, `docx`,
-`powerpoint`) carry none of konrad's, so their format's checklist lives
-here, one file per format in `references/`: **before verifying, read
-`references/spreadsheets.md` for an `.xlsx` / `.csv` / `.tsv`,
-`references/documents.md` for a `.docx`, `references/presentations.md`
-for a `.pptx`.** The
+anchor. Skills konrad takes from upstream unchanged (`xlsx`) carry none
+of konrad's, so their format's checklist lives here, one file per format
+in `references/`, as do those of formats no bundled skill covers:
+**before verifying, read `references/spreadsheets.md` for an `.xlsx` /
+`.csv` / `.tsv`, `references/documents.md` for a `.docx`,
+`references/presentations.md` for a `.pptx`.** The
 quality-assurance skill defines the cycle; the checklists fill in what
 "looks correct" means for each kind of output.
 

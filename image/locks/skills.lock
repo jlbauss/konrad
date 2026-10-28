@@ -6,5 +6,3 @@
 # image/opencode/skills/; a name may live in only one of the two places.
 # Format: <name> <repo URL> <commit sha> <path in repo>
 xlsx https://github.com/NousResearch/hermes-agent 0006a5e229aedbe6144d6b6140e2471dba8b738d skills/productivity/xlsx
-docx https://github.com/NousResearch/hermes-agent 0006a5e229aedbe6144d6b6140e2471dba8b738d skills/productivity/docx
-powerpoint https://github.com/NousResearch/hermes-agent bda3aea496c06d505eb12fdb56dfe78fc54736c8 skills/productivity/powerpoint
