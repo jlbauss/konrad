@@ -6,15 +6,6 @@ The longer backlog this replaced (58 items, cut on 2026-10-26), with every desig
 
 ## Next
 
-### Automate the maintainer's probes
-
-*First, because every probe a machine runs is one the maintainer doesn't: the agents that build konrad should get the answer themselves instead of handing over a runbook.*
-
-- [ ] `S` **A capped provider key in `konrad code`, so an agent runs `selftest.sh`'s model stage itself.** Today the real-model run is always a maintainer probe. With open egress, safe means bounded, not unseen: a dedicated key on a hard spend limit (an OpenRouter key with a credit limit, or an Anthropic Console workspace with a monthly limit), short expiry, one cheap model, never the maintainer's own account.
-  - **Likely zero code; probe first.** A one-time `konrad-dev connect` in a `konrad code --shell` session should persist the key in the per-repo store's `konrad-secrets` volume; pin the model with `KONRAD_SELFTEST_MODEL`. Only the primary session sees it (others get their own `volume_path`). Probe: the model stage SKIPs without a key, PASSes after `connect`, survives a session restart, is absent from a parallel session.
-  - **Then docs:** the key as an accepted residual in ARCHITECTURE → konrad code; replace "the box holds no provider key, by design" in CLAUDE.md and CONTRIBUTING.
-  - **Only if no provider offers a hard cap:** a credential-injecting sidecar like the forge-token one (new maintenance surface, so not by default).
-
 ### `konrad code`: safer and simpler
 
 - [ ] `L` **Container per repo — terminal sessions join the repo's container (probed 2026-10-07: go).** Terminal sessions run inside the repo's `up` container (`<engine> exec -it … claude`, `claude --worktree` for parallel ones; `konrad code <url>` starts the container when it isn't up). That retires most per-session plumbing: the pid and session pick in container names, the `.sessions/<s>` worktrees, the per-session libpod `static_dir`/`volume_path` split, apple/container's per-session store volume (and `probe-shared-store.sh`), and PID-based reaping in `sweep_orphans`. Unchanged: the seal, the token, the volumes, the image.

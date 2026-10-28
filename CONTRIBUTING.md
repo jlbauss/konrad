@@ -90,10 +90,29 @@ The validation gates are:
 - `./scripts/build-image.sh` — does the image build?
 - `./scripts/test-autoupdate.sh` — the update rehearsal: installs the previous release's CLI under a throwaway `HOME`, then runs a real `konrad update` and background refresh against a local registry holding `konrad:local` and this checkout's files instead of the forge. Run it after `konrad-dev rebuild` for any change to `bin/konrad`, `scripts/install.sh` or the update path. Podman only (the nested engine in `konrad code` is fine).
 - `./scripts/smoke-test.sh konrad:local` — does the image have the right binaries / Python deps / baked content, and does the docling round-trip work? CI runs this same script. (Engine-agnostic and deliberately `bin/konrad`-free — CI runs it under Docker, and it validates the *image artifact*, not the host CLI.)
-- `./scripts/selftest.sh` — the realistic end-to-end loop, and the right gate to hand an agent: it runs the smoke test, then drives a real `konrad run` *through `bin/konrad`* (uid mapping, workspace mount, config compose — the path a user actually takes) and asserts the agent answers. The **model comes from your own `~/.config/konrad` config** (override with `--model <slug>` / `KONRAD_SELFTEST_MODEL`, any provider); with no usable model/credential the model stage degrades to a SKIP, so a red result always means the *runtime* broke. One-time: populate the shared `konrad-secrets` volume via `konrad-dev` → `/connect`. Inside `konrad code` there's no provider key, so an agent's run always SKIPs the model stage; the real-model run is yours. Not a CI gate.
+- `./scripts/selftest.sh` — the realistic end-to-end loop, and the right gate to hand an agent: it runs the smoke test, then drives a real `konrad run` *through `bin/konrad`* (uid mapping, workspace mount, config compose — the path a user actually takes) and asserts the agent answers. The **model comes from your own `~/.config/konrad` config** (override with `--model <slug>` / `KONRAD_SELFTEST_MODEL`, any provider; `--variant <effort>` / `KONRAD_SELFTEST_VARIANT` sets its reasoning effort); with no usable model/credential the model stage degrades to a SKIP, so a red result always means the *runtime* broke. One-time on your host: populate the shared `konrad-secrets` volume via `konrad-dev connect`. In `konrad code` and other unattended runs, use a capped test key instead ([below](#a-real-model-in-unattended-runs)). Not a CI gate.
 - A live poke: `cd /tmp/konrad-test && konrad-dev --version` then `konrad-dev shell` to look around. Dump the full build manifest with `podman run --rm --entrypoint cat konrad:local /etc/konrad/build-manifest.json | jq .`.
 
 **Always smoke-test locally before pushing changes that touch `image/`, `scripts/smoke-test.sh`, or `image/build-manifest.sh`.** CI catches the bug eventually but at a ~10 min round-trip cost per iteration vs. ~5.5 min locally (rebuild + smoke).
+
+### A real model in unattended runs
+
+An agent in `konrad code` runs the selftest's model stage when its session holds a provider key, and SKIPs it otherwise. Its box has open internet and the agent can read the key, so the key is made safe by what it can spend, not by being hidden ([ARCHITECTURE → konrad code](ARCHITECTURE.md#konrad-code)):
+
+1. **Create a key just for this, with a hard spend limit**, never your everyday key. In the Anthropic Console, that's a workspace of its own (say `konrad-selftest`) with a low monthly spend limit, and an API key created inside that workspace: the limit belongs to the workspace, so a key in your Default workspace would share your normal budget. An OpenRouter key with a credit limit works the same way. Rotate it now and then.
+2. **Connect it in each session that should use it.** Every `konrad code` session keeps its own nested volumes, so its own key store: the primary session, each parallel one (`s2`, …) and the `up` container. The key stays across restarts of that session. Pick the provider's API-key login (not a Pro/Max subscription login), and type the key only into that prompt, never into an agent's chat, whose transcript would keep it.
+   - A terminal session: `konrad code --shell --session <name> https://gitlab.git.nrw/jbauss2/konrad` (the clone's session is `primary`), then `bin/konrad connect -p anthropic`.
+   - The `up` container that serves sessions from the Claude app or claude.ai/code: from the host, find its `konrad-up-…` name with `podman ps --format '{{.Names}}'` (Linux) or `container ls` (macOS), then run the matching command below. A shell opened with `exec` doesn't inherit the entrypoint's `CONTAINERS_CONF_OVERRIDE`, and without it the key lands in the primary session's store.
+
+   ```sh
+   podman exec -it -u node -e CONTAINERS_CONF_OVERRIDE=/tmp/konrad-session-containers.conf -w /workspace/konrad <konrad-up-name> bin/konrad connect -p anthropic
+   ```
+
+   ```sh
+   container exec -it -u node -e CONTAINERS_CONF_OVERRIDE=/tmp/konrad-session-containers.conf -w /workspace/konrad <konrad-up-name> bin/konrad connect -p anthropic
+   ```
+
+3. **Run the selftest with a cheap model at its lowest effort:** `./scripts/selftest.sh --model anthropic/claude-haiku-5-5 --variant low` after `konrad-dev rebuild` (add `--image konrad:latest` to test the released image instead). opencode lists a provider's models only once it's connected: `konrad-dev --profile selftest opencode models anthropic` shows them, and `--verbose` adds each model's variants.
 
 ## Branching and pull requests
 
