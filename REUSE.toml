@@ -58,11 +58,6 @@ SPDX-License-Identifier = "OFL-1.1"
 
 # ── Vendored skills — kept under their upstream license ───────────────────────
 [[annotations]]
-path = "image/opencode/skills/spreadsheets/**"
-SPDX-FileCopyrightText = "MiniMax AI"
-SPDX-License-Identifier = "MIT"
-
-[[annotations]]
 path = "image/opencode/skills/image-editing/**"
 SPDX-FileCopyrightText = "jlouage"
 SPDX-License-Identifier = "MIT"

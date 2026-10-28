@@ -19,7 +19,7 @@ metadata:
 > the konrad repo and only takes effect after a `konrad-dev rebuild`
 > (everything under `image/` is baked at build time). Producer skills that
 > emit a visual deliverable should invoke the bundled `quality-assurance`
-> skill before reporting, the way the `pdf` and `spreadsheets` skills do.
+> skill before reporting, the way the `pdf` skill does.
 
 ## Process
 

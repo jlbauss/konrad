@@ -192,7 +192,7 @@ konrad/
 │   │   ├── instructions/              # Baked layer's system-instructions dir
 │   │   │   └── environment.md         # Runtime environment manifest (tools, libs, layout)
 │   │   ├── agents/                    # Built-in primary agents (konrad, manual-transformer)
-│   │   └── skills/                    # Bundled skills (pdf, spreadsheets, image-editing, frontend-design, do-it-manually, grill-me, write-a-skill, quality-assurance)
+│   │   └── skills/                    # konrad's own skills (pdf, image-editing, frontend-design, do-it-manually, grill-me, write-a-skill, quality-assurance); upstream ones come from locks/skills.lock
 │   └── fonts/konrad/                  # → /usr/local/share/fonts/konrad/ (seven OFL families)
 ├── scripts/
 │   ├── build-image.sh                 # Local build (KONRAD_VERSION + GIT_SHA build args)

@@ -45,7 +45,8 @@ After producing the deliverable, before reporting:
 2. **Pick a flavour** based on what the deliverable is:
    - **Visual** (PDF/image): rasterize and look. See § Visual flavour.
    - **Language** (text, JSON, CSV, structured data): read and judge.
-     See § Language flavour.
+     See § Language flavour; for a spreadsheet, also
+     `references/spreadsheets.md`.
 3. **Render a verdict** in the vocabulary below.
 4. **Act on the verdict** — deliver, deliver with caveat, fix once
    more, or escalate to the user.
@@ -185,15 +186,16 @@ which.
 
 ### Per-operation checklists
 
-Per-operation checklists live in the producer skill. For the PDF
-skill they're consolidated in `pdf/checklists.md` (watermark /
+Per-operation checklists live in konrad's own producer skills. For
+the PDF skill they're consolidated in `pdf/checklists.md` (watermark /
 highlight / blacken / FreeText / sticky note / box / rotate / FILL
 / GENERATE), with each route doc cross-linking to its relevant
-anchor. Other producer skills locate theirs where best fits — inline
-in the route doc, in a sibling `checklists.md`, or as a frontmatter
-section in their `SKILL.md`. The quality-assurance skill defines the
-cycle; each producer fills in what "looks correct" means for its
-outputs.
+anchor. Skills konrad takes from upstream unchanged (`xlsx`, …) carry
+none of konrad's, so their format's checklist lives here, one file per
+format in `references/`: **read `references/spreadsheets.md` before
+verifying an `.xlsx` / `.csv` / `.tsv` deliverable.** The
+quality-assurance skill defines the cycle; the checklists fill in what
+"looks correct" means for each kind of output.
 
 ## Language flavour
 
