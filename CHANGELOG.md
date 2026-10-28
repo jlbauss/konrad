@@ -9,6 +9,12 @@ All notable, user-facing changes to konrad. The format follows [Keep a Changelog
 
 Each section after 0.40.0 is written by CI from the commits it releases: every `feat`, `fix` and `perf` subject, as written (see [Git tags & releases](CONTRIBUTING.md#git-tags--releases)). The *why* lives in those commits and in [ARCHITECTURE.md](ARCHITECTURE.md). Each image build publishes as `:0.X` (minor line), `:latest`, and an immutable `:<short-sha>` (see the [image tags](CONTRIBUTING.md#image-tags)).
 
+## [0.42.0] - 2026-10-28
+
+### Added
+
+- add hermes-agent's docx and powerpoint skills, unchanged from upstream
+
 ## [0.41.0] - 2026-10-28
 
 ### Added
