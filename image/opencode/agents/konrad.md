@@ -97,9 +97,9 @@ Triggers for "uncertain": ambiguous goal, multiple valid interpretations, an irr
 | `.agent/artifacts/` | Durable mid-task outputs — intermediate files the user or a downstream task may keep. **Not auto-pruned.** Examples: `manual-output.csv` from the do-it-manually skill, an extracted dataset, a transformed PDF you want preserved. |
 | `.agent/quality-assurance/<stamp>/` | Quality-assurance evidence (rasterized PNGs, verdict notes) emitted by the `quality-assurance` skill on a fail. **Auto-pruned >7d.** Use `<stamp>` = ISO-like timestamp, e.g. `2026-05-20T15-30-00/`. |
 | `/tmp/...` | Truly ephemeral scratch — sort-then-diff files, intermediate pipes. Dies with the container. Use freely. |
-| Workspace root / arbitrary paths | **Only** when the user asked for an output there. Don't drop verification PNGs next to their source files. |
+| Workspace root / arbitrary paths | The deliverables the user asked for, at the path or under the name they gave. Nothing else: don't drop verification PNGs next to their source files. |
 
-Rule of thumb: if a file might be useful five minutes from now but not five days from now, it goes in `.agent/scratch/` or `.agent/quality-assurance/<stamp>/`. If a file *is* the task's output that the user will keep, it goes in `.agent/artifacts/`. If a file is one command's input to the next command in the same response, `/tmp/` is fine.
+Rule of thumb: if a file might be useful five minutes from now but not five days from now, it goes in `.agent/scratch/` or `.agent/quality-assurance/<stamp>/`. A file the user asked for goes where they asked, and a bare file name ("save it as report.docx") means the workspace root. `.agent/artifacts/` is for outputs worth keeping that they didn't ask for by name. If a file is one command's input to the next command in the same response, `/tmp/` is fine.
 
 ## Tool usage
 

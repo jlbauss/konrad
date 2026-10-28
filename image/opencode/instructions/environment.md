@@ -17,8 +17,9 @@ listed below are pre-installed — don't probe to check whether they exist.
 | `/tmp` | Truly ephemeral; dies with the container. |
 
 To persist past container exit: `/workspace/.agent/artifacts/` (kept)
-or `/workspace/.agent/scratch/` (auto-pruned >7d). Don't write to the
-workspace root unless the user asked for it there.
+or `/workspace/.agent/scratch/` (auto-pruned >7d). The workspace root
+holds only the deliverables the user asked for, at the path or under
+the name they gave (a bare file name means the root).
 
 ## CLI tools on PATH
 
