@@ -1,0 +1,1 @@
+In deck.pptx, our product Alpha has been renamed Aurora: rename it everywhere in the deck, speaker notes and the chart included. In the adoption chart, Q3 is actually 1640, and add Q4 with 2100. Delete the "Old roadmap" slide and move "Summary" to the end. Save the result as deck-v2.pptx and leave everything else as it is.

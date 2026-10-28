@@ -1,0 +1,1 @@
+Our client Nordlicht GmbH is now called Polarstern AG. In contract.docx, replace the name everywhere it appears. In clause 4, change the payment term from 30 days to 45 days as a tracked change, so their lawyer sees it. Add the comment "Please confirm the cap." to the Liability heading. Save the result as contract-v2.docx and leave everything else as it is.

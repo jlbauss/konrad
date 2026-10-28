@@ -1,0 +1,1 @@
+review.docx has tracked changes from two reviewers. Accept every change by Anna Berg, reject every change by Ben Ott, and leave the comments where they are. Save the result as review-final.docx. Then write each comment to comments.txt, one per line, as "Author: comment text".

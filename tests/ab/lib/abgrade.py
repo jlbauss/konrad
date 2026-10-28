@@ -9,6 +9,7 @@ scripts/ab-test.sh scores a run as the share of checks that passed.
 """
 
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -61,6 +62,56 @@ def recalc(path):
     if not produced.exists():
         raise RuntimeError("LibreOffice could not recalculate the workbook")
     return produced
+
+
+def to_pdf(path):
+    """The document converted to PDF by LibreOffice, or None if it can't render it."""
+    out = Path(tempfile.mkdtemp())
+    subprocess.run(
+        ["soffice", "--headless", "--convert-to", "pdf", "--outdir", str(out), str(path)],
+        capture_output=True, timeout=180, check=False, env={"HOME": str(out), "PATH": "/usr/bin:/bin"},
+    )
+    produced = out / (Path(path).stem + ".pdf")
+    return produced if produced.exists() else None
+
+
+def pdf_text(pdf):
+    return subprocess.run(["pdftotext", "-layout", str(pdf), "-"], capture_output=True, text=True,
+                          check=False).stdout
+
+
+def norm(text):
+    """Text compared the way a reader would: dashes, quotes, spacing and a final period don't count."""
+    text = re.sub(r"[–—]", "-", str(text)).replace(" ", " ")
+    text = re.sub(r"\s+", " ", text).strip().strip("\"'“”„").strip()
+    return text.rstrip(".").strip()
+
+
+W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+
+
+def list_kind(doc, paragraph):
+    """'bullet', 'number' or None: the list a Word paragraph belongs to, from its own or its style's numbering."""
+    num_pr, style = paragraph._p.find(f"{W}pPr/{W}numPr"), paragraph.style
+    while num_pr is None and style is not None:
+        num_pr = style.element.find(f"{W}pPr/{W}numPr")
+        style = style.base_style
+    if num_pr is None or num_pr.find(f"{W}numId") is None:
+        return None
+    num_id = num_pr.find(f"{W}numId").get(f"{W}val")
+    ilvl = num_pr.find(f"{W}ilvl").get(f"{W}val") if num_pr.find(f"{W}ilvl") is not None else "0"
+    try:
+        numbering = doc.part.numbering_part.element
+    except (KeyError, NotImplementedError):
+        return None
+    num = numbering.find(f"{W}num[@{W}numId='{num_id}']")
+    if num is None:
+        return None
+    abstract = num.find(f"{W}abstractNumId").get(f"{W}val")
+    fmt = numbering.find(f"{W}abstractNum[@{W}abstractNumId='{abstract}']/{W}lvl[@{W}ilvl='{ilvl}']/{W}numFmt")
+    if fmt is None or fmt.get(f"{W}val") == "none":
+        return None
+    return "bullet" if fmt.get(f"{W}val") == "bullet" else "number"
 
 
 def is_formula(value):
