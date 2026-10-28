@@ -254,6 +254,41 @@ resolve-locks:
         MOVED="$MOVED models"
       fi
 
+      # skills: skills.lock holds "<name> <repo URL> <sha> <path>" lines (plus
+      # # comments). Pin each skill to the newest upstream commit that touched
+      # its path (GitHub's path-filtered commits API), so the pin moves only
+      # when the skill does, not on every commit to a busy repo. When that
+      # commit no longer has the skill (removed upstream), the old pin stays,
+      # with a warning: it still builds, and a maintainer decides what next.
+      : > skills.lock.new
+      while IFS= read -r line || [ -n "$line" ]; do
+        case "$line" in
+          ''|\#*) printf '%s\n' "$line" >> skills.lock.new; continue ;;
+        esac
+        set -- $line
+        name="$1" repo="$2" old_sha="$3" path="$4"
+        case "$repo" in
+          https://github.com/*) slug="${repo#https://github.com/}"; slug="${slug%.git}" ;;
+          *) echo "skill $name: only github.com upstreams resolve here ($repo)" >&2; exit 1 ;;
+        esac
+        new_sha="$(curl -fsSL "https://api.github.com/repos/${slug}/commits?path=${path}&per_page=1" \
+                     | jq -r '.[0].sha // empty')"
+        [ -n "$new_sha" ] \
+          || { echo "could not resolve skill $name ($slug:$path)" >&2; exit 1; }
+        if curl -fsS -o /dev/null "https://api.github.com/repos/${slug}/contents/${path}/SKILL.md?ref=${new_sha}"; then
+          printf '%s %s %s %s\n' "$name" "$repo" "$new_sha" "$path" >> skills.lock.new
+        else
+          echo "skill $name: no SKILL.md at $path in $slug@$new_sha, keeping $old_sha" >&2
+          printf '%s\n' "$line" >> skills.lock.new
+        fi
+      done < skills.lock
+      if diff -q skills.lock skills.lock.new >/dev/null 2>&1; then
+        rm skills.lock.new
+      else
+        mv skills.lock.new skills.lock
+        MOVED="$MOVED skills"
+      fi
+
       cd ../..
 
       # provider-hosts map: regenerate from models.dev (the built-in-provider
