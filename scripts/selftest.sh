@@ -21,6 +21,11 @@
 #     scripts/selftest.sh                            # model from your konrad config
 #     scripts/selftest.sh --model lmstudio/<id>      # override: a local LM Studio model
 #     KONRAD_SELFTEST_MODEL=anthropic/… scripts/selftest.sh
+#     scripts/selftest.sh --model anthropic/… --variant low   # lowest reasoning effort
+#
+# --variant (or KONRAD_SELFTEST_VARIANT) passes opencode's provider-specific
+# reasoning effort through; `konrad-dev opencode models <provider> --verbose`
+# lists the variants a model offers. Empty = the model's default.
 #
 # It DEGRADES rather than failing when no model is usable here (none configured
 # and none passed, no key in the reachable secrets volume, endpoint
@@ -41,17 +46,19 @@ IMAGE="${KONRAD_IMAGE:-konrad:local}"
 # Empty = inherit the model from your mounted konrad config (the normal-mode
 # default). A flag or KONRAD_SELFTEST_MODEL overrides it via an explicit --model.
 MODEL="${KONRAD_SELFTEST_MODEL:-}"
+VARIANT="${KONRAD_SELFTEST_VARIANT:-}"
 PROFILE="selftest"                  # throwaway state/cache volumes; secrets shared
 PROMPT='Reply with exactly the token KONRAD-OK and nothing else.'
 EXPECT='KONRAD-OK'
 
 usage() {
   cat <<'USAGE'
-usage: scripts/selftest.sh [--model <slug>] [--image <tag>] [--profile <name>]
+usage: scripts/selftest.sh [--model <slug>] [--variant <effort>] [--image <tag>] [--profile <name>]
 
 Runs the image smoke test, then a real `konrad run` through bin/konrad and
 asserts the agent answers. By default the model comes from your mounted konrad
 config (same as a normal run); --model or $KONRAD_SELFTEST_MODEL overrides it.
+--variant or $KONRAD_SELFTEST_VARIANT sets the model's reasoning effort (e.g. low).
 The model stage degrades to SKIP when no model/credential is usable here, so a
 red result means the runtime broke. See CONTRIBUTING.md for one-time setup.
 USAGE
@@ -60,6 +67,7 @@ USAGE
 while [ $# -gt 0 ]; do
   case "$1" in
     --model)   MODEL="$2";   shift 2 ;;
+    --variant) VARIANT="$2"; shift 2 ;;
     --image)   IMAGE="$2";   shift 2 ;;
     --profile) PROFILE="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
@@ -87,7 +95,7 @@ fi
 info "self-testing $IMAGE — layer 1: image smoke test"
 "$ROOT/scripts/smoke-test.sh" "$IMAGE"
 
-info "self-testing $IMAGE — layer 2: end-to-end run (model: ${MODEL:-from konrad config}, profile: $PROFILE)"
+info "self-testing $IMAGE — layer 2: end-to-end run (model: ${MODEL:-from konrad config}${VARIANT:+, variant: $VARIANT}, profile: $PROFILE)"
 
 # Throwaway profile volumes (mirror bin/konrad's STATE_VOLUME/CACHE_VOLUME +
 # the --profile suffix); secrets stay shared, so we never touch credentials.
@@ -102,6 +110,7 @@ trap cleanup EXIT
 # it from the mounted config layer, exactly like a normal konrad run.
 run_args=(--profile "$PROFILE" run)
 [ -n "$MODEL" ] && run_args+=(--model "$MODEL")
+[ -n "$VARIANT" ] && run_args+=(--variant "$VARIANT")
 run_args+=("$PROMPT")
 
 # stdin from /dev/null: `opencode run` reads a non-tty stdin as piped input and
