@@ -1,0 +1,8 @@
+# Bundled skills taken from upstream unpatched, each pinned to the newest
+# commit that touched its path, so the pin moves only when the skill does.
+# image/fetch-skills.sh copies each one byte for byte into the image (skill
+# dir = <name>, which must match its SKILL.md `name:`); the GitLab
+# resolve-locks bot re-resolves the shas daily. konrad's own skills live in
+# image/opencode/skills/; a name may live in only one of the two places.
+# Format: <name> <repo URL> <commit sha> <path in repo>
+xlsx https://github.com/NousResearch/hermes-agent 0006a5e229aedbe6144d6b6140e2471dba8b738d skills/productivity/xlsx

@@ -86,7 +86,7 @@ import pypdf            # EDIT route
 import pdfplumber       # region discovery
 import pdf2image        # rasterization
 import reportlab        # GENERATE route
-import openpyxl, pandas # spreadsheets skill
+import openpyxl, pandas # xlsx skill
 import onnxruntime      # rapidocr engine
 print("ok")
 ' >/dev/null || fail "python skill imports failed"
@@ -162,10 +162,20 @@ in_image test -f /home/node/.config/opencode/instructions/environment.md \
   || fail "instructions/environment.md missing"
 in_image test -f /home/node/.config/opencode/agents/konrad.md \
   || fail "konrad agent missing"
-for skill in do-it-manually pdf quality-assurance spreadsheets; do
+for skill in do-it-manually pdf quality-assurance; do
   in_image test -d "/home/node/.config/opencode/skills/$skill" \
     || fail "$skill skill missing"
 done
+# Every skill pinned in skills.lock, as opencode itself lists it: present,
+# and with frontmatter it accepts (a skill opencode rejects is skipped silently).
+SKILLS_LOCK="$(cd "$(dirname "$0")/.." && pwd)/image/locks/skills.lock"
+listed="$(in_image opencode debug skill | jq -r '.[].name')" \
+  || fail "opencode debug skill failed"
+while read -r skill _; do
+  case "$skill" in ''|\#*) continue ;; esac
+  printf '%s\n' "$listed" | grep -x "$skill" >/dev/null \
+    || fail "$skill (skills.lock) not among the skills opencode lists"
+done < "$SKILLS_LOCK"
 # Bundled fonts
 in_image test -d /usr/local/share/fonts/konrad \
   || fail "bundled fonts missing"

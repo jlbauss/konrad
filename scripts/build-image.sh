@@ -11,9 +11,10 @@
 #   python-base   — Python venv + docling-slim (no repo files)
 #   python-models — Docling model download     (no repo files)
 #   venv-split    — the venv partitioned into three COPY layers
+#   skills        — upstream skills at their pinned commits (a quick fetch)
 #   final         — full runtime image
 #
-# We tag the three intermediate stages so Podman's layer cache keeps them
+# We tag the three slow intermediate stages so Podman's layer cache keeps them
 # alive across `podman system prune` / `podman image prune`. Without tags
 # those stages are treated as dangling and get collected, forcing a full
 # model re-download on the next build.

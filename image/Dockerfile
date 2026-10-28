@@ -17,6 +17,9 @@
 #                   pinned by commit; fetched by image/fetch-models.py so the
 #                   model layer is byte-stable. Tableformer + rapidocr ride
 #                   docling's own pins, not this lock.)
+#        - skills  (locks/skills.lock: upstream skills, each pinned to the
+#                   newest commit touching its path; fetched unpatched by
+#                   image/fetch-skills.sh in the `skills` stage)
 #      Each lock keys exactly one Dockerfile layer (or the FROM chain for
 #      base); Docker's layer cache reuses the layer when the lock didn't
 #      move. Local `konrad rebuild` and CI both read the same locks, so
@@ -161,6 +164,26 @@ RUN set -eux; \
       if [ -e "$d" ]; then mv "$d" /opt/venv-mid/; fi; \
     done; \
     test -d /opt/venv-heavy/torch
+
+# =============================================================================
+# Stage 2c — skills
+# Fetches the upstream skills pinned in locks/skills.lock, unpatched, into
+# /opt/skills/<name> (image/fetch-skills.sh). konrad adapts the image to them,
+# not them to the image: what a skill expects that konrad does differently
+# (baked deps, opencode's tool names) is said once in environment.md.
+# Invalidated only when the base or those two inputs change.
+# =============================================================================
+FROM ${BASE_IMAGE} AS skills
+
+# hadolint ignore=DL3008
+RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* /var/log/apt/* /var/log/dpkg.log
+
+COPY locks/skills.lock /tmp/skills.lock
+COPY fetch-skills.sh /tmp/fetch-skills.sh
+RUN bash /tmp/fetch-skills.sh /tmp/skills.lock /opt/skills \
+    && rm /tmp/skills.lock /tmp/fetch-skills.sh
 
 # =============================================================================
 # Stage 3 — final runtime image
@@ -492,6 +515,9 @@ RUN OPENCODE_VERSION="$(jq -r '."opencode-ai"' /tmp/npm.lock)" \
 # opencode/ (a ROADMAP update, a CI tweak, anything outside image/opencode/)
 # leaves this layer's diff_id stable — users pulling :latest after such
 # a commit don't re-download these files.
+# The upstream skills get a layer of their own, so a skills.lock bump
+# re-pulls only that layer, and a konrad skill edit leaves it alone.
+COPY --from=skills --chown=node:node /opt/skills/ /home/node/.config/opencode/skills/
 COPY --chown=node:node opencode/ /home/node/.config/opencode/
 
 # ── Version labels + build manifest ─────────────────────────────────────────
