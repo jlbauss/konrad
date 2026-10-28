@@ -49,15 +49,17 @@ set: `image/locks/python.lock`. Skill scripts under
 
 ## Skills from other projects
 
-Some bundled skills (`xlsx`) come unchanged from other projects and were
-written for other agents. Where they assume something else, this holds:
+Some bundled skills (`xlsx`, `docx`, `powerpoint`) come unchanged from
+other projects and were written for other agents. Where they assume
+something else, this holds:
 
 - Their dependencies are already installed. Skip any `pip install`,
   `uv run` or `npm install -g` step (the firewall refuses it anyway),
   and run their scripts by full path, since your cwd is `/workspace`:
   `python ~/.config/opencode/skills/<skill>/scripts/<script>.py`.
+  Their own `tests/` are for their maintainers; don't run them.
 - They name other agents' tools; use yours: `read_file` → `read`,
-  `write_file` → `write`, `terminal` / `execute_code` → `bash`,
+  `write_file` → `write`, `patch` → `edit`, `terminal` / `execute_code` → `bash`,
   `web_extract` → `webfetch` (allowed hosts only), `vision_analyze` →
   render to PNG and `read` it (needs a vision-capable model; otherwise
   say the visual check was skipped).

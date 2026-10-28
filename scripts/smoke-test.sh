@@ -87,10 +87,11 @@ import pdfplumber       # region discovery
 import pdf2image        # rasterization
 import reportlab        # GENERATE route
 import openpyxl, pandas # xlsx skill
+import docx, pptx       # docx, powerpoint skills
 import onnxruntime      # rapidocr engine
 print("ok")
 ' >/dev/null || fail "python skill imports failed"
-pass "docling, pypdf, pdfplumber, pdf2image, reportlab, openpyxl, pandas, onnxruntime"
+pass "docling, pypdf, pdfplumber, pdf2image, reportlab, openpyxl, pandas, docx, pptx, onnxruntime"
 
 # --- 5. Build manifest exists and parses ---
 info "build manifest"
