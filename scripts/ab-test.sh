@@ -201,6 +201,9 @@ export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}" XDG_DATA_HOME="${XDG_
 printf 'ab-test: %s task(s) × %s runs × A=%s, B=%s · %s%s · %s in parallel → %s\n' \
   "${#tasks[@]}" "$RUNS" "$A" "$B" "$MODEL" "${VARIANT:+ ($VARIANT)}" "$JOBS" "$OUT"
 printf '%s\n' "$SUFFIX" > "$OUT/prompt-suffix.txt"
+jq -n --arg a "$A" --arg b "$B" --arg model "$MODEL" --arg variant "$VARIANT" --argjson runs "$RUNS" \
+  --arg suffix "$SUFFIX" '{a: $a, b: $b, model: $model, variant: $variant, runs: $runs, prompt_suffix: $suffix}' \
+  > "$OUT/settings.json"
 for t in "${tasks[@]}"; do
   for n in $(seq 1 "$RUNS"); do
     printf '%s\0a\0%s\0%s\0%s\0' "$t" "$A" "$n" "$OUT/$t/a-$n"
