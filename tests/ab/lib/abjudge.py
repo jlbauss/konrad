@@ -18,6 +18,8 @@ report: unblinds the verdict.json files the judges wrote, combines both
 
 import argparse
 import datetime
+import email
+import email.policy
 import html
 import json
 import random
@@ -30,24 +32,56 @@ from collections import defaultdict
 from pathlib import Path
 
 from abdump import outline
+from PIL import Image
 
 DOCS = {".docx", ".pptx", ".xlsx", ".pdf"}
-TEXTS = {".txt", ".csv", ".md", ".json"}
+TEXTS = {".txt", ".csv", ".md", ".json", ".py", ".html"}
+IMAGES = {".png", ".jpg", ".jpeg"}
+MAIL = {".eml"}
 CRITERIA = ("request", "fidelity", "presentation")
 MAX_PAGES = 12
 
 
-def deliverables(ws, inputs):
-    """Office files, PDFs and text files the run left in its workspace, other than unchanged inputs."""
+def files(ws):
+    """Every file the run left under ws, relative, without hidden ones (konrad's .agent/ among them) and caches."""
     if not ws.is_dir():
-        return set()
+        return []
+    rels = (f.relative_to(ws) for f in ws.rglob("*") if f.is_file())
+    return sorted(r for r in rels if not any(p.startswith(".") or p == "__pycache__" for p in r.parts))
+
+
+def deliverables(ws, inputs):
+    """What the run delivered, other than unchanged inputs: documents, emails, images and text files at the top,
+    and text files (an index, a list) in folders."""
     names = set()
-    for f in ws.iterdir():
-        if f.is_file() and f.suffix.lower() in DOCS | TEXTS and not f.name.startswith("."):
-            src = inputs / f.name
-            if not (src.exists() and src.read_bytes() == f.read_bytes()):
-                names.add(f.name)
+    for rel in files(ws):
+        kinds = DOCS | TEXTS | IMAGES | MAIL if len(rel.parts) == 1 else TEXTS
+        if rel.suffix.lower() in kinds:
+            src = inputs / rel
+            if not (src.exists() and src.read_bytes() == (ws / rel).read_bytes()):
+                names.add(str(rel))
     return names
+
+
+def file_list(ws, inputs):
+    """FILES.txt: the attempt's workspace as a list, so the judge sees names, folders and leftovers."""
+    lines = []
+    for rel in files(ws):
+        src = inputs / rel
+        note = " (input, unchanged)" if src.exists() and src.read_bytes() == (ws / rel).read_bytes() else ""
+        lines.append(f"{rel}  {(ws / rel).stat().st_size} bytes{note}")
+    return "\n".join(lines or ["(no files)"]) + "\n"
+
+
+def mail_text(msg):
+    """An email as a reader sees it: the headers that matter, the text, and the attachments by name."""
+    lines = [f"{h}: {msg[h]}" for h in ("From", "To", "Cc", "Subject", "Date", "Message-ID", "In-Reply-To", "References")
+             if msg[h] is not None]
+    body = msg.get_body(preferencelist=("plain", "html"))
+    lines += ["", body.get_content() if body else "(no text part)", ""]
+    lines += [f"Attachment: {a.get_filename()} ({a.get_content_type()}, {len(a.get_payload(decode=True) or b'')} bytes)"
+              for a in msg.iter_attachments()]
+    return "\n".join(lines) + "\n"
 
 
 def render(src, out, dpi):
@@ -55,8 +89,28 @@ def render(src, out, dpi):
     if not src.exists():
         (out / "MISSING.txt").write_text("No such file was delivered.\n")
         return
-    if src.suffix.lower() in TEXTS:
+    suffix = src.suffix.lower()
+    if suffix in TEXTS:
         shutil.copy(src, out / "text.txt")
+        return
+    if suffix in IMAGES:
+        try:
+            with Image.open(src) as im:
+                im.thumbnail((1600, 1600))
+                im.convert("RGB").save(out / "page-1.png")
+        except OSError:
+            (out / "MISSING.txt").write_text("The image can't be opened.\n")
+        return
+    if suffix in MAIL:
+        msg = email.message_from_bytes(src.read_bytes(), policy=email.policy.default)
+        (out / "text.txt").write_text(mail_text(msg), encoding="utf-8")
+        for a in msg.iter_attachments():
+            name = Path(a.get_filename() or "").name
+            if Path(name).suffix.lower() in DOCS:
+                doc = Path(tempfile.mkdtemp()) / name
+                doc.write_bytes(a.get_payload(decode=True) or b"")
+                pages(doc, out, dpi, "attachment-")
+                break
         return
     try:
         shape = outline(src)
@@ -64,6 +118,16 @@ def render(src, out, dpi):
         shape = {"error": f"could not read the file's structure: {type(exc).__name__}"}
     if shape is not None:
         (out / "outline.json").write_text(json.dumps(shape, ensure_ascii=False, indent=1, default=str), encoding="utf-8")
+    pages(src, out, dpi)
+    if suffix == ".pptx":
+        from pptx import Presentation
+        notes = [f"Slide {i}: " + (s.notes_slide.notes_text_frame.text.strip() if s.has_notes_slide else "")
+                 for i, s in enumerate(Presentation(src).slides, 1)]
+        (out / "notes.txt").write_text("\n".join(notes) + "\n", encoding="utf-8")
+
+
+def pages(src, out, dpi, prefix=""):
+    """Page images (page-N.png) and text of an office file or PDF, through LibreOffice for the former."""
     pdf = src
     if src.suffix.lower() != ".pdf":
         tmp = Path(tempfile.mkdtemp())
@@ -71,15 +135,10 @@ def render(src, out, dpi):
                        capture_output=True, timeout=180, check=False, env={"HOME": str(tmp), "PATH": "/usr/bin:/bin"})
         pdf = tmp / (src.stem + ".pdf")
     if not pdf.exists():
-        (out / "MISSING.txt").write_text("LibreOffice could not open the file.\n")
+        (out / "MISSING.txt").write_text(f"LibreOffice could not open {prefix}{src.name}.\n")
         return
     subprocess.run(["pdftoppm", "-r", str(dpi), "-l", str(MAX_PAGES), "-png", str(pdf), str(out / "page")], check=True)
-    subprocess.run(["pdftotext", "-layout", str(pdf), str(out / "text.txt")], check=True)
-    if src.suffix.lower() == ".pptx":
-        from pptx import Presentation
-        notes = [f"Slide {i}: " + (s.notes_slide.notes_text_frame.text.strip() if s.has_notes_slide else "")
-                 for i, s in enumerate(Presentation(src).slides, 1)]
-        (out / "notes.txt").write_text("\n".join(notes) + "\n", encoding="utf-8")
+    subprocess.run(["pdftotext", "-layout", str(pdf), str(out / f"{prefix}text.txt")], check=True)
 
 
 def runs(results, task):
@@ -111,12 +170,16 @@ def blind(args):
                 p.mkdir()
                 shutil.copy(tasks_dir / task / "prompt.md", p / "task.md")
                 for f in sorted(inputs.iterdir()):
-                    if f.suffix.lower() in DOCS:
+                    if f.suffix.lower() in DOCS | IMAGES | MAIL:
                         render(f, p / "input" / f.name, args.dpi)
+                    elif f.is_dir():
+                        shutil.copytree(f, p / "input" / f.name)
                     else:
                         (p / "input").mkdir(exist_ok=True)
                         shutil.copy(f, p / "input" / f.name)
                 for label, side in (("X", x), ("Y", y)):
+                    (p / label).mkdir()
+                    (p / label / "FILES.txt").write_text(file_list(results / task / f"{side}-{n}" / "ws", inputs))
                     if not names:
                         render(Path("/nonexistent"), p / label / "deliverable", args.dpi)
                     for name in sorted(names):
