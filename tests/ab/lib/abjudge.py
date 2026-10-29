@@ -346,6 +346,7 @@ def report(args):
     date = args.date or datetime.date.fromtimestamp((results / "results.json").stat().st_mtime).isoformat()
     NAME.update({"a": args.a_name or "A", "b": args.b_name or "B"})
     A, B = NAME["a"], NAME["b"]
+    isolated = all("batch" in k for k in json.loads((results / "judge-key.json").read_text()))
     label = {"a": args.a_label or settings.get("a", "A"), "b": args.b_label or settings.get("b", "B")}
     image = {"a": settings.get("a", "?"), "b": settings.get("b", "?")}
     model = {}
@@ -469,7 +470,9 @@ def report(args):
            (f"- The runs used `{model['a']}`; another model, such as the local one konrad is tuned for, may behave differently."
             if same_model else "- Each model ran at the effort shown, through one provider; the same model served elsewhere "
             "(another provider, a local runtime, a quantized build) may behave differently."),
-           "- The reviewers are kept blind by instruction: they could have looked at other files on disk.", ""]
+           ("- Each reviewer could open only its own batch's folder, so the other packets and the runs' files stayed out "
+            "of its reach." if isolated else
+            "- The reviewers are kept blind by instruction: they could have looked at other files on disk."), ""]
     (out / "README.md").write_text("\n".join(md), encoding="utf-8")
     size = sum(f.stat().st_size for f in out.rglob("*") if f.is_file())
     print(f"{answer}\n{out}/README.md, {len(list((out / 'img').iterdir()))} images, {size / 1e6:.2f} MB")
@@ -483,7 +486,7 @@ def main():
     b.add_argument("judge")
     b.add_argument("tasks_dir")
     b.add_argument("host_judge")
-    b.add_argument("--batch", type=int, default=5)
+    b.add_argument("--batch", type=int, default=10)
     b.add_argument("--dpi", type=int, default=60)
     b.add_argument("--tasks", default="", help="comma-separated; default all tasks in the results dir")
     r = sub.add_parser("report")

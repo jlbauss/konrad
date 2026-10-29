@@ -3,13 +3,13 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
 # Blind judging of an ab-test.sh results dir: how good the deliverables are,
-# beyond the pass/fail checks of each task's grader. The judges are agents
-# in the session that runs this (subagents, a cheaper model such as Sonnet at
-# medium effort), never told which side is which:
+# beyond the pass/fail checks of each task's grader. The judges are ab-judge
+# subagents of the session that runs this (.claude/agents/ab-judge.md: Opus,
+# with only Read, Write and Glob), never told which side is which:
 #
 #   scripts/ab-judge.sh blind  <results dir>   # packets + batches in <results dir>.judge/
 #   (each line of <results dir>.judge/batches.txt is one batch's folder: give
-#    it to one subagent as the only path it gets; its JUDGE.md is the
+#    it to one ab-judge subagent as the only path it gets; its JUDGE.md is the
 #    instructions, and the subagent writes verdict.json into each packet)
 #   scripts/ab-judge.sh report <results dir> [--a-name Haiku --b-name Qwen]
 #                              [--show <task>:<run>:<page>[,<page>]]…
