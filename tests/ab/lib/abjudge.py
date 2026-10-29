@@ -6,9 +6,10 @@ blind:  each pair of runs (a-n, b-n) of a results dir becomes two packets,
         X/Y swapped, under random ids: the task, its input, and per side
         every deliverable as page renders, text and speaker notes, never the
         file itself or the agent's notes, which could say how it was made.
-        The key goes into the results dir, the packets and the batches (one
-        task and one order per batch, so no judge sees both halves of a
-        pair) into a judge dir beside it.
+        The key goes into the results dir, the packets into a judge dir
+        beside it: one folder per batch (one task and one order, so no judge
+        sees both halves of a pair), each with its own JUDGE.md, in a
+        packets/ folder that can't be listed, so a judge reaches only its own.
 report: unblinds the verdict.json files the judges wrote, combines both
         orders (a pair counts for a side only when both agree) and writes
         report/README.md with img/ beside it: a short study with the graded
@@ -148,12 +149,21 @@ def runs(results, task):
     return sorted(int(d.name[2:]) for d in (results / task).glob("a-*") if (results / task / f"b-{d.name[2:]}").is_dir())
 
 
+def packet_dir(judge, k):
+    """Where a key entry's packet is: in its batch's folder, or flat in packets/ for runs judged before batches had one."""
+    return judge / "packets" / k["batch"] / k["id"] if "batch" in k else judge / "packets" / k["id"]
+
+
 def blind(args):
+    """Packets go into one folder per batch, under a random name, in a packets/ folder its owner can pass through but
+    not list: a judge given its batch's path finds its own packets and JUDGE.md, and no wildcard reaches the rest."""
     results, judge, tasks_dir = Path(args.results), Path(args.judge), Path(args.tasks_dir)
-    if (judge / "packets").exists():
-        shutil.rmtree(judge / "packets")
-    (judge / "packets").mkdir(parents=True)
-    shutil.copy(tasks_dir / "JUDGE.md", judge / "JUDGE.md")
+    packets, staging = judge / "packets", judge / "staging"
+    for d in (packets, staging):
+        if d.exists():
+            d.chmod(0o755)
+            shutil.rmtree(d)
+    staging.mkdir(parents=True)
     key, batches = [], []
     tasks = sorted(d.name for d in results.iterdir() if d.is_dir() and (tasks_dir / d.name / "prompt.md").exists())
     if args.tasks:
@@ -168,7 +178,7 @@ def blind(args):
                 x = "a" if (first + order) % 2 == 0 else "b"
                 y = "b" if x == "a" else "a"
                 pid = secrets.token_hex(4)
-                p = judge / "packets" / pid
+                p = staging / pid
                 p.mkdir()
                 shutil.copy(tasks_dir / task / "prompt.md", p / "task.md")
                 for f in sorted(inputs.iterdir()):
@@ -192,7 +202,15 @@ def blind(args):
             ids = by_order[order]
             random.shuffle(ids)
             for i in range(0, len(ids), args.batch):
-                batches.append(" ".join(f"{args.host_judge}/packets/{pid}" for pid in ids[i:i + args.batch]))
+                batch = secrets.token_hex(8)
+                (packets / batch).mkdir(parents=True)
+                shutil.copy(tasks_dir / "JUDGE.md", packets / batch / "JUDGE.md")
+                for pid in ids[i:i + args.batch]:
+                    (staging / pid).rename(packets / batch / pid)
+                    next(k for k in key if k["id"] == pid)["batch"] = batch
+                batches.append(f"{args.host_judge}/packets/{batch}")
+    staging.rmdir()
+    packets.chmod(0o311)
     (results / "judge-key.json").write_text(json.dumps(key, indent=1))
     (judge / "batches.txt").write_text("\n".join(batches) + "\n")
     print(f"{len(key)} packets in {len(batches)} batches")
@@ -202,7 +220,7 @@ def verdicts(results, judge):
     """{task: {pair: {order: verdict in a/b terms}}} for every packet a judge has answered."""
     out = defaultdict(lambda: defaultdict(dict))
     for k in json.loads((results / "judge-key.json").read_text()):
-        f = judge / "packets" / k["id"] / "verdict.json"
+        f = packet_dir(judge, k) / "verdict.json"
         if not f.exists():
             continue
         v = json.loads(f.read_text())
@@ -210,7 +228,7 @@ def verdicts(results, judge):
         out[k["task"]][k["pair"]][k["order"]] = {
             "winner": side.get(v.get("preferred"), "tie"), "strength": v.get("strength", ""),
             "scores": {side[s]: v.get("scores", {}).get(s, {}) for s in ("X", "Y")},
-            "reasons": v.get("reasons", ""), "id": k["id"], "X": k["X"]}
+            "reasons": v.get("reasons", ""), "id": k["id"], "X": k["X"], "dir": packet_dir(judge, k)}
     return out
 
 
@@ -265,7 +283,7 @@ def examples(s, limit=3):
 
 def side_dirs(judge, o):
     """{a: dir, b: dir} of the X/Y renders in the order-1 packet."""
-    p = judge / "packets" / o[1]["id"]
+    p = o[1]["dir"]
     return {o[1]["X"]: p / "X", ("b" if o[1]["X"] == "a" else "a"): p / "Y"}
 
 
