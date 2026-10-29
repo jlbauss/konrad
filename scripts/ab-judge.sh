@@ -8,7 +8,7 @@
 # with only Read, Write and Glob), never told which side is which:
 #
 #   scripts/ab-judge.sh blind  <results dir>   # packets + batches in <results dir>.judge/
-#   (each line of <results dir>.judge/batches.txt is one batch's folder: give
+#   (each line of <results dir>/judge-batches.txt is one batch's folder: give
 #    it to one ab-judge subagent as the only path it gets; its JUDGE.md is the
 #    instructions, and the subagent writes verdict.json into each packet)
 #   scripts/ab-judge.sh report <results dir> [--a-name Haiku --b-name Qwen]
@@ -47,7 +47,7 @@ run() {
 
 case "$cmd" in
   blind)  run blind /results /judge /ab "$judge" "$@"
-          printf 'ab-judge: one folder per batch in %s/batches.txt, each with its JUDGE.md\n' "$judge" ;;
+          printf 'ab-judge: one folder per batch in %s/judge-batches.txt, each with its JUDGE.md\n' "$results" ;;
   report) run report /results /judge --name "$(basename "$results")" "$@"
           printf 'ab-judge: %s/report/ (commit it as tests/ab/reports/<date>-<name>/)\n' "$results" ;;
   *)      usage >&2; exit 2 ;;

@@ -212,7 +212,9 @@ def blind(args):
     staging.rmdir()
     packets.chmod(0o311)
     (results / "judge-key.json").write_text(json.dumps(key, indent=1))
-    (judge / "batches.txt").write_text("\n".join(batches) + "\n")
+    # Beside the key, not in the judge dir: a judge that wanders up from its folder mustn't find the others' names.
+    (judge / "batches.txt").unlink(missing_ok=True)
+    (results / "judge-batches.txt").write_text("\n".join(batches) + "\n")
     print(f"{len(key)} packets in {len(batches)} batches")
 
 
