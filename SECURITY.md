@@ -9,7 +9,7 @@ konrad's job is to be a boundary: an agent that runs code, reads files and talks
 
 ## Reporting a vulnerability
 
-**Email [gitlab-reply+jbauss2-konrad-3917-issue-@git.nrw](mailto:gitlab-reply+jbauss2-konrad-3917-issue-@git.nrw).** This is the project's GitLab Service Desk address: your email becomes a confidential issue that only the maintainer can read, and replies reach you by email. You need no account; gitlab.git.nrw doesn't offer open sign-up, so email is the way in for everyone.
+**Email [gitlab-reply+jbauss2-konrad-security-19246-issue-@git.nrw](mailto:gitlab-reply+jbauss2-konrad-security-19246-issue-@git.nrw).** This is the GitLab Service Desk address of a private project that holds only security reports: your email becomes an issue there that only the maintainer can read, and replies reach you by email. You need no account; gitlab.git.nrw doesn't offer open sign-up, so email is the way in for everyone.
 
 Please don't report vulnerabilities as a public issue, a merge request comment, or on the GitHub mirror (it takes no issues or reports).
 
