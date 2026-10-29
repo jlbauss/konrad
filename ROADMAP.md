@@ -30,7 +30,6 @@ The longer backlog this replaced (58 items, cut on 2026-10-26), with every desig
   - **Unchanged:** during the session the agent can still push any branch and open MRs; review and the protected default branch stay the gate.
   - **Open:** one sidecar per repo container (so after container-per-repo); a port-scoped seal exemption for its address, like DNS's; the token prompt and expiry self-check move out of the agent container, the token into a volume only the sidecar mounts; one route per repo once there are several; a second VM on apple/container.
   - **Probe first:** clone, fetch and push with `merge_request.create` through the proxy, MR link back; any other project or API path refused; the token absent from everything the agent can read.
-- [ ] `S` **`konrad code` from Ghostty: `'xterm-ghostty': unknown terminal type`.** `do_code` passes the host's `TERM` through and the image has no terminfo for it, so `clear` and anything curses-based fails (seen 2026-10-01). Fall back to `xterm-256color` when `infocmp "$TERM"` fails in the entrypoint, or bake Ghostty's terminfo; check whether the `konrad` TUI has the same issue. Also seen 2026-10-19: multi-line pastes into a session's bash hang at the prompt, while single lines run (readline echoes them in its horizontal-scroll fallback, a sign it doesn't know the terminal); a paste replayed through a pty in the image runs under both TERMs, so check whether the fallback fixes it before looking further.
 
 ### A frontend beyond the terminal
 
