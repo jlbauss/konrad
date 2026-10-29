@@ -11,7 +11,8 @@
 #   (hand each line of <results dir>.judge/batches.txt to one subagent, with
 #    <results dir>.judge/JUDGE.md as its instructions; each writes verdict.json
 #    into its packets)
-#   scripts/ab-judge.sh report <results dir> [--show <task>:<run>:<page>[,<page>]]…
+#   scripts/ab-judge.sh report <results dir> [--a-name Haiku --b-name Qwen]
+#                              [--show <task>:<run>:<page>[,<page>]]…
 #                                              # <results dir>/report/: README.md + img/
 #
 # A packet holds the task, its input and both deliverables as page renders,
@@ -26,7 +27,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 die() { printf 'ab-judge: %s\n' "$*" >&2; exit 1; }
-usage() { sed -n '9,16p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '9,17p' "$0" | sed 's/^# \{0,1\}//'; }
 
 [ $# -ge 2 ] || { usage >&2; exit 2; }
 cmd="$1" results="$2"

@@ -40,6 +40,8 @@ IMAGES = {".png", ".jpg", ".jpeg"}
 MAIL = {".eml"}
 CRITERIA = ("request", "fidelity", "presentation")
 MAX_PAGES = 12
+# What the report calls the two sides; report() sets them from --a-name and --b-name.
+NAME = {"a": "A", "b": "B"}
 
 
 def files(ws):
@@ -284,7 +286,7 @@ def pair_image(a, b, out, gap=16, edge=1):
 def ab_terms(text, x):
     """A reviewer's reasons with X and Y replaced by the versions they stood for."""
     y = "b" if x == "a" else "a"
-    return re.sub(r"\b([XY])\b", lambda m: (x if m.group(1) == "X" else y).upper(), text)
+    return re.sub(r"\b([XY])\b", lambda m: NAME[x if m.group(1) == "X" else y], text)
 
 
 def call(s):
@@ -292,7 +294,8 @@ def call(s):
     a, b, n = s["a"], s["b"], s["pairs"] or 1
     if a == b or abs(a - b) < 2:
         return "no real difference", ""
-    lead, win = ("A", "a") if a > b else ("B", "b")
+    win = "a" if a > b else "b"
+    lead = NAME[win]
     return (f"{lead} clearly better" if abs(a - b) >= n / 2 else f"{lead} somewhat better"), win
 
 
@@ -323,6 +326,8 @@ def report(args):
     name = args.name or results.name
     settings = json.loads((results / "settings.json").read_text()) if (results / "settings.json").exists() else {}
     date = args.date or datetime.date.fromtimestamp((results / "results.json").stat().st_mtime).isoformat()
+    NAME.update({"a": args.a_name or "A", "b": args.b_name or "B"})
+    A, B = NAME["a"], NAME["b"]
     label = {"a": args.a_label or settings.get("a", "A"), "b": args.b_label or settings.get("b", "B")}
     image = {"a": settings.get("a", "?"), "b": settings.get("b", "?")}
     model = {}
@@ -330,7 +335,7 @@ def report(args):
         m, v = settings.get(f"{side}_model") or settings.get("model", "?"), settings.get(f"{side}_variant", settings.get("variant"))
         model[side] = m + ("" if v is None else f" ({v or 'default'} effort)")
     same_model = model["a"] == model["b"]
-    question = args.question or "Does version B produce better results than version A?"
+    question = args.question or f"Does version {B} produce better results than version {A}?"
     reviewer = f" ({args.judge_label})" if args.judge_label else ""
     grades, per_task = graded(results), verdicts(results, judge)
     summaries = {t: summarize(p) for t, p in per_task.items()}
@@ -341,7 +346,7 @@ def report(args):
     runs_n = settings.get("runs") or max((g.get("a", {}).get("runs", 0) for g in grades.values()), default=0)
     wins = {w: [t for t, (_, cw) in calls.items() if cw == w] for w in ("a", "b", "")}
     agree = sum(s["consistent"] for s in summaries.values()), sum(s["pairs"] for s in summaries.values())
-    answer = (f"Of {len(summaries)} tasks, A was better in {len(wins['a'])}, B in {len(wins['b'])}, "
+    answer = (f"Of {len(summaries)} tasks, {A} was better in {len(wins['a'])}, {B} in {len(wins['b'])}, "
               f"and {len(wins[''])} showed no real difference.")
     prompts = {t: first_sentence((tasks_dir / t / "prompt.md").read_text()) if (tasks_dir / t / "prompt.md").exists() else ""
                for t in summaries}
@@ -356,25 +361,26 @@ def report(args):
         return re.sub(r"[^\w\- ]", "", f"3.{i} {t}: {calls[t][0]}".lower()).replace(" ", "-")
 
     md = [f"# {question}", "", f"*A/B test report · {name} · {date}*", "", f"**{answer}**", "",
-          (f"> **In short.** Two versions of konrad, A ({label['a']}) and B ({label['b']}), did the same {len(summaries)} "
+          (f"> **In short.** Two versions of konrad, {A} ({label['a']}) and {B} ({label['b']}), did the same {len(summaries)} "
            f"tasks, {runs_n} times each, with the same AI model. " if same_model else
-           f"> **In short.** Two AI models, A ({label['a']}) and B ({label['b']}), did the same {len(summaries)} tasks "
+           f"> **In short.** Two AI models, {A} ({label['a']}) and {B} ({label['b']}), did the same {len(summaries)} tasks "
            f"in konrad, {runs_n} times each. ") + "Every result was checked automatically for hard facts, "
           "and every pair of results was compared by AI reviewers who didn't know which version made which.", "",
-          "| task | outcome | pairs: A better / no difference / B better | checks passed A / B | tokens read A / B (k) |",
+          f"| task | outcome | pairs: {A} better / no difference / {B} better | checks passed {A} / {B} | "
+          f"tokens read {A} / {B} (k) |",
           "| --- | --- | --- | --- | --- |"]
     for i, t in enumerate(order, 1):
         s = summaries[t]
         md.append(f"| [{t}](#{anchor(i, t)}) | {calls[t][0]} | {s['a']} / {s['tie']} / {s['b']} | "
                   f"{fmt(g_(t, 'a', 'score', 100), '.0f')}% / {fmt(g_(t, 'b', 'score', 100), '.0f')}% | "
                   f"{fmt(g_(t, 'a', 'tokens_in', 1e-3), '.0f')} / {fmt(g_(t, 'b', 'tokens_in', 1e-3), '.0f')} |")
-    md += ["", "## 1. What was compared", "", "| | A | B |", "| --- | --- | --- |",
+    md += ["", "## 1. What was compared", "", f"| | {A} | {B} |", "| --- | --- | --- |",
            f"| version | {cell(label['a'])} | {cell(label['b'])} |", f"| image | `{image['a']}` | `{image['b']}` |",
            *([] if same_model else [f"| model | `{model['a']}` | `{model['b']}` |"]), "",
            ((f"Both versions ran with `{model['a']}`." if same_model else "") + f"{suffix} The tasks:").lstrip(), ""]
     md += [f"- **{t}**: “{prompts[t]}”" for t in order]
     md += ["", "## 2. How", "",
-           f"1. **Same task, same input, {runs_n} runs per version.** Run 1 of A and run 1 of B form a *pair*, and so on.",
+           f"1. **Same task, same input, {runs_n} runs per version.** Run 1 of {A} and run 1 of {B} form a *pair*, and so on.",
            "1. **Automatic checks.** Each task has a small test that checks fixed facts about the result (is the old name "
            "gone, is the chart there). They tell whether a result is correct, not whether it is good.",
            f"1. **Blind review.** An AI reviewer{reviewer} gets the request, the input and both results as page images and "
@@ -386,7 +392,7 @@ def report(args):
            "1. **A task's outcome** is “clearly better” when one version wins at least half of all pairs more than the "
            "other, “somewhat better” when it wins at least two more, and “no real difference” otherwise.", "",
            "## 3. Results", "",
-           "Per task: the outcome, what a reviewer saw, and where one version won, the pages that show it (A left, B right). "
+           f"Per task: the outcome, what a reviewer saw, and where one version won, the pages that show it ({A} left, {B} right). "
            "All numbers and more reasons are folded away under each task."]
 
     for i, t in enumerate(order, 1):
@@ -399,9 +405,9 @@ def report(args):
                        next(iter(examples(s, 1)), None))
             pages = list(range(1, args.pages + 1)) if winner else []
         md += ["", f"### 3.{i} {t}: {verdict}", "", f"*“{prompts[t]}”*", "",
-               f"A better in {s['a']} pairs, no difference in {s['tie']}, B better in {s['b']}; the two reviews agreed "
-               f"in {s['consistent']} of {s['pairs']}. Automatic checks passed: A {fmt(g_(t, 'a', 'score', 100), '.0f')}%, "
-               f"B {fmt(g_(t, 'b', 'score', 100), '.0f')}%."]
+               f"{A} better in {s['a']} pairs, no difference in {s['tie']}, {B} better in {s['b']}; the two reviews agreed "
+               f"in {s['consistent']} of {s['pairs']}. Automatic checks passed: {A} {fmt(g_(t, 'a', 'score', 100), '.0f')}%, "
+               f"{B} {fmt(g_(t, 'b', 'score', 100), '.0f')}%."]
         if run is not None and run in s["both"]:
             o = s["both"][run]
             md += ["", f"**A reviewer on run {run}:** {ab_terms(o[1]['reasons'], o[1]['X'])}"]
@@ -412,17 +418,17 @@ def report(args):
                 for side in "ab":
                     missing = dirs[side] / doc / "MISSING.txt"
                     if missing.exists() and pages:
-                        md += ["", f"*{side.upper()} has no {doc}: {missing.read_text().strip()}*"]
+                        md += ["", f"*{NAME[side]} has no {doc}: {missing.read_text().strip()}*"]
                 for pg in pages:
                     if not any(pg <= len(files[side]) for side in "ab"):
                         continue
                     f = f"{t}-run{run}-{doc.replace('.', '-')}-{pg}.jpg"
                     pair_image(*(files[side][pg - 1] if pg <= len(files[side]) else None for side in "ab"), out / "img" / f)
-                    md += ["", f"![run {run}, {doc}, {kind} {pg}: A left, B right](img/{f})", "",
-                           f"*Run {run}, {doc}, {kind} {pg}: A left, B right.*"]
+                    md += ["", f"![run {run}, {doc}, {kind} {pg}: {A} left, {B} right](img/{f})", "",
+                           f"*Run {run}, {doc}, {kind} {pg}: {A} left, {B} right.*"]
         def row(title, f):
             return f"| {title} | " + " | ".join(f(g[side]) if side in g else "–" for side in "ab") + " |"
-        md += ["", "<details><summary>All numbers</summary>", "", "| | A | B |", "| --- | --- | --- |",
+        md += ["", "<details><summary>All numbers</summary>", "", f"| | {A} | {B} |", "| --- | --- | --- |",
                row("automatic checks passed", lambda x: f"{x['score'] * 100:.0f}% ({x['all_pass']} of {x['runs']} runs flawless)"),
                *(f"| review score: {c} | {fmt(s['means'][(c, 'a')], '.1f')} / 5 | {fmt(s['means'][(c, 'b')], '.1f')} / 5 |"
                  for c in CRITERIA),
@@ -436,7 +442,7 @@ def report(args):
             md += ["", "<details><summary>More reviewers' reasons</summary>", ""]
             for n_ in more:
                 o = s["both"][n_]
-                outcome = {"a": "A better", "b": "B better", "tie": "no difference"}[s["final"][n_]]
+                outcome = {"a": f"{A} better", "b": f"{B} better", "tie": "no difference"}[s["final"][n_]]
                 md.append(f"- **Run {n_}, {outcome}:** {ab_terms(o[1]['reasons'], o[1]['X'])}")
             md += ["", "</details>"]
 
@@ -470,6 +476,8 @@ def main():
     r.add_argument("--question", default="")
     r.add_argument("--a-label", dest="a_label", default="")
     r.add_argument("--b-label", dest="b_label", default="")
+    r.add_argument("--a-name", dest="a_name", default="", help="short name for side A in the report, e.g. Haiku")
+    r.add_argument("--b-name", dest="b_name", default="", help="short name for side B in the report")
     r.add_argument("--judge-label", dest="judge_label", default="")
     r.add_argument("--date", default="", help="the runs' date; default: when results.json was written")
     r.add_argument("--pages", type=int, default=2, help="pages shown where one side won, unless --show picks them")
