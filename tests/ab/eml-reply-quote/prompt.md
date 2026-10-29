@@ -1,0 +1,1 @@
+anfrage.eml is a customer's request for a quote. Write my reply as antwort.eml, ready to open and send from my mail program: in German, as a proper reply to her message, with the quote in the text (each item with quantity, unit price and line total, then net, 19% VAT and gross) and the same quote attached as angebot.pdf. My notes are in notizen.txt.

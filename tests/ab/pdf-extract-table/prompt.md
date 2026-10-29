@@ -1,0 +1,1 @@
+bericht.pdf is our quarterly report. Page 2 has a table of revenue by branch. Put that table into umsatz.csv: one row per branch with the table's columns, leave out the total row, numbers as plain numbers with a decimal point (no thousands separators, no % signs), UTF-8 and comma-separated.

@@ -123,3 +123,30 @@ def close(a, b, tol=0.01):
         return abs(float(a) - float(b)) <= tol
     except (TypeError, ValueError):
         return False
+
+
+def amounts(text):
+    """Every number written in the text, as floats, however it's formatted: 4.034,10, 4,034.10, 4 034,10, 4034.1.
+
+    A token whose reading is ambiguous (1.234 is 1234 in German, 1.234 in English)
+    contributes both readings, so a grader asks "is this amount there", not "in which locale".
+    """
+    found = []
+    for tok in re.findall(r"-?\d[\d.,'  ]*\d|\d", str(text)):
+        tok = re.sub(r"[  ']", "", tok)
+        readings = set()
+        for dec in (",", "."):
+            thou = "." if dec == "," else ","
+            head, _, tail = tok.rpartition(dec)
+            if head and re.fullmatch(r"\d+", tail) and re.fullmatch(rf"-?\d{{1,3}}(\{thou}\d{{3}})*|-?\d+", head):
+                readings.add(float(head.replace(thou, "") + "." + tail))
+            if re.fullmatch(rf"-?\d{{1,3}}(\{thou}\d{{3}})+", tok):
+                readings.add(float(tok.replace(thou, "")))
+        if re.fullmatch(r"-?\d+", tok):
+            readings.add(float(tok))
+        found.extend(readings)
+    return found
+
+
+def has_amount(text, value, tol=0.005):
+    return any(abs(v - value) <= tol for v in amounts(text))

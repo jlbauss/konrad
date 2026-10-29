@@ -1,0 +1,1 @@
+protokolle.md holds two years of minutes of our sports club's board. List every spending decision the board actually took in beschluesse.md, as a table with the date of the meeting, what the money is for, and the amount. Leave out proposals that were rejected or put off, and mark any decision that a later meeting reversed.

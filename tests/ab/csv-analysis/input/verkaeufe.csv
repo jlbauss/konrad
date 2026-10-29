@@ -1,0 +1,649 @@
+datum,region,produkt,menge,einzelpreis,umsatz
+2025-01-01,Süd,Kaffeemaschine Pro,4,289.00,1156.00
+2025-01-01,West,Wasserkocher,1,39.90,39.90
+2025-01-03,Süd,Milchaufschäumer,4,49.90,199.60
+2025-01-03,West,Thermobecher,3,24.90,74.70
+2025-01-03,West,Milchaufschäumer,2,49.90,99.80
+2025-01-03,Ost,Milchaufschäumer,3,49.90,149.70
+2025-01-04,Ost,Entkalker 6er,12,17.50,210.00
+2025-01-05,Nord,Kaffeemaschine Pro,4,289.00,1156.00
+2025-01-05,Süd,Entkalker 6er,6,17.50,105.00
+2025-01-07,Ost,Espressomühle,2,159.00,318.00
+2025-01-08,Nord,Espressomühle,2,159.00,318.00
+2025-01-08,Ost,Milchaufschäumer,2,49.90,99.80
+2025-01-10,Süd,Milchaufschäumer,2,49.90,99.80
+2025-01-10,West,Espressomühle,2,159.00,318.00
+2025-01-11,West,Wasserkocher,2,39.90,79.80
+2025-01-11,West,Wasserkocher,2,39.90,79.80
+2025-01-11,Ost,Entkalker 6er,6,17.50,105.00
+2025-01-12,Süd,Thermobecher,9,24.90,224.10
+2025-01-12,Ost,Kaffeemaschine Pro,2,289.00,578.00
+2025-01-13,Süd,Entkalker 6er,12,17.50,210.00
+2025-01-14,Nord,Thermobecher,6,24.90,149.40
+2025-01-15,Süd,Entkalker 6er,3,17.50,52.50
+2025-01-16,Nord,Thermobecher,3,24.90,74.70
+2025-01-16,Süd,Kapselhalter,3,19.90,59.70
+2025-01-17,Süd,Siebträger Basic,4,449.00,1796.00
+2025-01-17,West,Milchaufschäumer,3,49.90,149.70
+2025-01-18,Süd,Entkalker 6er,9,17.50,157.50
+2025-01-19,Nord,Milchaufschäumer,1,49.90,49.90
+2025-01-20,West,Thermobecher,12,24.90,298.80
+2025-01-20,Ost,Kaffeemaschine Pro,1,289.00,289.00
+2025-01-21,West,Thermobecher,12,24.90,298.80
+2025-01-21,Ost,Milchaufschäumer,1,49.90,49.90
+2025-01-22,Süd,Entkalker 6er,3,17.50,52.50
+2025-01-23,Nord,Wasserkocher,2,39.90,79.80
+2025-01-23,Süd,Kapselhalter,3,19.90,59.70
+2025-01-23,Süd,Entkalker 6er,6,17.50,105.00
+2025-01-23,Ost,Entkalker 6er,12,17.50,210.00
+2025-01-24,Nord,Milchaufschäumer,1,49.90,49.90
+2025-01-24,West,Entkalker 6er,9,17.50,157.50
+2025-01-24,West,Wasserkocher,2,39.90,79.80
+2025-01-25,Nord,Kaffeemaschine Pro,1,289.00,289.00
+2025-01-25,West,Kaffeemaschine Pro,3,289.00,867.00
+2025-01-26,Süd,Thermobecher,3,24.90,74.70
+2025-01-26,Süd,Kaffeemaschine Pro,2,289.00,578.00
+2025-01-26,West,Milchaufschäumer,2,49.90,99.80
+2025-01-28,Nord,Espressomühle,3,159.00,477.00
+2025-01-28,Süd,Milchaufschäumer,3,49.90,149.70
+2025-01-28,West,Milchaufschäumer,2,49.90,99.80
+2025-01-28,West,Kapselhalter,2,19.90,39.80
+2025-01-29,Süd,Kapselhalter,2,19.90,39.80
+2025-01-29,West,Espressomühle,2,159.00,318.00
+2025-01-29,West,Siebträger Basic,4,449.00,1796.00
+2025-01-30,Nord,Thermobecher,9,24.90,224.10
+2025-01-31,Nord,Kaffeemaschine Pro,1,289.00,289.00
+2025-02-01,Nord,Milchaufschäumer,1,49.90,49.90
+2025-02-01,West,Kaffeemaschine Pro,2,289.00,578.00
+2025-02-02,Süd,Entkalker 6er,3,17.50,52.50
+2025-02-02,Süd,Wasserkocher,2,39.90,79.80
+2025-02-02,West,Wasserkocher,1,39.90,39.90
+2025-02-03,Nord,Entkalker 6er,12,17.50,210.00
+2025-02-04,Nord,Thermobecher,3,24.90,74.70
+2025-02-04,Nord,Thermobecher,6,24.90,149.40
+2025-02-04,Süd,Milchaufschäumer,4,49.90,199.60
+2025-02-04,West,Milchaufschäumer,3,49.90,149.70
+2025-02-05,Nord,Entkalker 6er,3,17.50,52.50
+2025-02-05,Nord,Espressomühle,4,159.00,636.00
+2025-02-05,West,Milchaufschäumer,4,49.90,199.60
+2025-02-05,Ost,Milchaufschäumer,2,49.90,99.80
+2025-02-06,Nord,Milchaufschäumer,3,49.90,149.70
+2025-02-06,Nord,Entkalker 6er,9,17.50,157.50
+2025-02-07,West,Wasserkocher,4,39.90,159.60
+2025-02-07,Ost,Espressomühle,1,159.00,159.00
+2025-02-08,Süd,Siebträger Basic,1,449.00,449.00
+2025-02-08,Ost,Espressomühle,4,159.00,636.00
+2025-02-09,West,Kaffeemaschine Pro,4,289.00,1156.00
+2025-02-09,West,Entkalker 6er,12,17.50,210.00
+2025-02-10,Süd,Entkalker 6er,12,17.50,210.00
+2025-02-10,West,Kaffeemaschine Pro,3,289.00,867.00
+2025-02-10,West,Kaffeemaschine Pro,1,289.00,289.00
+2025-02-11,Nord,Kapselhalter,2,19.90,39.80
+2025-02-11,Ost,Espressomühle,4,159.00,636.00
+2025-02-12,Nord,Milchaufschäumer,4,49.90,199.60
+2025-02-12,Ost,Entkalker 6er,6,17.50,105.00
+2025-02-13,Süd,Kapselhalter,2,19.90,39.80
+2025-02-13,West,Espressomühle,4,159.00,636.00
+2025-02-14,Süd,Milchaufschäumer,4,49.90,199.60
+2025-02-15,Süd,Milchaufschäumer,3,49.90,149.70
+2025-02-16,Süd,Espressomühle,3,159.00,477.00
+2025-02-16,Süd,Wasserkocher,1,39.90,39.90
+2025-02-16,West,Entkalker 6er,9,17.50,157.50
+2025-02-16,Ost,Wasserkocher,4,39.90,159.60
+2025-02-17,Süd,Espressomühle,1,159.00,159.00
+2025-02-17,West,Thermobecher,6,24.90,149.40
+2025-02-17,Ost,Entkalker 6er,3,17.50,52.50
+2025-02-18,Nord,Milchaufschäumer,1,49.90,49.90
+2025-02-19,West,Milchaufschäumer,4,49.90,199.60
+2025-02-20,Ost,Kaffeemaschine Pro,3,289.00,867.00
+2025-02-22,Süd,Espressomühle,4,159.00,636.00
+2025-02-22,West,Milchaufschäumer,2,49.90,99.80
+2025-02-22,West,Wasserkocher,3,39.90,119.70
+2025-02-23,Nord,Siebträger Basic,4,449.00,1796.00
+2025-02-23,West,Entkalker 6er,12,17.50,210.00
+2025-02-24,Nord,Entkalker 6er,3,17.50,52.50
+2025-02-24,Süd,Entkalker 6er,6,17.50,105.00
+2025-02-25,Süd,Thermobecher,3,24.90,74.70
+2025-02-26,West,Entkalker 6er,3,17.50,52.50
+2025-02-27,Süd,Thermobecher,3,24.90,74.70
+2025-02-28,West,Kaffeemaschine Pro,1,289.00,289.00
+2025-03-01,West,Siebträger Basic,2,449.00,898.00
+2025-03-01,Ost,Entkalker 6er,9,17.50,157.50
+2025-03-02,Nord,Kapselhalter,1,19.90,19.90
+2025-03-03,Ost,Thermobecher,3,24.90,74.70
+2025-03-03,Ost,Entkalker 6er,6,17.50,105.00
+2025-03-04,West,Espressomühle,3,159.00,477.00
+2025-03-04,West,Kaffeemaschine Pro,2,289.00,578.00
+2025-03-05,Süd,Wasserkocher,2,39.90,79.80
+2025-03-07,West,Kaffeemaschine Pro,2,289.00,578.00
+2025-03-08,Süd,Siebträger Basic,4,449.00,1796.00
+2025-03-08,Ost,Entkalker 6er,6,17.50,105.00
+2025-03-09,West,Milchaufschäumer,3,49.90,149.70
+2025-03-09,Ost,Kaffeemaschine Pro,1,289.00,289.00
+2025-03-10,Süd,Entkalker 6er,3,17.50,52.50
+2025-03-10,Ost,Wasserkocher,2,39.90,79.80
+2025-03-11,Nord,Kapselhalter,2,19.90,39.80
+2025-03-13,Ost,Kapselhalter,3,19.90,59.70
+2025-03-14,Süd,Espressomühle,2,159.00,318.00
+2025-03-15,Ost,Espressomühle,2,159.00,318.00
+2025-03-17,Nord,Milchaufschäumer,2,49.90,99.80
+2025-03-17,Süd,Milchaufschäumer,2,49.90,99.80
+2025-03-18,Süd,Entkalker 6er,3,17.50,52.50
+2025-03-19,Süd,Kaffeemaschine Pro,2,289.00,578.00
+2025-03-19,Süd,Entkalker 6er,3,17.50,52.50
+2025-03-20,Süd,Wasserkocher,4,39.90,159.60
+2025-03-20,West,Entkalker 6er,9,17.50,157.50
+2025-03-22,Nord,Thermobecher,3,24.90,74.70
+2025-03-22,West,Thermobecher,12,24.90,298.80
+2025-03-23,Süd,Thermobecher,6,24.90,149.40
+2025-03-24,Nord,Kapselhalter,1,19.90,19.90
+2025-03-24,Süd,Kaffeemaschine Pro,1,289.00,289.00
+2025-03-25,Nord,Thermobecher,9,24.90,224.10
+2025-03-25,West,Kaffeemaschine Pro,4,289.00,1156.00
+2025-03-26,Süd,Kapselhalter,4,19.90,79.60
+2025-03-26,Süd,Siebträger Basic,3,449.00,1347.00
+2025-03-26,Ost,Kapselhalter,3,19.90,59.70
+2025-03-28,Nord,Milchaufschäumer,3,49.90,149.70
+2025-03-29,Nord,Wasserkocher,2,39.90,79.80
+2025-03-29,Nord,Entkalker 6er,9,17.50,157.50
+2025-03-29,Süd,Wasserkocher,4,39.90,159.60
+2025-03-29,West,Espressomühle,2,159.00,318.00
+2025-03-30,Süd,Espressomühle,1,159.00,159.00
+2025-03-30,West,Thermobecher,3,24.90,74.70
+2025-03-31,West,Wasserkocher,1,39.90,39.90
+2025-04-01,Nord,Thermobecher,6,24.90,149.40
+2025-04-02,Nord,Kapselhalter,1,19.90,19.90
+2025-04-02,West,Thermobecher,9,24.90,224.10
+2025-04-03,Süd,Kaffeemaschine Pro,3,289.00,867.00
+2025-04-03,West,Kaffeemaschine Pro,4,289.00,1156.00
+2025-04-04,Nord,Espressomühle,4,159.00,636.00
+2025-04-04,Süd,Milchaufschäumer,1,49.90,49.90
+2025-04-04,Ost,Wasserkocher,1,39.90,39.90
+2025-04-05,Nord,Entkalker 6er,3,17.50,52.50
+2025-04-07,West,Entkalker 6er,12,17.50,210.00
+2025-04-08,West,Entkalker 6er,12,17.50,210.00
+2025-04-08,West,Espressomühle,2,159.00,318.00
+2025-04-09,Nord,Kapselhalter,1,19.90,19.90
+2025-04-09,Süd,Milchaufschäumer,3,49.90,149.70
+2025-04-09,West,Thermobecher,3,24.90,74.70
+2025-04-09,West,Espressomühle,2,159.00,318.00
+2025-04-09,Ost,Espressomühle,1,159.00,159.00
+2025-04-11,Nord,Kaffeemaschine Pro,1,289.00,289.00
+2025-04-12,West,Milchaufschäumer,3,49.90,149.70
+2025-04-12,West,Wasserkocher,4,39.90,159.60
+2025-04-12,Ost,Entkalker 6er,9,17.50,157.50
+2025-04-14,Nord,Entkalker 6er,12,17.50,210.00
+2025-04-15,West,Milchaufschäumer,1,49.90,49.90
+2025-04-16,Süd,Entkalker 6er,3,17.50,52.50
+2025-04-18,Süd,Espressomühle,4,159.00,636.00
+2025-04-18,Ost,Siebträger Basic,2,449.00,898.00
+2025-04-19,West,Kaffeemaschine Pro,4,289.00,1156.00
+2025-04-21,Süd,Entkalker 6er,9,17.50,157.50
+2025-04-21,Süd,Wasserkocher,4,39.90,159.60
+2025-04-21,West,Milchaufschäumer,3,49.90,149.70
+2025-04-21,Ost,Wasserkocher,1,39.90,39.90
+2025-04-22,Nord,Milchaufschäumer,3,49.90,149.70
+2025-04-22,Süd,Milchaufschäumer,2,49.90,99.80
+2025-04-22,West,Kapselhalter,3,19.90,59.70
+2025-04-23,Nord,Milchaufschäumer,1,49.90,49.90
+2025-04-23,Süd,Thermobecher,3,24.90,74.70
+2025-04-23,West,Milchaufschäumer,3,49.90,149.70
+2025-04-24,Nord,Milchaufschäumer,1,49.90,49.90
+2025-04-24,Süd,Siebträger Basic,3,449.00,1347.00
+2025-04-25,Süd,Entkalker 6er,12,17.50,210.00
+2025-04-25,Ost,Wasserkocher,2,39.90,79.80
+2025-04-26,Nord,Wasserkocher,2,39.90,79.80
+2025-04-26,Nord,Kaffeemaschine Pro,4,289.00,1156.00
+2025-04-26,West,Thermobecher,12,24.90,298.80
+2025-04-26,West,Espressomühle,3,159.00,477.00
+2025-04-27,Nord,Kaffeemaschine Pro,4,289.00,1156.00
+2025-04-27,Ost,Thermobecher,9,24.90,224.10
+2025-04-28,Nord,Kapselhalter,2,19.90,39.80
+2025-04-28,West,Siebträger Basic,1,449.00,449.00
+2025-04-29,Süd,Thermobecher,6,24.90,149.40
+2025-04-30,West,Milchaufschäumer,4,49.90,199.60
+2025-04-30,West,Kaffeemaschine Pro,4,289.00,1156.00
+2025-05-01,Süd,Milchaufschäumer,1,49.90,49.90
+2025-05-01,West,Entkalker 6er,3,17.50,52.50
+2025-05-02,Nord,Espressomühle,4,159.00,636.00
+2025-05-02,Süd,Milchaufschäumer,1,49.90,49.90
+2025-05-02,Süd,Siebträger Basic,4,449.00,1796.00
+2025-05-03,Süd,Thermobecher,12,24.90,298.80
+2025-05-03,West,Entkalker 6er,12,17.50,210.00
+2025-05-04,West,Kapselhalter,3,19.90,59.70
+2025-05-04,West,Entkalker 6er,12,17.50,210.00
+2025-05-04,Ost,Espressomühle,1,159.00,159.00
+2025-05-05,Nord,Kapselhalter,3,19.90,59.70
+2025-05-05,Süd,Wasserkocher,1,39.90,39.90
+2025-05-06,West,Milchaufschäumer,1,49.90,49.90
+2025-05-07,West,Kapselhalter,1,19.90,19.90
+2025-05-07,West,Entkalker 6er,9,17.50,157.50
+2025-05-08,Süd,Kapselhalter,2,19.90,39.80
+2025-05-08,Süd,Espressomühle,1,159.00,159.00
+2025-05-08,West,Entkalker 6er,9,17.50,157.50
+2025-05-08,West,Milchaufschäumer,4,49.90,199.60
+2025-05-09,Nord,Thermobecher,3,24.90,74.70
+2025-05-09,Ost,Wasserkocher,3,39.90,119.70
+2025-05-09,Ost,Milchaufschäumer,2,49.90,99.80
+2025-05-10,West,Entkalker 6er,12,17.50,210.00
+2025-05-10,Ost,Kaffeemaschine Pro,3,289.00,867.00
+2025-05-11,West,Thermobecher,12,24.90,298.80
+2025-05-12,West,Kaffeemaschine Pro,4,289.00,1156.00
+2025-05-12,West,Thermobecher,9,24.90,224.10
+2025-05-12,Ost,Thermobecher,12,24.90,298.80
+2025-05-13,Süd,Milchaufschäumer,2,49.90,99.80
+2025-05-15,Süd,Espressomühle,3,159.00,477.00
+2025-05-15,Ost,Thermobecher,9,24.90,224.10
+2025-05-16,Süd,Thermobecher,3,24.90,74.70
+2025-05-17,West,Kapselhalter,2,19.90,39.80
+2025-05-17,Ost,Entkalker 6er,6,17.50,105.00
+2025-05-18,Nord,Wasserkocher,4,39.90,159.60
+2025-05-19,Süd,Wasserkocher,3,39.90,119.70
+2025-05-19,Ost,Siebträger Basic,4,449.00,1796.00
+2025-05-20,West,Wasserkocher,1,39.90,39.90
+2025-05-22,Nord,Wasserkocher,1,39.90,39.90
+2025-05-23,Nord,Wasserkocher,3,39.90,119.70
+2025-05-23,West,Espressomühle,4,159.00,636.00
+2025-05-24,Süd,Milchaufschäumer,4,49.90,199.60
+2025-05-24,Ost,Kapselhalter,2,19.90,39.80
+2025-05-26,Süd,Entkalker 6er,3,17.50,52.50
+2025-05-27,Süd,Kapselhalter,2,19.90,39.80
+2025-05-28,Süd,Wasserkocher,2,39.90,79.80
+2025-05-28,Ost,Kaffeemaschine Pro,4,289.00,1156.00
+2025-05-29,West,Kaffeemaschine Pro,1,289.00,289.00
+2025-05-29,Ost,Espressomühle,4,159.00,636.00
+2025-05-30,Nord,Entkalker 6er,12,17.50,210.00
+2025-05-31,Süd,Kaffeemaschine Pro,2,289.00,578.00
+2025-06-01,Süd,Espressomühle,2,159.00,318.00
+2025-06-02,Nord,Kapselhalter,1,19.90,19.90
+2025-06-02,Süd,Espressomühle,3,159.00,477.00
+2025-06-02,West,Espressomühle,2,159.00,318.00
+2025-06-02,West,Entkalker 6er,9,17.50,157.50
+2025-06-03,Ost,Kapselhalter,2,19.90,39.80
+2025-06-04,Nord,Siebträger Basic,2,449.00,898.00
+2025-06-04,Süd,Kapselhalter,1,19.90,19.90
+2025-06-04,Ost,Kapselhalter,4,19.90,79.60
+2025-06-05,Süd,Milchaufschäumer,4,49.90,199.60
+2025-06-06,Nord,Kapselhalter,2,19.90,39.80
+2025-06-06,Süd,Thermobecher,3,24.90,74.70
+2025-06-06,Süd,Espressomühle,1,159.00,159.00
+2025-06-07,West,Entkalker 6er,3,17.50,52.50
+2025-06-07,Ost,Thermobecher,3,24.90,74.70
+2025-06-08,Süd,Entkalker 6er,9,17.50,157.50
+2025-06-08,Süd,Milchaufschäumer,4,49.90,199.60
+2025-06-09,Nord,Siebträger Basic,4,449.00,1796.00
+2025-06-09,West,Wasserkocher,3,39.90,119.70
+2025-06-09,Ost,Thermobecher,6,24.90,149.40
+2025-06-10,Nord,Wasserkocher,4,39.90,159.60
+2025-06-10,Süd,Entkalker 6er,12,17.50,210.00
+2025-06-10,Süd,Milchaufschäumer,4,49.90,199.60
+2025-06-10,West,Kaffeemaschine Pro,1,289.00,289.00
+2025-06-12,Nord,Kaffeemaschine Pro,1,289.00,289.00
+2025-06-12,Süd,Entkalker 6er,9,17.50,157.50
+2025-06-12,West,Thermobecher,12,24.90,298.80
+2025-06-13,Süd,Entkalker 6er,6,17.50,105.00
+2025-06-13,West,Kapselhalter,2,19.90,39.80
+2025-06-13,West,Milchaufschäumer,1,49.90,49.90
+2025-06-14,Süd,Thermobecher,9,24.90,224.10
+2025-06-15,Nord,Milchaufschäumer,3,49.90,149.70
+2025-06-15,Nord,Espressomühle,2,159.00,318.00
+2025-06-15,Süd,Milchaufschäumer,4,49.90,199.60
+2025-06-15,Süd,Entkalker 6er,6,17.50,105.00
+2025-06-16,West,Espressomühle,3,159.00,477.00
+2025-06-16,West,Entkalker 6er,12,17.50,210.00
+2025-06-17,Süd,Kapselhalter,2,19.90,39.80
+2025-06-17,West,Milchaufschäumer,2,49.90,99.80
+2025-06-18,Nord,Entkalker 6er,6,17.50,105.00
+2025-06-18,Süd,Thermobecher,12,24.90,298.80
+2025-06-18,Ost,Wasserkocher,4,39.90,159.60
+2025-06-19,Ost,Entkalker 6er,12,17.50,210.00
+2025-06-20,Nord,Entkalker 6er,12,17.50,210.00
+2025-06-21,Süd,Espressomühle,1,159.00,159.00
+2025-06-21,Ost,Kapselhalter,2,19.90,39.80
+2025-06-22,Nord,Milchaufschäumer,1,49.90,49.90
+2025-06-22,Süd,Siebträger Basic,3,449.00,1347.00
+2025-06-26,Süd,Thermobecher,3,24.90,74.70
+2025-06-26,Ost,Espressomühle,3,159.00,477.00
+2025-06-27,West,Milchaufschäumer,3,49.90,149.70
+2025-06-27,Ost,Wasserkocher,1,39.90,39.90
+2025-06-28,Süd,Thermobecher,6,24.90,149.40
+2025-06-29,Nord,Espressomühle,1,159.00,159.00
+2025-06-30,Nord,Kapselhalter,4,19.90,79.60
+2025-07-01,Nord,Kapselhalter,3,19.90,59.70
+2025-07-01,Süd,Thermobecher,6,24.90,149.40
+2025-07-01,Süd,Thermobecher,3,24.90,74.70
+2025-07-02,Nord,Espressomühle,3,159.00,477.00
+2025-07-03,Süd,Espressomühle,3,159.00,477.00
+2025-07-05,Süd,Entkalker 6er,6,17.50,105.00
+2025-07-05,West,Kaffeemaschine Pro,2,289.00,578.00
+2025-07-07,West,Thermobecher,9,24.90,224.10
+2025-07-08,Süd,Espressomühle,4,159.00,636.00
+2025-07-09,Süd,Siebträger Basic,1,449.00,449.00
+2025-07-09,Süd,Espressomühle,1,159.00,159.00
+2025-07-09,West,Espressomühle,1,159.00,159.00
+2025-07-09,West,Espressomühle,3,159.00,477.00
+2025-07-10,Nord,Milchaufschäumer,1,49.90,49.90
+2025-07-10,Süd,Siebträger Basic,2,449.00,898.00
+2025-07-11,West,Thermobecher,3,24.90,74.70
+2025-07-14,Nord,Kaffeemaschine Pro,3,289.00,867.00
+2025-07-14,West,Wasserkocher,1,39.90,39.90
+2025-07-16,Süd,Thermobecher,12,24.90,298.80
+2025-07-17,Nord,Milchaufschäumer,2,49.90,99.80
+2025-07-17,West,Entkalker 6er,3,17.50,52.50
+2025-07-18,Nord,Milchaufschäumer,2,49.90,99.80
+2025-07-19,Nord,Wasserkocher,4,39.90,159.60
+2025-07-19,Süd,Kapselhalter,4,19.90,79.60
+2025-07-20,Süd,Espressomühle,4,159.00,636.00
+2025-07-20,Süd,Wasserkocher,4,39.90,159.60
+2025-07-20,West,Espressomühle,2,159.00,318.00
+2025-07-21,Nord,Milchaufschäumer,2,49.90,99.80
+2025-07-22,Süd,Thermobecher,12,24.90,298.80
+2025-07-23,West,Thermobecher,9,24.90,224.10
+2025-07-23,Ost,Wasserkocher,2,39.90,79.80
+2025-07-25,West,Milchaufschäumer,3,49.90,149.70
+2025-07-25,Ost,Milchaufschäumer,3,49.90,149.70
+2025-07-26,Süd,Entkalker 6er,12,17.50,210.00
+2025-07-26,West,Espressomühle,1,159.00,159.00
+2025-07-26,West,Thermobecher,6,24.90,149.40
+2025-07-26,Ost,Siebträger Basic,2,449.00,898.00
+2025-07-27,Nord,Milchaufschäumer,2,49.90,99.80
+2025-07-27,West,Wasserkocher,2,39.90,79.80
+2025-07-28,Süd,Entkalker 6er,12,17.50,210.00
+2025-07-30,Nord,Kaffeemaschine Pro,4,289.00,1156.00
+2025-07-31,Nord,Entkalker 6er,9,17.50,157.50
+2025-08-03,Süd,Thermobecher,12,24.90,298.80
+2025-08-03,West,Kaffeemaschine Pro,4,289.00,1156.00
+2025-08-04,Süd,Wasserkocher,2,39.90,79.80
+2025-08-05,Nord,Kaffeemaschine Pro,4,289.00,1156.00
+2025-08-06,Ost,Kapselhalter,1,19.90,19.90
+2025-08-07,West,Milchaufschäumer,1,49.90,49.90
+2025-08-08,Nord,Entkalker 6er,6,17.50,105.00
+2025-08-08,West,Thermobecher,12,24.90,298.80
+2025-08-09,Süd,Entkalker 6er,6,17.50,105.00
+2025-08-09,Süd,Espressomühle,4,159.00,636.00
+2025-08-10,Nord,Kapselhalter,1,19.90,19.90
+2025-08-11,Süd,Kaffeemaschine Pro,1,289.00,289.00
+2025-08-11,West,Wasserkocher,4,39.90,159.60
+2025-08-12,West,Entkalker 6er,12,17.50,210.00
+2025-08-13,Süd,Milchaufschäumer,4,49.90,199.60
+2025-08-13,West,Kaffeemaschine Pro,3,289.00,867.00
+2025-08-14,West,Wasserkocher,4,39.90,159.60
+2025-08-15,Nord,Kaffeemaschine Pro,2,289.00,578.00
+2025-08-15,Süd,Kaffeemaschine Pro,4,289.00,1156.00
+2025-08-15,Ost,Espressomühle,3,159.00,477.00
+2025-08-16,Süd,Entkalker 6er,6,17.50,105.00
+2025-08-16,West,Wasserkocher,1,39.90,39.90
+2025-08-17,Süd,Thermobecher,9,24.90,224.10
+2025-08-17,West,Entkalker 6er,9,17.50,157.50
+2025-08-17,Ost,Wasserkocher,4,39.90,159.60
+2025-08-19,Süd,Espressomühle,1,159.00,159.00
+2025-08-20,Nord,Kaffeemaschine Pro,3,289.00,867.00
+2025-08-20,Süd,Entkalker 6er,6,17.50,105.00
+2025-08-20,Ost,Milchaufschäumer,3,49.90,149.70
+2025-08-21,Nord,Kapselhalter,2,19.90,39.80
+2025-08-21,Süd,Entkalker 6er,9,17.50,157.50
+2025-08-21,Süd,Kaffeemaschine Pro,4,289.00,1156.00
+2025-08-21,West,Siebträger Basic,1,449.00,449.00
+2025-08-22,Nord,Espressomühle,2,159.00,318.00
+2025-08-22,West,Thermobecher,6,24.90,149.40
+2025-08-23,Süd,Wasserkocher,4,39.90,159.60
+2025-08-24,Süd,Entkalker 6er,6,17.50,105.00
+2025-08-26,Ost,Entkalker 6er,9,17.50,157.50
+2025-08-26,Ost,Wasserkocher,2,39.90,79.80
+2025-08-27,Nord,Kaffeemaschine Pro,2,289.00,578.00
+2025-08-27,Nord,Kapselhalter,1,19.90,19.90
+2025-08-27,Süd,Wasserkocher,4,39.90,159.60
+2025-08-27,Süd,Wasserkocher,4,39.90,159.60
+2025-08-27,West,Entkalker 6er,12,17.50,210.00
+2025-08-28,Nord,Thermobecher,3,24.90,74.70
+2025-08-28,West,Entkalker 6er,9,17.50,157.50
+2025-08-29,Nord,Milchaufschäumer,3,49.90,149.70
+2025-08-29,Nord,Wasserkocher,1,39.90,39.90
+2025-08-31,Süd,Kaffeemaschine Pro,2,289.00,578.00
+2025-09-01,Süd,Milchaufschäumer,1,49.90,49.90
+2025-09-01,Ost,Wasserkocher,3,39.90,119.70
+2025-09-02,West,Kaffeemaschine Pro,1,289.00,289.00
+2025-09-03,Nord,Milchaufschäumer,3,49.90,149.70
+2025-09-03,Süd,Kaffeemaschine Pro,4,289.00,1156.00
+2025-09-03,Ost,Siebträger Basic,4,449.00,1796.00
+2025-09-04,Nord,Entkalker 6er,3,17.50,52.50
+2025-09-04,Süd,Wasserkocher,1,39.90,39.90
+2025-09-04,Süd,Wasserkocher,1,39.90,39.90
+2025-09-05,Ost,Thermobecher,3,24.90,74.70
+2025-09-06,Süd,Espressomühle,1,159.00,159.00
+2025-09-06,Ost,Entkalker 6er,6,17.50,105.00
+2025-09-07,Süd,Wasserkocher,4,39.90,159.60
+2025-09-08,Süd,Milchaufschäumer,3,49.90,149.70
+2025-09-08,West,Thermobecher,12,24.90,298.80
+2025-09-09,Süd,Kapselhalter,4,19.90,79.60
+2025-09-09,West,Entkalker 6er,6,17.50,105.00
+2025-09-11,Süd,Entkalker 6er,9,17.50,157.50
+2025-09-12,West,Milchaufschäumer,4,49.90,199.60
+2025-09-12,Ost,Milchaufschäumer,1,49.90,49.90
+2025-09-13,Süd,Kapselhalter,1,19.90,19.90
+2025-09-14,Süd,Milchaufschäumer,4,49.90,199.60
+2025-09-14,Süd,Entkalker 6er,12,17.50,210.00
+2025-09-14,West,Wasserkocher,4,39.90,159.60
+2025-09-16,Nord,Milchaufschäumer,2,49.90,99.80
+2025-09-16,Nord,Entkalker 6er,3,17.50,52.50
+2025-09-16,Ost,Milchaufschäumer,2,49.90,99.80
+2025-09-18,Nord,Wasserkocher,1,39.90,39.90
+2025-09-18,Süd,Siebträger Basic,1,449.00,449.00
+2025-09-19,Süd,Entkalker 6er,6,17.50,105.00
+2025-09-19,Ost,Wasserkocher,4,39.90,159.60
+2025-09-19,Ost,Espressomühle,1,159.00,159.00
+2025-09-20,Nord,Thermobecher,12,24.90,298.80
+2025-09-20,Süd,Milchaufschäumer,3,49.90,149.70
+2025-09-20,Süd,Thermobecher,6,24.90,149.40
+2025-09-20,Ost,Kaffeemaschine Pro,1,289.00,289.00
+2025-09-22,Nord,Wasserkocher,1,39.90,39.90
+2025-09-22,Ost,Milchaufschäumer,2,49.90,99.80
+2025-09-24,Nord,Kapselhalter,1,19.90,19.90
+2025-09-24,Süd,Wasserkocher,4,39.90,159.60
+2025-09-24,West,Siebträger Basic,1,449.00,449.00
+2025-09-24,West,Espressomühle,1,159.00,159.00
+2025-09-25,Nord,Milchaufschäumer,1,49.90,49.90
+2025-09-26,Nord,Espressomühle,3,159.00,477.00
+2025-09-26,Süd,Siebträger Basic,1,449.00,449.00
+2025-09-28,Ost,Kaffeemaschine Pro,1,289.00,289.00
+2025-09-29,West,Kapselhalter,1,19.90,19.90
+2025-09-29,Ost,Milchaufschäumer,1,49.90,49.90
+2025-09-30,Nord,Entkalker 6er,9,17.50,157.50
+2025-09-30,Süd,Wasserkocher,2,39.90,79.80
+2025-09-30,Süd,Kaffeemaschine Pro,3,289.00,867.00
+2025-09-30,Ost,Wasserkocher,2,39.90,79.80
+2025-10-01,Süd,Milchaufschäumer,3,49.90,149.70
+2025-10-01,Süd,Kapselhalter,2,19.90,39.80
+2025-10-02,Nord,Wasserkocher,4,39.90,159.60
+2025-10-02,West,Milchaufschäumer,4,49.90,199.60
+2025-10-02,Ost,Wasserkocher,1,39.90,39.90
+2025-10-03,Süd,Wasserkocher,4,39.90,159.60
+2025-10-04,Nord,Entkalker 6er,12,17.50,210.00
+2025-10-04,West,Thermobecher,12,24.90,298.80
+2025-10-04,Ost,Thermobecher,3,24.90,74.70
+2025-10-06,Nord,Kaffeemaschine Pro,4,289.00,1156.00
+2025-10-06,Ost,Milchaufschäumer,1,49.90,49.90
+2025-10-08,Süd,Thermobecher,12,24.90,298.80
+2025-10-08,West,Kaffeemaschine Pro,1,289.00,289.00
+2025-10-09,Nord,Espressomühle,4,159.00,636.00
+2025-10-09,West,Thermobecher,9,24.90,224.10
+2025-10-09,West,Kaffeemaschine Pro,1,289.00,289.00
+2025-10-11,Süd,Kaffeemaschine Pro,4,289.00,1156.00
+2025-10-11,Süd,Wasserkocher,3,39.90,119.70
+2025-10-11,West,Kapselhalter,1,19.90,19.90
+2025-10-14,Nord,Wasserkocher,1,39.90,39.90
+2025-10-14,Süd,Siebträger Basic,4,449.00,1796.00
+2025-10-14,Süd,Wasserkocher,3,39.90,119.70
+2025-10-15,Nord,Wasserkocher,1,39.90,39.90
+2025-10-15,West,Wasserkocher,1,39.90,39.90
+2025-10-16,Nord,Kaffeemaschine Pro,4,289.00,1156.00
+2025-10-16,Süd,Wasserkocher,4,39.90,159.60
+2025-10-16,Ost,Thermobecher,9,24.90,224.10
+2025-10-17,Nord,Entkalker 6er,3,17.50,52.50
+2025-10-17,Süd,Kaffeemaschine Pro,3,289.00,867.00
+2025-10-17,Ost,Thermobecher,6,24.90,149.40
+2025-10-18,Nord,Milchaufschäumer,1,49.90,49.90
+2025-10-18,Süd,Kapselhalter,1,19.90,19.90
+2025-10-18,West,Kapselhalter,3,19.90,59.70
+2025-10-18,Ost,Entkalker 6er,9,17.50,157.50
+2025-10-19,Nord,Entkalker 6er,3,17.50,52.50
+2025-10-19,Süd,Entkalker 6er,9,17.50,157.50
+2025-10-19,West,Wasserkocher,2,39.90,79.80
+2025-10-20,Süd,Thermobecher,6,24.90,149.40
+2025-10-21,Süd,Thermobecher,12,24.90,298.80
+2025-10-23,Nord,Siebträger Basic,3,449.00,1347.00
+2025-10-23,Nord,Entkalker 6er,6,17.50,105.00
+2025-10-23,Ost,Kaffeemaschine Pro,4,289.00,1156.00
+2025-10-24,Nord,Kaffeemaschine Pro,3,289.00,867.00
+2025-10-24,Süd,Espressomühle,1,159.00,159.00
+2025-10-24,West,Thermobecher,3,24.90,74.70
+2025-10-24,Ost,Kapselhalter,1,19.90,19.90
+2025-10-25,West,Thermobecher,9,24.90,224.10
+2025-10-26,Süd,Entkalker 6er,6,17.50,105.00
+2025-10-26,West,Entkalker 6er,6,17.50,105.00
+2025-10-26,Ost,Espressomühle,4,159.00,636.00
+2025-10-27,West,Wasserkocher,3,39.90,119.70
+2025-10-28,West,Kaffeemaschine Pro,3,289.00,867.00
+2025-10-29,Nord,Wasserkocher,1,39.90,39.90
+2025-10-29,Süd,Entkalker 6er,12,17.50,210.00
+2025-10-29,Süd,Kaffeemaschine Pro,1,289.00,289.00
+2025-10-30,Nord,Entkalker 6er,12,17.50,210.00
+2025-10-30,Nord,Wasserkocher,4,39.90,159.60
+2025-10-30,Süd,Entkalker 6er,9,17.50,157.50
+2025-10-30,West,Milchaufschäumer,1,49.90,49.90
+2025-10-30,West,Milchaufschäumer,2,49.90,99.80
+2025-10-31,West,Milchaufschäumer,1,49.90,49.90
+2025-10-31,West,Thermobecher,3,24.90,74.70
+2025-11-01,Süd,Milchaufschäumer,2,49.90,99.80
+2025-11-02,West,Milchaufschäumer,1,49.90,49.90
+2025-11-03,Nord,Milchaufschäumer,4,49.90,199.60
+2025-11-03,Süd,Milchaufschäumer,1,49.90,49.90
+2025-11-04,West,Thermobecher,6,24.90,149.40
+2025-11-04,Ost,Wasserkocher,4,39.90,159.60
+2025-11-06,Nord,Thermobecher,6,24.90,149.40
+2025-11-06,Süd,Thermobecher,12,24.90,298.80
+2025-11-07,Nord,Milchaufschäumer,3,49.90,149.70
+2025-11-07,Nord,Milchaufschäumer,1,49.90,49.90
+2025-11-09,Süd,Thermobecher,9,24.90,224.10
+2025-11-10,Nord,Thermobecher,12,24.90,298.80
+2025-11-10,West,Entkalker 6er,12,17.50,210.00
+2025-11-11,Nord,Wasserkocher,3,39.90,119.70
+2025-11-12,Nord,Entkalker 6er,3,17.50,52.50
+2025-11-13,Süd,Espressomühle,3,159.00,477.00
+2025-11-13,Ost,Wasserkocher,2,39.90,79.80
+2025-11-14,Ost,Milchaufschäumer,3,49.90,149.70
+2025-11-15,Nord,Milchaufschäumer,1,49.90,49.90
+2025-11-15,Süd,Entkalker 6er,3,17.50,52.50
+2025-11-16,Nord,Milchaufschäumer,4,49.90,199.60
+2025-11-17,West,Wasserkocher,4,39.90,159.60
+2025-11-18,Nord,Entkalker 6er,9,17.50,157.50
+2025-11-18,Nord,Entkalker 6er,6,17.50,105.00
+2025-11-19,West,Kaffeemaschine Pro,3,289.00,867.00
+2025-11-21,Nord,Thermobecher,9,24.90,224.10
+2025-11-21,Nord,Milchaufschäumer,4,49.90,199.60
+2025-11-21,Süd,Entkalker 6er,3,17.50,52.50
+2025-11-21,Ost,Thermobecher,9,24.90,224.10
+2025-11-21,Ost,Thermobecher,3,24.90,74.70
+2025-11-22,Süd,Entkalker 6er,12,17.50,210.00
+2025-11-22,Ost,Milchaufschäumer,4,49.90,199.60
+2025-11-23,Nord,Entkalker 6er,12,17.50,210.00
+2025-11-23,Süd,Milchaufschäumer,1,49.90,49.90
+2025-11-25,Ost,Entkalker 6er,12,17.50,210.00
+2025-11-26,Nord,Kaffeemaschine Pro,2,289.00,578.00
+2025-11-26,Süd,Thermobecher,12,24.90,298.80
+2025-11-27,Nord,Kaffeemaschine Pro,4,289.00,1156.00
+2025-11-27,Nord,Wasserkocher,2,39.90,79.80
+2025-11-27,Süd,Siebträger Basic,3,449.00,1347.00
+2025-11-27,Ost,Thermobecher,3,24.90,74.70
+2025-11-29,Nord,Entkalker 6er,6,17.50,105.00
+2025-11-29,Süd,Espressomühle,3,159.00,477.00
+2025-11-29,Süd,Siebträger Basic,2,449.00,898.00
+2025-11-29,West,Entkalker 6er,9,17.50,157.50
+2025-11-30,Nord,Milchaufschäumer,3,49.90,149.70
+2025-11-30,Nord,Thermobecher,3,24.90,74.70
+2025-11-30,Süd,Thermobecher,9,24.90,224.10
+2025-11-30,West,Espressomühle,2,159.00,318.00
+2025-11-30,West,Thermobecher,9,24.90,224.10
+2025-12-01,Nord,Kapselhalter,4,19.90,79.60
+2025-12-01,Süd,Thermobecher,9,24.90,224.10
+2025-12-01,West,Entkalker 6er,9,17.50,157.50
+2025-12-02,Nord,Wasserkocher,3,39.90,119.70
+2025-12-02,West,Espressomühle,3,159.00,477.00
+2025-12-02,West,Siebträger Basic,3,449.00,1347.00
+2025-12-02,Ost,Entkalker 6er,6,17.50,105.00
+2025-12-03,Süd,Entkalker 6er,3,17.50,52.50
+2025-12-04,Nord,Entkalker 6er,12,17.50,210.00
+2025-12-04,Süd,Espressomühle,4,159.00,636.00
+2025-12-04,West,Thermobecher,9,24.90,224.10
+2025-12-04,West,Entkalker 6er,12,17.50,210.00
+2025-12-05,Süd,Espressomühle,1,159.00,159.00
+2025-12-05,West,Milchaufschäumer,3,49.90,149.70
+2025-12-05,West,Entkalker 6er,6,17.50,105.00
+2025-12-05,Ost,Kaffeemaschine Pro,3,289.00,867.00
+2025-12-06,West,Wasserkocher,4,39.90,159.60
+2025-12-07,Süd,Milchaufschäumer,1,49.90,49.90
+2025-12-07,Süd,Milchaufschäumer,2,49.90,99.80
+2025-12-07,Ost,Milchaufschäumer,4,49.90,199.60
+2025-12-08,Nord,Milchaufschäumer,1,49.90,49.90
+2025-12-09,Nord,Wasserkocher,2,39.90,79.80
+2025-12-09,Süd,Wasserkocher,3,39.90,119.70
+2025-12-10,Süd,Entkalker 6er,12,17.50,210.00
+2025-12-10,West,Milchaufschäumer,1,49.90,49.90
+2025-12-10,Ost,Thermobecher,3,24.90,74.70
+2025-12-10,Ost,Thermobecher,6,24.90,149.40
+2025-12-11,West,Milchaufschäumer,1,49.90,49.90
+2025-12-11,Ost,Kaffeemaschine Pro,2,289.00,578.00
+2025-12-12,Nord,Thermobecher,3,24.90,74.70
+2025-12-12,Süd,Kaffeemaschine Pro,2,289.00,578.00
+2025-12-12,Süd,Entkalker 6er,3,17.50,52.50
+2025-12-12,West,Milchaufschäumer,4,49.90,199.60
+2025-12-12,Ost,Wasserkocher,2,39.90,79.80
+2025-12-13,Süd,Milchaufschäumer,3,49.90,149.70
+2025-12-13,West,Espressomühle,1,159.00,159.00
+2025-12-14,Nord,Espressomühle,4,159.00,636.00
+2025-12-14,Süd,Entkalker 6er,6,17.50,105.00
+2025-12-14,West,Milchaufschäumer,3,49.90,149.70
+2025-12-15,Nord,Espressomühle,3,159.00,477.00
+2025-12-16,Süd,Espressomühle,2,159.00,318.00
+2025-12-16,West,Entkalker 6er,3,17.50,52.50
+2025-12-18,Nord,Wasserkocher,1,39.90,39.90
+2025-12-18,Nord,Espressomühle,1,159.00,159.00
+2025-12-18,Süd,Milchaufschäumer,3,49.90,149.70
+2025-12-18,West,Thermobecher,9,24.90,224.10
+2025-12-19,Süd,Entkalker 6er,3,17.50,52.50
+2025-12-19,West,Wasserkocher,1,39.90,39.90
+2025-12-19,West,Espressomühle,3,159.00,477.00
+2025-12-20,Nord,Milchaufschäumer,2,49.90,99.80
+2025-12-20,Süd,Espressomühle,4,159.00,636.00
+2025-12-20,Süd,Milchaufschäumer,1,49.90,49.90
+2025-12-20,West,Wasserkocher,4,39.90,159.60
+2025-12-20,West,Entkalker 6er,3,17.50,52.50
+2025-12-20,Ost,Kaffeemaschine Pro,2,289.00,578.00
+2025-12-20,Ost,Kaffeemaschine Pro,3,289.00,867.00
+2025-12-21,West,Kapselhalter,4,19.90,79.60
+2025-12-21,West,Entkalker 6er,9,17.50,157.50
+2025-12-22,Süd,Milchaufschäumer,4,49.90,199.60
+2025-12-22,Ost,Thermobecher,3,24.90,74.70
+2025-12-23,Nord,Kapselhalter,3,19.90,59.70
+2025-12-23,Süd,Entkalker 6er,9,17.50,157.50
+2025-12-23,West,Entkalker 6er,6,17.50,105.00
+2025-12-23,Ost,Milchaufschäumer,1,49.90,49.90
+2025-12-24,Süd,Wasserkocher,3,39.90,119.70
+2025-12-24,Süd,Entkalker 6er,9,17.50,157.50
+2025-12-25,West,Wasserkocher,4,39.90,159.60
+2025-12-25,West,Espressomühle,4,159.00,636.00
+2025-12-25,Ost,Milchaufschäumer,3,49.90,149.70
+2025-12-26,Süd,Kapselhalter,3,19.90,59.70
+2025-12-27,Nord,Milchaufschäumer,4,49.90,199.60
+2025-12-27,West,Thermobecher,12,24.90,298.80
+2025-12-28,Süd,Wasserkocher,4,39.90,159.60
+2025-12-28,Süd,Milchaufschäumer,4,49.90,199.60
+2025-12-29,Nord,Entkalker 6er,6,17.50,105.00
+2025-12-29,Süd,Wasserkocher,3,39.90,119.70
+2025-12-29,Süd,Thermobecher,3,24.90,74.70
+2025-12-29,Ost,Siebträger Basic,4,449.00,1796.00
+2025-12-30,Ost,Wasserkocher,2,39.90,79.80
+2025-12-31,Nord,Milchaufschäumer,2,49.90,99.80
+2025-12-31,Nord,Entkalker 6er,12,17.50,210.00
+2025-12-31,Süd,Entkalker 6er,6,17.50,105.00
+2025-12-31,Süd,Thermobecher,9,24.90,224.10

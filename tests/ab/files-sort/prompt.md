@@ -1,0 +1,1 @@
+The PDFs in post/ are letters I scanned, with meaningless file names. Rename each to YYYY-MM-DD_Sender.pdf from the letter's own date and its sender, and sort them into one folder per year inside post/. Then list them all in post/index.csv with the columns datei, datum, absender, betreff.

@@ -1,0 +1,1 @@
+verkaeufe.csv holds last year's sales. Write a short analysis for my boss as analyse.md: revenue per region in euros as a table, the month with the highest revenue, the three products with the most revenue, and one chart of revenue per month, saved as umsatz.png and shown in the document.

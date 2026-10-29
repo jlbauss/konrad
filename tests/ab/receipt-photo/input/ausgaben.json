@@ -1,0 +1,20 @@
+[
+  {
+    "datum": "2026-10-02",
+    "haendler": "DB Fernverkehr AG",
+    "kategorie": "Reisekosten",
+    "betrag_brutto": 59.9,
+    "mwst_satz": 7,
+    "mwst": 3.92,
+    "zahlungsart": "Kreditkarte"
+  },
+  {
+    "datum": "2026-10-09",
+    "haendler": "Café Lindner",
+    "kategorie": "Bewirtung",
+    "betrag_brutto": 23.5,
+    "mwst_satz": 19,
+    "mwst": 3.75,
+    "zahlungsart": "Bar"
+  }
+]

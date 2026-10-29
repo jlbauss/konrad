@@ -1,0 +1,7 @@
+Krüger / Backstube:
+- 20.11. schaffen wir, Liefer- und Montagetermin 18.11. anbieten
+- Lieferpauschale mit berechnen
+- 19 % MwSt.
+- Angebot 30 Tage gültig, Zahlung 14 Tage netto
+- Absender: vertrieb@werkstatt-mueller.example
+- Gruß: Thomas Müller, Werkstatt Müller GmbH, Industriestraße 4, 12345 Musterstadt
