@@ -262,7 +262,11 @@ def report(args):
     date = args.date or datetime.date.fromtimestamp((results / "results.json").stat().st_mtime).isoformat()
     label = {"a": args.a_label or settings.get("a", "A"), "b": args.b_label or settings.get("b", "B")}
     image = {"a": settings.get("a", "?"), "b": settings.get("b", "?")}
-    model = settings.get("model", "?") + (f" ({settings['variant']} effort)" if settings.get("variant") else "")
+    model = {}
+    for side in "ab":
+        m, v = settings.get(f"{side}_model") or settings.get("model", "?"), settings.get(f"{side}_variant", settings.get("variant"))
+        model[side] = m + ("" if v is None else f" ({v or 'default'} effort)")
+    same_model = model["a"] == model["b"]
     question = args.question or "Does version B produce better results than version A?"
     reviewer = f" ({args.judge_label})" if args.judge_label else ""
     grades, per_task = graded(results), verdicts(results, judge)
@@ -289,8 +293,10 @@ def report(args):
         return re.sub(r"[^\w\- ]", "", f"3.{i} {t}: {calls[t][0]}".lower()).replace(" ", "-")
 
     md = [f"# {question}", "", f"*A/B test report · {name} · {date}*", "", f"**{answer}**", "",
-          f"> **In short.** Two versions of konrad, A ({label['a']}) and B ({label['b']}), did the same {len(summaries)} "
-          f"tasks, {runs_n} times each, with the same AI model. Every result was checked automatically for hard facts, "
+          (f"> **In short.** Two versions of konrad, A ({label['a']}) and B ({label['b']}), did the same {len(summaries)} "
+           f"tasks, {runs_n} times each, with the same AI model. " if same_model else
+           f"> **In short.** Two AI models, A ({label['a']}) and B ({label['b']}), did the same {len(summaries)} tasks "
+           f"in konrad, {runs_n} times each. ") + "Every result was checked automatically for hard facts, "
           "and every pair of results was compared by AI reviewers who didn't know which version made which.", "",
           "| task | outcome | pairs: A better / no difference / B better | checks passed A / B | tokens read A / B (k) |",
           "| --- | --- | --- | --- | --- |"]
@@ -300,8 +306,9 @@ def report(args):
                   f"{fmt(g_(t, 'a', 'score', 100), '.0f')}% / {fmt(g_(t, 'b', 'score', 100), '.0f')}% | "
                   f"{fmt(g_(t, 'a', 'tokens_in', 1e-3), '.0f')} / {fmt(g_(t, 'b', 'tokens_in', 1e-3), '.0f')} |")
     md += ["", "## 1. What was compared", "", "| | A | B |", "| --- | --- | --- |",
-           f"| version | {cell(label['a'])} | {cell(label['b'])} |", f"| image | `{image['a']}` | `{image['b']}` |", "",
-           f"Both versions ran with `{model}`.{suffix} The tasks:", ""]
+           f"| version | {cell(label['a'])} | {cell(label['b'])} |", f"| image | `{image['a']}` | `{image['b']}` |",
+           *([] if same_model else [f"| model | `{model['a']}` | `{model['b']}` |"]), "",
+           ((f"Both versions ran with `{model['a']}`." if same_model else "") + f"{suffix} The tasks:").lstrip(), ""]
     md += [f"- **{t}**: “{prompts[t]}”" for t in order]
     md += ["", "## 2. How", "",
            f"1. **Same task, same input, {runs_n} runs per version.** Run 1 of A and run 1 of B form a *pair*, and so on.",
@@ -372,7 +379,9 @@ def report(args):
 
     md += ["", "## 4. Limits", "", f"- {runs_n} pairs per task show clear differences, not subtle ones.",
            "- The reviewers are AI models. They agreed with themselves as shown above, but nobody checked every verdict by hand.",
-           f"- The runs used `{model}`; another model, such as the local one konrad is tuned for, may behave differently.",
+           (f"- The runs used `{model['a']}`; another model, such as the local one konrad is tuned for, may behave differently."
+            if same_model else "- Each model ran at the effort shown, through one provider; the same model served elsewhere "
+            "(another provider, a local runtime, a quantized build) may behave differently."),
            "- The reviewers are kept blind by instruction: they could have looked at other files on disk.", ""]
     (out / "README.md").write_text("\n".join(md), encoding="utf-8")
     size = sum(f.stat().st_size for f in out.rglob("*") if f.is_file())

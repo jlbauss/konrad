@@ -4,7 +4,8 @@
 #
 # A/B test two konrad images on the same tasks with a real model — the check
 # for a change whose effect only shows in what the agent does with it (a skill
-# swapped for an upstream one, a prompt edit). Each task in tests/ab/<task>/ is:
+# swapped for an upstream one, a prompt edit) — or two models on one image.
+# Each task in tests/ab/<task>/ is:
 #
 #   prompt.md   the request, passed to `konrad run` as is
 #   input/      files copied into each run's fresh workspace
@@ -23,6 +24,8 @@
 # up score (share of checks passed), cost, time, steps and the skills loaded.
 #
 #   scripts/ab-test.sh --a konrad:ab-a --b konrad:local --runs 5 xlsx-create-report
+#   scripts/ab-test.sh --a konrad:local --b konrad:local \
+#     --b-model openrouter/qwen/qwen3.8-27b --b-variant '' xlsx-create-report
 #
 # Podman only (like test-autoupdate.sh); needs jq and a connected provider key,
 # a capped one in unattended runs (CONTRIBUTING → A real model in unattended runs).
@@ -38,6 +41,7 @@ RUNS=5
 JOBS=3
 MODEL="${KONRAD_AB_MODEL:-anthropic/claude-haiku-5-5}"
 VARIANT="${KONRAD_AB_VARIANT:-low}"
+A_MODEL="" B_MODEL="" A_VARIANT="-" B_VARIANT="-"
 TIMEOUT=900
 OUT=""
 SUFFIX=""
@@ -52,6 +56,9 @@ usage: scripts/ab-test.sh [options] <task>...
   --jobs <n>          runs in parallel (default 3)
   --model <slug>      default $KONRAD_AB_MODEL or anthropic/claude-haiku-5-5
   --variant <effort>  reasoning effort, default $KONRAD_AB_VARIANT or low ('' = model default)
+  --a-model, --b-model <slug>       one side's model, default --model (compare two
+                      models on one image: --a and --b the same image)
+  --a-variant, --b-variant <effort> one side's effort, default --variant
   --timeout <s>       per run (default 900)
   --grader <image>    image the graders run in (default: variant A)
   --prompt-suffix <text>  appended to every prompt, e.g. to make the agent load a
@@ -67,12 +74,12 @@ die() { printf 'ab-test: %s\n' "$*" >&2; exit 1; }
 
 # --- one run: called back through xargs as `ab-test.sh --trial …` -----------
 trial() {
-  local task="$1" side="$2" image="$3" n="$4" dir="$5"
+  local task="$1" side="$2" image="$3" model="$4" variant="$5" n="$6" dir="$7"
   local ws="$dir/ws" profile="ab-$$-$side$n-${task//[^a-zA-Z0-9]/}"
   mkdir -p "$ws"
   cp -a "$TASKS/$task/input/." "$ws/"
-  local args=(--profile "$profile" run --model "$MODEL" --format json)
-  [ -n "$VARIANT" ] && args+=(--variant "$VARIANT")
+  local args=(--profile "$profile" run --model "$model" --format json)
+  [ -n "$variant" ] && args+=(--variant "$variant")
   local start rc=0
   start="$(date +%s)"
   local prompt
@@ -81,9 +88,10 @@ trial() {
 $SUFFIX}"
   (cd "$ws" && HOME="$AB_HOME" KONRAD_IMAGE="$image" timeout "$TIMEOUT" konrad-dev "${args[@]}" "$prompt") \
     </dev/null >"$dir/events.jsonl" 2>"$dir/stderr.txt" || rc=$?
-  jq -n --arg task "$task" --arg side "$side" --arg image "$image" --argjson n "$n" \
-    --argjson rc "$rc" --argjson seconds "$(( $(date +%s) - start ))" \
-    '{task: $task, side: $side, image: $image, n: $n, rc: $rc, seconds: $seconds}' > "$dir/run.json"
+  jq -n --arg task "$task" --arg side "$side" --arg image "$image" --arg model "$model" --arg variant "$variant" \
+    --argjson n "$n" --argjson rc "$rc" --argjson seconds "$(( $(date +%s) - start ))" \
+    '{task: $task, side: $side, image: $image, model: $model, variant: $variant, n: $n, rc: $rc, seconds: $seconds}' \
+    > "$dir/run.json"
   podman volume rm -f "konrad-state-$profile" "konrad-cache-$profile" >/dev/null 2>&1 || true
   podman run --rm --network none --entrypoint /opt/venv/bin/python \
     -v "$ws:/ws:ro,z" -v "$TASKS:/ab:ro,z" "$GRADER" "/ab/$task/grade.py" /ws \
@@ -131,8 +139,10 @@ report() {
         def side(s): [$r[] | select(.side == s)];
         def pct: . * 100 | round | tostring + "%";
         def num(d): . * pow(10; d) | round / pow(10; d) | tostring;
+        def who(s): side(s)[0] | if . == null then "-" else
+          "\(.image)\(if .model then " · \(.model)\(if (.variant // "") != "" then " (\(.variant))" else "" end)" else "" end)" end;
       "## \($t)\n",
-      "| | A (\(side("a")[0].image // "-")) | B (\(side("b")[0].image // "-")) |",
+      "| | A (\(who("a"))) | B (\(who("b"))) |",
       "| --- | --- | --- |",
       "| runs (exit 0) | \(side("a") | length) (\(side("a") | map(select(.rc == 0)) | length)) | \(side("b") | length) (\(side("b") | map(select(.rc == 0)) | length)) |",
       "| ended by a refused permission | \(side("a") | map(select(.refused)) | length) | \(side("b") | map(select(.refused)) | length) |",
@@ -155,8 +165,8 @@ report() {
 # --- arguments ---------------------------------------------------------------
 if [ "${1:-}" = --trial ]; then
   shift
-  MODEL="$1" VARIANT="$2" TIMEOUT="$3" GRADER="$4" AB_HOME="$5" SUFFIX="$6"
-  shift 6
+  TIMEOUT="$1" GRADER="$2" AB_HOME="$3" SUFFIX="$4"
+  shift 4
   trial "$@"
   exit 0
 fi
@@ -170,6 +180,10 @@ while [ $# -gt 0 ]; do
     --jobs)    JOBS="$2"; shift 2 ;;
     --model)   MODEL="$2"; shift 2 ;;
     --variant) VARIANT="$2"; shift 2 ;;
+    --a-model) A_MODEL="$2"; shift 2 ;;
+    --b-model) B_MODEL="$2"; shift 2 ;;
+    --a-variant) A_VARIANT="$2"; shift 2 ;;
+    --b-variant) B_VARIANT="$2"; shift 2 ;;
     --timeout) TIMEOUT="$2"; shift 2 ;;
     --grader)  GRADER="$2"; shift 2 ;;
     --out)     OUT="$2"; shift 2 ;;
@@ -190,6 +204,10 @@ for img in "$A" "$B"; do
   podman image exists "$img" || die "no image $img (konrad-dev rebuild, or podman tag)"
 done
 GRADER="${GRADER:-$A}"
+A_MODEL="${A_MODEL:-$MODEL}" B_MODEL="${B_MODEL:-$MODEL}"
+# '-' = not given (an empty effort is a real choice: the model's default).
+[ "$A_VARIANT" = - ] && A_VARIANT="$VARIANT"
+[ "$B_VARIANT" = - ] && B_VARIANT="$VARIANT"
 OUT="${OUT:-$ROOT/.skill-eval/$(date +%Y%m%d-%H%M%S)}"
 mkdir -p "$OUT"
 OUT="$(cd "$OUT" && pwd)"
@@ -202,18 +220,19 @@ if [ -d "$cfg/user" ]; then cp -a "$cfg/user" "$AB_HOME/.config/konrad/org/zz-us
 printf '{ "permission": { "bash": { "rm -rf *": "allow" } } }\n' > "$AB_HOME/.config/konrad/user/opencode.jsonc"
 export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}" XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
 
-printf 'ab-test: %s task(s) × %s runs × A=%s, B=%s · %s%s · %s in parallel → %s\n' \
-  "${#tasks[@]}" "$RUNS" "$A" "$B" "$MODEL" "${VARIANT:+ ($VARIANT)}" "$JOBS" "$OUT"
+printf 'ab-test: %s task(s) × %s runs × A=%s · %s%s, B=%s · %s%s · %s in parallel → %s\n' \
+  "${#tasks[@]}" "$RUNS" "$A" "$A_MODEL" "${A_VARIANT:+ ($A_VARIANT)}" "$B" "$B_MODEL" "${B_VARIANT:+ ($B_VARIANT)}" "$JOBS" "$OUT"
 printf '%s\n' "$SUFFIX" > "$OUT/prompt-suffix.txt"
-jq -n --arg a "$A" --arg b "$B" --arg model "$MODEL" --arg variant "$VARIANT" --argjson runs "$RUNS" \
-  --arg suffix "$SUFFIX" '{a: $a, b: $b, model: $model, variant: $variant, runs: $runs, prompt_suffix: $suffix}' \
-  > "$OUT/settings.json"
+jq -n --arg a "$A" --arg b "$B" --arg a_model "$A_MODEL" --arg b_model "$B_MODEL" \
+  --arg a_variant "$A_VARIANT" --arg b_variant "$B_VARIANT" --argjson runs "$RUNS" --arg suffix "$SUFFIX" \
+  '{a: $a, b: $b, a_model: $a_model, b_model: $b_model, a_variant: $a_variant, b_variant: $b_variant,
+    runs: $runs, prompt_suffix: $suffix}' > "$OUT/settings.json"
 for t in "${tasks[@]}"; do
   for n in $(seq 1 "$RUNS"); do
-    printf '%s\0a\0%s\0%s\0%s\0' "$t" "$A" "$n" "$OUT/$t/a-$n"
-    printf '%s\0b\0%s\0%s\0%s\0' "$t" "$B" "$n" "$OUT/$t/b-$n"
+    printf '%s\0a\0%s\0%s\0%s\0%s\0%s\0' "$t" "$A" "$A_MODEL" "$A_VARIANT" "$n" "$OUT/$t/a-$n"
+    printf '%s\0b\0%s\0%s\0%s\0%s\0%s\0' "$t" "$B" "$B_MODEL" "$B_VARIANT" "$n" "$OUT/$t/b-$n"
   done
-done | xargs -0 -n 5 -P "$JOBS" "$0" --trial "$MODEL" "$VARIANT" "$TIMEOUT" "$GRADER" "$AB_HOME" "$SUFFIX"
+done | xargs -0 -n 7 -P "$JOBS" "$0" --trial "$TIMEOUT" "$GRADER" "$AB_HOME" "$SUFFIX"
 
 printf '\n'
 report "$OUT"
