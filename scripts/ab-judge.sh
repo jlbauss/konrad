@@ -4,7 +4,7 @@
 #
 # Blind judging of an ab-test.sh results dir: how good the deliverables are,
 # beyond the pass/fail checks of each task's grader. The judges are ab-judge
-# subagents of the session that runs this (.claude/agents/ab-judge.md: Opus,
+# subagents of the session that runs this (.claude/agents/ab-judge.md: Sonnet,
 # with only Read, Write and Glob), never told which side is which:
 #
 #   scripts/ab-judge.sh blind  <results dir>   # packets + batches in <results dir>.judge/
