@@ -8,7 +8,7 @@
 
 [![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
 [![version](https://img.shields.io/badge/dynamic/yaml?url=https://gitlab.git.nrw/jbauss2/konrad/-/raw/main/VERSION&query=$&label=version&color=informational)](CHANGELOG.md)
-[![status](https://img.shields.io/badge/status-personal%20tool-lightgrey)](#status)
+[![status](https://img.shields.io/badge/status-in--house%20tool-lightgrey)](#status)
 [![image](https://img.shields.io/badge/image-ghcr.io%2Fjlbauss%2Fkonrad-blue)](https://github.com/users/jlbauss/packages/container/package/konrad)
 
 </div>
@@ -220,7 +220,7 @@ konrad keeps the **image** and your subscribed **org layers** fresh on its own: 
 
 ## Status
 
-**A personal tool, shared as it is.** One person builds and maintains konrad for their own daily use, and publishes it in case it's useful to you too. It works day-to-day, but there's no plan for 1.0 and no promise of support, response times or platforms beyond the two below; issues, merge requests and [security reports](SECURITY.md) are welcome and handled as time allows. The agent edits real files, so keep backups of anything irreplaceable. What that means today:
+**An in-house tool, developed in the open.** One person builds and maintains konrad for their own work and their team's, and publishes it in case it's useful to you too. It works day-to-day, but there's no plan for 1.0 and no promise of support, response times or platforms beyond the two below to anyone outside that team; issues, merge requests and [security reports](SECURITY.md) are welcome and handled as time allows. The agent edits real files, so keep backups of anything irreplaceable. What that means today:
 
 - **Supported: Linux with Podman, and Apple-Silicon macOS 26+ with Apple's [`container`](https://github.com/apple/container).** Other Macs aren't supported, nor is Docker. No Windows support — WSL is at your own discretion and untested.
 - **Versioned, not stable.** konrad uses [semantic versioning](CONTRIBUTING.md#versioning) as `0.X.Y` (`X`/minor = new functionality or any user-visible change, `Y`/patch = fixes). The leading `0.` means config shapes, flags, and image internals can change without a migration path. `konrad update` follows `main`, so you get a merged change before the release that names it.

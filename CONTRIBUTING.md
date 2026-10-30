@@ -1,6 +1,6 @@
 # Contributing to konrad
 
-Thanks for your interest. konrad is a personal tool, shared as it is ([README → Status](README.md#status)): one person maintains it for their own use, so issues and merge requests are welcome but come with no promise of review or response time. Small, focused changes stand the best chance.
+Thanks for your interest. konrad is an in-house tool, developed in the open ([README → Status](README.md#status)): one person maintains it for their own and their team's use, so issues and merge requests are welcome but come with no promise of review or response time. Small, focused changes stand the best chance.
 
 ## Before you start
 
@@ -156,7 +156,7 @@ The `VERSION` file at the repo root drives all image tagging. **Only a release b
 
 `VERSION` holds `0.X.Y`, and the commit types since the last release pick the bump: **`X` (minor)**, resetting `Y` to 0, for a `feat` or a breaking change (`!` / `BREAKING CHANGE:`, any type — see [Commit style](#commit-style)); **`Y` (patch)** for a `fix` or `perf`. Any other type (docs, CI, ROADMAP, locks, tests, refactors) releases nothing.
 
-There's no plan for 1.0: it would promise no breaking change without a major bump, and a personal tool doesn't make that promise ([README → Status](README.md#status)).
+There's no plan for 1.0: it would promise no breaking change without a major bump, and an in-house tool doesn't make that promise to outside users ([README → Status](README.md#status)).
 
 ### Image tags
 
@@ -260,7 +260,7 @@ Co-Authored-By: ...                               (when applicable)
 
 ## When to update what
 
-**ROADMAP.md** — at most ten items: what automates the maintainer's checks, what keeps konrad safe and working for its own use, and what makes it smaller. An item comes in only when the maintainer wants it, and replaces an old one; an idea that doesn't make the cut lives in the commit or MR that raised it. A decision we made and are sticking with doesn't go there either (the commit message is enough). When an item ships, delete its bullet in the same commit. Outside the cap, **Upstream workarounds and limitations** tracks every upstream bug konrad works around or lives with: a commit that adds a workaround, or documents a limitation instead, adds its bullet there (upstream link, what to check, what to remove), and the commit that removes it deletes the bullet.
+**ROADMAP.md** — at most ten items: what automates the maintainer's checks, what keeps konrad safe and working for the maintainer's and their team's use, and what makes it smaller. An item comes in only when the maintainer wants it, and replaces an old one; an idea that doesn't make the cut lives in the commit or MR that raised it. A decision we made and are sticking with doesn't go there either (the commit message is enough). When an item ships, delete its bullet in the same commit. Outside the cap, **Upstream workarounds and limitations** tracks every upstream bug konrad works around or lives with: a commit that adds a workaround, or documents a limitation instead, adds its bullet there (upstream link, what to check, what to remove), and the commit that removes it deletes the bullet.
 
 **CHANGELOG.md** — written by CI in the release commit, one entry per `feat`, `fix` and `perf` commit since the last release: its subject and the first paragraph of its body ([Keep a Changelog](https://keepachangelog.com/); the rationale after that paragraph stays in the commit). Feature MRs leave it alone.
 
