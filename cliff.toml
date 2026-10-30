@@ -3,8 +3,12 @@
 #
 # git-cliff config: one CHANGELOG.md section from the commits since the last
 # release, written by scripts/release.sh (CONTRIBUTING → Git tags & releases).
-# A feat, fix or perf subject becomes the entry as written (lowercase, like
-# konrad), under Keep a Changelog's headings; every other type is left out.
+# A feat, fix or perf commit becomes an entry under Keep a Changelog's
+# headings: its subject in bold, first letter upper-cased (a subject starting
+# with konrad stays lowercase), then the body's first paragraph, the one
+# written for users (CONTRIBUTING → Commit style), joined onto one line, since
+# GitHub release notes turn every newline into a <br>. The rest of the body is
+# for reviewers and stays out. Every other type is left out.
 
 [changelog]
 header = ""
@@ -13,7 +17,18 @@ body = """
 {% for group, commits in commits | group_by(attribute="group") %}
 ### {{ group | striptags | trim }}
 {% for commit in commits %}
-- {% if commit.breaking %}**Breaking:** {% endif %}{{ commit.message | split(pat="\n") | first | trim }}\
+{%- set subject = commit.message | split(pat="\n") | first | trim -%}
+{%- if subject is starting_with("konrad") -%}
+{%- set summary = subject -%}
+{%- else -%}
+{%- set summary = subject | upper_first -%}
+{%- endif -%}
+{%- if commit.body -%}
+{%- set para = commit.body | trim | split(pat="\n\n") | first | split(pat="\n") | join(sep=" ") -%}
+{%- else -%}
+{%- set para = "" -%}
+{%- endif %}
+- {% if commit.breaking %}**Breaking:** {% endif %}**{{ summary }}.**{% if para %} {{ para }}{% endif %}\
 {% endfor %}
 {% endfor %}
 """

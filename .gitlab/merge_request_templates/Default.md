@@ -11,6 +11,10 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 <!-- The problem or ROADMAP item this answers, and any design decision a reviewer should weigh. -->
 
+## Release notes
+
+<!-- What the release after this merge will say: paste the output of `scripts/release.sh --preview` (each feat, fix and perf commit's subject and first body paragraph, CONTRIBUTING → Commit style). Read it as a user would; if it talks about internals, reword the commit, not this section. "None" when the branch has no feat, fix or perf commit. -->
+
 ## Validation run
 
 <!-- What already ran, with results: `scripts/check.sh`, `konrad-dev rebuild` + `scripts/smoke-test.sh konrad:local`, `scripts/selftest.sh`, probes. Say what was skipped and why. -->

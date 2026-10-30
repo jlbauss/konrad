@@ -27,7 +27,14 @@ commit() { git -C "$R" add -A; git -C "$R" commit -q --allow-empty -m "$1"; }
 
 @test "release.sh: fixes bump the patch and list only what users see" {
   repo
-  commit 'fix(cli): resume a cut pull'
+  commit 'fix(cli): resume a cut pull
+
+An update on a slow link no longer
+starts over.
+
+The registry resets slow downloads; for reviewers only.
+
+Co-Authored-By: t <t@example.test>'
   commit 'docs: explain the pull'
   commit 'perf: start faster'
   run "$R/scripts/release.sh"
@@ -39,11 +46,11 @@ commit() { git -C "$R" add -A; git -C "$R" commit -q --allow-empty -m "$1"; }
 
 ### Changed
 
-- start faster
+- **Start faster.**
 
 ### Fixed
 
-- resume a cut pull
+- **Resume a cut pull.** An update on a slow link no longer starts over.
 
 ## [0.4.2] - 2026-01-01" ]
 }
@@ -54,7 +61,7 @@ commit() { git -C "$R" add -A; git -C "$R" commit -q --allow-empty -m "$1"; }
   commit 'feat(cli): konrad code up --all'
   run "$R/scripts/release.sh"
   [ "${lines[-1]}" = 0.5.0 ]
-  grep -Fx -- '- konrad code up --all' "$R/CHANGELOG.md"
+  grep -Fx -- '- **konrad code up --all.**' "$R/CHANGELOG.md"
 }
 
 @test "release.sh: a breaking change of any type bumps the minor, marked" {
@@ -62,7 +69,7 @@ commit() { git -C "$R" add -A; git -C "$R" commit -q --allow-empty -m "$1"; }
   commit 'refactor(cli)!: drop the Podman fallback on macOS'
   run "$R/scripts/release.sh"
   [ "${lines[-1]}" = 0.5.0 ]
-  grep -Fx -- '- **Breaking:** drop the Podman fallback on macOS' "$R/CHANGELOG.md"
+  grep -Fx -- '- **Breaking:** **Drop the Podman fallback on macOS.**' "$R/CHANGELOG.md"
 }
 
 @test "release.sh: a BREAKING CHANGE footer bumps the minor" {
@@ -81,5 +88,19 @@ BREAKING CHANGE: --old is now --new'
   run "$R/scripts/release.sh"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
+  [ -z "$(git -C "$R" status --porcelain)" ]
+}
+
+@test "release.sh: --preview prints a branch's notes and changes nothing" {
+  repo
+  base="$(git -C "$R" rev-parse HEAD)"
+  commit 'feat: open it in a browser
+
+You can now work in your browser.'
+  run "$R/scripts/release.sh" --preview "$base"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"## [0.5.0] - $(date +%F)"* ]]   # git-cliff logs to stderr first
+  [ "${lines[-1]}" = '- **Open it in a browser.** You can now work in your browser.' ]
+  [ "$(cat "$R/VERSION")" = 0.4.2 ]
   [ -z "$(git -C "$R" status --porcelain)" ]
 }
