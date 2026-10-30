@@ -9,6 +9,12 @@ All notable, user-facing changes to konrad. The format follows [Keep a Changelog
 
 Each section after 0.40.0 is written by CI from the commits it releases: every `feat`, `fix` and `perf` commit, as its subject and the first paragraph of its body (see [Commit style](CONTRIBUTING.md#commit-style)). The *why* lives in those commits and in [ARCHITECTURE.md](ARCHITECTURE.md). Each image build publishes as `:0.X` (minor line), `:latest`, and an immutable `:<short-sha>` (see the [image tags](CONTRIBUTING.md#image-tags)).
 
+## [0.43.0] - 2026-10-30
+
+### Added
+
+- **Connect a provider your org layer declares by pasting just its key.** If your organization's konrad setup already includes a provider, `konrad connect <its id>` (for example `konrad connect acme-llm`) now asks for your key once and you're done: no list to pick from, no id to type again. It also works when you run it from your home folder. Providers that aren't declared work as before.
+
 ## [0.42.1] - 2026-10-28
 
 ### Fixed
