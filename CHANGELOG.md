@@ -7,7 +7,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 All notable, user-facing changes to konrad. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); konrad follows [semantic versioning](CONTRIBUTING.md#versioning) (pre-1.0: `0.X.Y`).
 
-Each section after 0.40.0 is written by CI from the commits it releases: every `feat`, `fix` and `perf` subject, as written (see [Git tags & releases](CONTRIBUTING.md#git-tags--releases)). The *why* lives in those commits and in [ARCHITECTURE.md](ARCHITECTURE.md). Each image build publishes as `:0.X` (minor line), `:latest`, and an immutable `:<short-sha>` (see the [image tags](CONTRIBUTING.md#image-tags)).
+Each section after 0.40.0 is written by CI from the commits it releases: every `feat`, `fix` and `perf` commit, as its subject and the first paragraph of its body (see [Commit style](CONTRIBUTING.md#commit-style)). The *why* lives in those commits and in [ARCHITECTURE.md](ARCHITECTURE.md). Each image build publishes as `:0.X` (minor line), `:latest`, and an immutable `:<short-sha>` (see the [image tags](CONTRIBUTING.md#image-tags)).
 
 ## [0.42.1] - 2026-10-28
 

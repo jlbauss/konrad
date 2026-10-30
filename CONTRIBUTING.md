@@ -224,14 +224,18 @@ If a change touches multiple concerns, prefer separate commits per concern. The 
 
 ## Commit style
 
-[Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/), applied fully — by discipline, checked at review. CI reads them: the types pick the [version bump](#versioning), and every `feat`, `fix` and `perf` subject becomes a [CHANGELOG.md](CHANGELOG.md) entry, word for word.
+[Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/), applied fully — by discipline, checked at review. CI reads them: the types pick the [version bump](#versioning), and every `feat`, `fix` and `perf` commit becomes a [CHANGELOG.md](CHANGELOG.md) entry: its subject, then the first paragraph of its body.
 
 ```text
 type(scope)?: imperative, lowercase subject, no trailing period
 
-Body — expected for anything that needed a design decision: explain *why*
-(surprising constraints, non-obvious tradeoffs), wrapped at ~72 cols. Don't
-restate the diff; the git log is the project's primary design history.
+First body paragraph — for feat, fix and perf: what changes for the user,
+in plain words. It becomes the release note.
+
+The rest of the body — for reviewers, expected for anything that needed a
+design decision: explain *why* (surprising constraints, non-obvious
+tradeoffs, measurements, links), wrapped at ~72 cols. Don't restate the
+diff; the git log is the project's primary design history.
 
 BREAKING CHANGE: <what breaks + how to migrate>   (footer, when applicable)
 Co-Authored-By: ...                               (when applicable)
@@ -243,15 +247,22 @@ Co-Authored-By: ...                               (when applicable)
 
 **Breaking changes** — mark with `!` after the type/scope (e.g. `feat!:`) and/or a `BREAKING CHANGE:` footer. It makes the next release at least a **minor** bump — see [Versioning](#versioning).
 
-**Subjects are changelog entries** — so write a `feat`, `fix` or `perf` subject for the user who reads the release: what they can now do or what no longer goes wrong (`fix(cli): resume an apple/container pull that the registry cuts off`), not the function you changed. A fix users never saw (to a test, a script, an unreleased feature) is `test`, `chore` or `refactor`, or folds into the commit it fixes.
+**Release notes are the commits** — a `feat`, `fix` or `perf` commit's subject and first body paragraph are what users read in the release, so write them for users:
 
-**Release commit** — CI makes it: `chore(release): <version>`, bumping `VERSION` and adding `## [<version>] - <YYYY-MM-DD>` to CHANGELOG.md, through an auto-merging MR after every merge that has something to release ([Git tags & releases](#git-tags--releases)). Feature MRs never touch either file. A release that needs more than the subjects say (a migration note, say) gets it from a maintainer edit to the release MR before it merges, or to CHANGELOG.md after.
+1. **The subject** says what a user can now do or what no longer goes wrong (`fix(cli): resume an apple/container pull that the registry cuts off`), not the function you changed.
+2. **The body's first paragraph** says what changes for them, in plain words: no internals, no file or function names unless the user types them. For 0.42.1's first fix that would have been "When you told the agent what to call a file, it sometimes saved it in its own hidden working folder instead of where you'd look. It now saves it where you asked." rather than opening with how the agent prompt contradicted itself. A commit without a body gets its subject alone.
+3. **Everything after that paragraph** is for reviewers and stays out of the notes: rationale, measurements, links, upstream issues, as detailed as the change needs.
+4. **A fix users never saw** (to a test, a script, an unreleased feature) is `test`, `chore` or `refactor`, or folds into the commit it fixes.
+
+`scripts/release.sh --preview` prints the notes a branch would release; the [MR template](.gitlab/merge_request_templates/Default.md) has a section for them, so they're read with the diff. The format (subject in bold, its first letter upper-cased unless it starts with `konrad`, the paragraph joined onto one line) is [cliff.toml](cliff.toml)'s.
+
+**Release commit** — CI makes it: `chore(release): <version>`, bumping `VERSION` and adding `## [<version>] - <YYYY-MM-DD>` to CHANGELOG.md, through an auto-merging MR after every merge that has something to release ([Git tags & releases](#git-tags--releases)). Feature MRs never touch either file. A release that needs more than its commits say (a migration note, say) gets it from a maintainer edit to the release MR before it merges, or to CHANGELOG.md after.
 
 ## When to update what
 
 **ROADMAP.md** — at most ten items: what automates the maintainer's checks, what keeps konrad safe and working for its own use, and what makes it smaller. An item comes in only when the maintainer wants it, and replaces an old one; an idea that doesn't make the cut lives in the commit or MR that raised it. A decision we made and are sticking with doesn't go there either (the commit message is enough). When an item ships, delete its bullet in the same commit. Outside the cap, **Upstream workarounds and limitations** tracks every upstream bug konrad works around or lives with: a commit that adds a workaround, or documents a limitation instead, adds its bullet there (upstream link, what to check, what to remove), and the commit that removes it deletes the bullet.
 
-**CHANGELOG.md** — written by CI in the release commit, one entry per `feat`, `fix` and `perf` subject since the last release ([Keep a Changelog](https://keepachangelog.com/); rationale stays in the commit). Feature MRs leave it alone.
+**CHANGELOG.md** — written by CI in the release commit, one entry per `feat`, `fix` and `perf` commit since the last release: its subject and the first paragraph of its body ([Keep a Changelog](https://keepachangelog.com/); the rationale after that paragraph stays in the commit). Feature MRs leave it alone.
 
 **README.md** — anything that changes how a user installs, runs, or thinks about konrad. A new subcommand or flag. A new external dependency (e.g. a tool the user has to install on the host).
 
