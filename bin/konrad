@@ -2467,7 +2467,9 @@ do_opencode() {
 # opencode's flags), so `konrad connect` opens the picker and
 # `konrad connect -p openrouter` skips it — same as do_run_oneshot forwards to
 # `opencode run`. The credential lands on the konrad-secrets volume (auth.json),
-# exactly like an in-TUI /connect.
+# exactly like an in-TUI /connect. A lone provider id (`konrad connect acme`)
+# goes to connect_in_sandbox, which handles the one case opencode can't: a
+# custom provider the config declares.
 #
 # The firewall is FORCED OFF for this verb. It's safe because authentication runs
 # no agent — there's no prompt-injection surface to contain — and it's the clean
@@ -2486,117 +2488,155 @@ do_connect() {
     return
   fi
   launch_preflight
-  # The one wrong-door case: a self-hosted endpoint connected via opencode's bare
-  # "Other" gets a credential but no config declaration. Point those users at the
-  # guided flow. Integrated providers are fine here — this IS `opencode auth login`,
-  # the same backend as the TUI's /connect.
-  if [[ $# -eq 0 ]]; then
-    info "tip: a custom / self-hosted endpoint? use 'konrad connect --custom' to declare it too."
-  fi
+  connect_workspace
   KONRAD_FIREWALL=0   # pure auth, no agent → no injection surface → safe unfiltered
-  brand
-  dbg "about to exec $KONRAD_ENGINE run (opencode auth login)"
-  podman_run opencode auth login "$@"
+  if [[ $# -eq 1 && "$1" != -* && "$1" != *://* ]]; then
+    valid_provider_id "$1"
+    brand
+    connect_run "$1"
+  else
+    # The one wrong-door case: a self-hosted endpoint connected via opencode's bare
+    # "Other" gets a credential but no config declaration. Point those users at the
+    # guided flow. Integrated providers are fine here — this IS `opencode auth login`,
+    # the same backend as the TUI's /connect.
+    if [[ $# -eq 0 ]]; then
+      info "tip: a custom / self-hosted endpoint? 'konrad connect --custom <id>' declares it and stores its key; 'konrad connect <id>' stores the key for one your config already declares."
+    fi
+    brand
+    dbg "about to exec $KONRAD_ENGINE run (opencode auth login)"
+    podman_run opencode auth login "$@"
+  fi
+}
+
+# connect_run <id> [--custom]: connect_in_sandbox in the sandbox. podman_run
+# execs, hence the subshell: its exit status comes back to the caller. /bin/bash
+# rather than bash, so the entrypoint doesn't announce a shell.
+connect_run() {
+  ( podman_run /bin/bash -c "$(declare -f connect_in_sandbox); connect_in_sandbox \"\$@\"" connect "$@" )
+}
+
+# Authentication needs no files, so it gets an empty workspace of its own rather
+# than the current directory: nothing of the user's is mounted while the firewall
+# is off, and `konrad connect` works from $HOME, which podman_run refuses to bind.
+connect_workspace() {
+  KONRAD_WORKSPACE_DIR="$KONRAD_STATE_DIR/connect"
+  mkdir -p "$KONRAD_WORKSPACE_DIR" || die "could not create $KONRAD_WORKSPACE_DIR"
+}
+
+valid_provider_id() {
+  [[ "$1" =~ ^[A-Za-z0-9_-]+$ ]] \
+    || die "invalid provider id '$1' (allowed: letters, digits, '-', '_')."
+}
+
+# Runs INSIDE the sandbox (shipped by `declare -f`), on the config the
+# entrypoint composed from every layer: `konrad connect <id>` for one provider.
+# opencode 1.x's `auth login -p` looks only in the models.dev catalog and its
+# plugins, so it refuses a custom provider even when the config declares it, and
+# its "Other" path makes the user type the id again (ROADMAP → Upstream
+# workarounds). So a provider declared with its own options.baseURL gets its key
+# read here, once, without echo, and stored the way opencode stores an API key:
+# {"type":"api","key":…} under the id in auth.json, mode 0600 (Auth.set in
+# opencode's src/auth). The key goes from the terminal straight into the
+# container and the secrets volume, like any credential; the host CLI never
+# sees it, and it goes nowhere near konrad's config or the workspace.
+# Any other id goes to `opencode auth login -p <id>` (catalog and OAuth logins).
+# With --custom an undeclared id returns 3 instead, so do_connect_custom can
+# declare it first. The paths are overridable for tests only.
+connect_in_sandbox() {
+  local id="$1" mode="${2:-}" key tmp
+  local cfg="${KONRAD_CONNECT_CONFIG:-/home/node/.config/opencode/opencode.jsonc}"
+  local auth="${KONRAD_CONNECT_AUTH:-/home/node/.opencode-secrets/auth.json}"
+  if ! jq -e --arg id "$id" '.provider[$id].options.baseURL | strings' "$cfg" >/dev/null 2>&1; then
+    [[ "$mode" == --custom ]] && return 3
+    exec opencode auth login -p "$id"
+  fi
+  printf "konrad: paste your API key for '%s' (it won't show) and press Enter: " "$id" >&2
+  IFS= read -rs key
+  echo >&2
+  [[ -n "$key" ]] || { echo "konrad: no key entered; nothing stored." >&2; return 1; }
+  umask 077
+  tmp="$(mktemp "$auth.XXXXXX")" || return 1
+  if { if [[ -s "$auth" ]]; then cat "$auth"; else echo '{}'; fi; } \
+       | KEY="$key" jq --arg id "$id" '.[$id] = {type: "api", key: $ENV.KEY}' >"$tmp" \
+     && mv "$tmp" "$auth"; then
+    echo "konrad: key for '$id' stored." >&2
+  else
+    rm -f "$tmp"
+    echo "konrad: couldn't update $auth; nothing stored." >&2
+    return 1
+  fi
 }
 
 # Guided custom / self-hosted provider flow. Two halves: the DECLARATION
 # (baseURL + models) goes into the user config layer — konrad owns that — and the
-# CREDENTIAL goes to opencode's auth.json via `opencode auth login`, which konrad
-# never touches (the "keys never leak into konrad" invariant). opencode's auth
-# login only accepts custom ids through its interactive "Other" path (it rejects
-# `-p <non-catalog-id>`), so the key step is a guided hand-off, not a drive.
+# CREDENTIAL goes to opencode's auth.json, written by connect_in_sandbox inside
+# the sandbox, never on the host.
 #
 # Whether the provider is already declared (e.g. shipped by an org layer) is read
-# straight from the host-side config — baked carries no custom providers, so the
-# org NAMED layers (org/<name>/opencode.jsonc — org/ is a container of named
-# layers since 0.18, walked in the same sorted order the entrypoint composes) plus
-# the user layer are the whole story. jq can't parse JSONC, so a layer that carries
-# comments is treated as "unknown" and we fall back to one y/N — never an unsafe //
-# strip (that would maul a https:// URL). Plain-JSON layers (what konrad writes)
-# auto-detect; a commented org layer (common for git-subscribed ones) keeps the y/N.
+# in the sandbox from the composed config, the one opencode will see: every layer,
+# JSONC comments and all. So a first sandbox run either stores the key (declared)
+# or comes back with 3, and only then does the host ask for the declaration and
+# run the key step again.
 do_connect_custom() {
-  local id="$1" baseurl model block userfile merged ans declared="" unknown=0 f
+  local id="$1" baseurl model block userfile merged ans rc=0
 
   command -v jq >/dev/null 2>&1 \
     || die "konrad connect --custom needs 'jq' on the host (e.g. 'brew install jq' / 'apt install jq')."
-  require_engine; require_image
+  launch_preflight
+  connect_workspace
+  KONRAD_FIREWALL=0   # as in do_connect: no agent runs
 
   [[ -n "$id" ]] || read -r -p "Provider id (e.g. acme): " id
   [[ -n "$id" ]] || die "a provider id is required."
-  [[ "$id" =~ ^[A-Za-z0-9_-]+$ ]] \
-    || die "invalid provider id '$id' (allowed: letters, digits, '-', '_')."
+  valid_provider_id "$id"
 
-  # Auto-detect: is $id declared in a config layer we can read? org/ holds named
-  # layers (org/<name>/), so glob them all, then the user layer; a layer may use
-  # either opencode.jsonc or opencode.json (like the entrypoint compose). An
-  # unmatched glob stays literal and is skipped by the -f guard.
-  for f in "$ORG_CFG_DIR"/*/opencode.jsonc "$ORG_CFG_DIR"/*/opencode.json \
-           "$USER_CFG_DIR/opencode.jsonc" "$USER_CFG_DIR/opencode.json"; do
-    [[ -f "$f" ]] || continue
-    if jq -e --arg id "$id" '(.provider // {}) | has($id)' "$f" >/dev/null 2>&1; then
-      declared=yes; break
-    elif ! jq empty "$f" >/dev/null 2>&1; then
-      unknown=1   # JSONC/unparseable — can't tell from this layer
-    fi
-  done
-  if [[ -z "$declared" && "$unknown" == 1 ]]; then
-    read -r -p "Couldn't fully read your config. Is '$id' already declared (e.g. by your org)? [y/N] " ans
-    [[ "$ans" =~ ^[Yy] ]] && declared=yes
-  fi
+  brand
+  connect_run "$id" --custom || rc=$?
+  [[ "$rc" -eq 3 ]] || return "$rc"
 
-  if [[ "$declared" == yes ]]; then
-    info "'$id' is already declared in your config — skipping to the key step."
-  else
-    # Scenario 1 — declare it: endpoint + at least one served model.
-    read -r -p "Base URL (OpenAI-compatible, e.g. https://llm.acme.example/v1): " baseurl
-    [[ -n "$baseurl" ]] || die "a base URL is required for a new custom provider."
-    read -r -p "One model id served there (e.g. acme-large): " model
-    [[ -n "$model" ]] || die "at least one model id is required."
+  # Scenario 1 — declare it: endpoint + at least one served model.
+  read -r -p "Base URL (OpenAI-compatible, e.g. https://llm.acme.example/v1): " baseurl
+  [[ -n "$baseurl" ]] || die "a base URL is required for a new custom provider."
+  read -r -p "One model id served there (e.g. acme-large): " model
+  [[ -n "$model" ]] || die "at least one model id is required."
 
-    block="$(jq -n --arg id "$id" --arg url "$baseurl" --arg m "$model" \
-      '{provider: {($id): {npm: "@ai-sdk/openai-compatible", name: $id,
-                           options: {baseURL: $url},
-                           models: {($m): {name: $m}}}}}')"
+  block="$(jq -n --arg id "$id" --arg url "$baseurl" --arg m "$model" \
+    '{provider: {($id): {npm: "@ai-sdk/openai-compatible", name: $id,
+                         options: {baseURL: $url},
+                         models: {($m): {name: $m}}}}}')"
 
-    userfile="$USER_CFG_DIR/opencode.jsonc"
-    printf '\nkonrad: this provider declaration belongs in %s:\n%s\n\n' "$userfile" "$block" >&2
+  userfile="$USER_CFG_DIR/opencode.jsonc"
+  printf '\nkonrad: this provider declaration belongs in %s:\n%s\n\n' "$userfile" "$block" >&2
 
-    if [[ ! -f "$userfile" ]]; then
-      read -r -p "Create $userfile with it? [y/N] " ans
-      if [[ "$ans" =~ ^[Yy] ]]; then
-        mkdir -p "$USER_CFG_DIR"
-        printf '%s\n' "$block" > "$userfile"
-        info "wrote $userfile"
-      else
-        info "skipped — add the block above to $userfile yourself before your next run."
-      fi
-    elif jq empty "$userfile" >/dev/null 2>&1; then
-      # Plain JSON → safe to deep-merge (objects recurse under jq's '*').
-      read -r -p "Merge it into $userfile? [y/N] " ans
-      if [[ "$ans" =~ ^[Yy] ]]; then
-        merged="$(jq -s '.[0] * .[1]' "$userfile" <(printf '%s' "$block"))" \
-          && printf '%s\n' "$merged" > "$userfile" \
-          && info "updated $userfile"
-      else
-        info "skipped — add the block above to $userfile yourself before your next run."
-      fi
+  if [[ ! -f "$userfile" ]]; then
+    read -r -p "Create $userfile with it? [y/N] " ans
+    if [[ "$ans" =~ ^[Yy] ]]; then
+      mkdir -p "$USER_CFG_DIR"
+      printf '%s\n' "$block" > "$userfile"
+      info "wrote $userfile"
     else
-      # Has comments (JSONC) → don't risk clobbering them with a jq round-trip.
-      info "$userfile has comments — add the block above into its \"provider\" object by hand, then continue."
+      die "skipped — add the block above to $userfile, then run '$SELF connect $id'."
     fi
+  elif jq empty "$userfile" >/dev/null 2>&1; then
+    # Plain JSON → safe to deep-merge (objects recurse under jq's '*').
+    read -r -p "Merge it into $userfile? [y/N] " ans
+    if [[ "$ans" =~ ^[Yy] ]]; then
+      merged="$(jq -s '.[0] * .[1]' "$userfile" <(printf '%s' "$block"))" \
+        && printf '%s\n' "$merged" > "$userfile" \
+        && info "updated $userfile"
+    else
+      die "skipped — add the block above to $userfile, then run '$SELF connect $id'."
+    fi
+  else
+    # Has comments (JSONC) → don't risk clobbering them with a jq round-trip.
+    info "$userfile has comments — add the block above into its \"provider\" object by hand."
+    read -r -p "Press Enter once it's there. " ans
   fi
 
-  # Guided key hand-off. opencode owns the credential; konrad never reads the key.
-  cat >&2 <<EOF
-
-konrad: opening 'opencode auth login' (firewall off — safe, no agent runs).
-  When it opens:
-    • choose "Other"
-    • enter provider id:  $id
-    • paste your API key
-EOF
-  KONRAD_FIREWALL=0
-  podman_run opencode auth login
+  rc=0
+  connect_run "$id" --custom || rc=$?
+  [[ "$rc" -eq 3 ]] && die "'$id' isn't declared yet — add the block above to $userfile, then run '$SELF connect $id'."
+  return "$rc"
 }
 
 # Authenticate a remote MCP server's OAuth: `opencode mcp auth <server>`, with NO
@@ -4022,14 +4062,16 @@ Subcommands:
                         Args pass straight to opencode:
                           $self connect                 # pick a provider
                           $self connect -p openrouter   # skip the picker
+                          $self connect acme            # a provider your config
+                                                        # declares: paste its key
                         The credential is stored on the konrad-secrets volume.
                         Same auth backend as the TUI's /connect, just agent-free.
   $self connect --custom [id]
                         Guided self-hosted / custom-endpoint flow: declares the
                         provider (baseURL + a model) in your user config layer,
-                        then walks you through the key step. Prompts for whatever
-                        you don't pass. (Already declared by your org? It just
-                        does the key step.)
+                        then asks for its key. Prompts for whatever you don't
+                        pass. (Already declared by your org? It just asks for
+                        the key.)
   $self mcp-auth <server>
                         Authenticate a remote MCP server's OAuth (e.g. a wiki or
                         issue tracker declared in your config). Agent-free,

@@ -112,7 +112,7 @@ The action verbs are subcommands; `konrad` with no subcommand launches the TUI.
 | `scratch`              | Launch the TUI in a fresh throwaway workspace under `~/.local/state/konrad/scratch/` — for when you want a clean space, not a specific folder. (Running `konrad` straight from your home folder does this automatically instead of refusing.) |
 | `open`                 | Reveal the newest scratch workspace in your file manager (`open` / `xdg-open`). |
 | `install-desktop`      | Add a clickable launcher — a Linux application-menu entry or a macOS `~/Applications/Konrad.app` (Dock / Launchpad / Spotlight) — that opens a scratch session. User-scope, no root; `install-desktop --remove` deletes it (also swept by `uninstall`). The installer offers this on a first install only. |
-| `connect [args…]`      | Authenticate a provider (`opencode auth login`) — agent-free, firewall off. `connect --custom [id]` declares a self-hosted endpoint. |
+| `connect [args…]`      | Authenticate a provider (`opencode auth login`) — agent-free, firewall off. `connect <id>` asks just for the key of a provider your config declares; `connect --custom [id]` declares a self-hosted endpoint first. |
 | `mcp-auth <server>`    | Authenticate a remote MCP server's OAuth; the browser callback is forwarded into the sandbox. |
 | `code [--shell] [--no-nested] [--kvm] [--session <name>] <git-url> [args…]` | *Preview.* Run Claude Code on a clone of a forge repo, with open internet but no access to your machine — see [Coding agents](#coding-agents-konrad-code). |
 | `code up [--no-nested] [--kvm] [--capacity <n>] <git-url>` / `code down <git-url>` / `code ls` | *Preview.* Keep a repo up in the background for sessions you start from the Claude app or claude.ai/code; stop it; list the repos that are up. |
@@ -341,7 +341,7 @@ For a **catalog provider** (OpenRouter, Anthropic, OpenAI, …) you don't need a
 
 All three local engines are pre-wired at their default ports (LM Studio `:1234`, Ollama `:11434`, llama.cpp `:8080`); you only declare the model.
 
-**Add a custom / self-hosted endpoint** (any OpenAI-compatible URL not in the models.dev catalog): run **`konrad connect --custom`** — it prompts for the id, base URL, and a model, writes the declaration into your user layer for you, then walks you through the key step. If your org layer already declares the provider, the same command skips straight to the key.
+**Add a custom / self-hosted endpoint** (any OpenAI-compatible URL not in the models.dev catalog): run **`konrad connect --custom`** — it prompts for the id, base URL, and a model, writes the declaration into your user layer for you, then asks for the key. If your org layer already declares the provider, `konrad connect <id>` (e.g. `konrad connect acme-llm`) asks for the key and nothing else: paste it, and it's stored in the `konrad-secrets` volume like any other credential.
 
 ### Adding your own model instructions
 

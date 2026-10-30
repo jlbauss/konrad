@@ -254,3 +254,79 @@ refresh() {
   [ "$status" -eq 1 ]
   [[ "$output" == *"Modifier flags must come BEFORE the subcommand"* ]]
 }
+
+# --- konrad connect <id> ------------------------------------------------------
+
+# sandbox_fixture '<composed config JSON>': the files connect_in_sandbox reads
+# and writes in the sandbox, plus an `opencode` stub on PATH that prints its args.
+sandbox_fixture() {
+  export KONRAD_CONNECT_CONFIG="$BATS_TEST_TMPDIR/opencode.jsonc" KONRAD_CONNECT_AUTH="$BATS_TEST_TMPDIR/auth.json"
+  printf '%s\n' "$1" >"$KONRAD_CONNECT_CONFIG"
+  mkdir -p "$BATS_TEST_TMPDIR/bin"
+  printf '#!/bin/sh\necho "opencode $*"\n' >"$BATS_TEST_TMPDIR/bin/opencode"
+  chmod +x "$BATS_TEST_TMPDIR/bin/opencode"
+  export PATH="$BATS_TEST_TMPDIR/bin:$PATH"
+}
+ACME='{"provider":{"acme-llm":{"npm":"@ai-sdk/openai-compatible","options":{"baseURL":"https://llm.acme.example/v1"}}}}'
+
+@test "connect_in_sandbox: a declared custom provider gets its key stored, others kept" {
+  sandbox_fixture "$ACME"
+  echo '{"openrouter":{"type":"api","key":"or-1"}}' >"$KONRAD_CONNECT_AUTH"
+  k 'connect_in_sandbox acme-llm <<<"sk-secret"'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"key for 'acme-llm' stored"* ]]
+  [[ "$output" != *sk-secret* ]]
+  [ "$(jq -c '."acme-llm"' "$KONRAD_CONNECT_AUTH")" = '{"type":"api","key":"sk-secret"}' ]
+  [ "$(jq -r '.openrouter.key' "$KONRAD_CONNECT_AUTH")" = or-1 ]
+  [ "$(stat -c %a "$KONRAD_CONNECT_AUTH")" = 600 ]
+}
+
+@test "connect_in_sandbox: the first key creates auth.json" {
+  sandbox_fixture "$ACME"
+  k 'connect_in_sandbox acme-llm <<<"sk-1"'
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '."acme-llm".key' "$KONRAD_CONNECT_AUTH")" = sk-1 ]
+}
+
+@test "connect_in_sandbox: an empty key stores nothing" {
+  sandbox_fixture "$ACME"
+  k 'connect_in_sandbox acme-llm <<<""'
+  [ "$status" -eq 1 ]
+  [ ! -e "$KONRAD_CONNECT_AUTH" ]
+}
+
+@test "connect_in_sandbox: an undeclared id goes to opencode's own login" {
+  sandbox_fixture '{"provider":{}}'
+  k 'connect_in_sandbox openrouter'
+  [ "$status" -eq 0 ]
+  [ "$output" = "opencode auth login -p openrouter" ]
+}
+
+@test "connect_in_sandbox: a catalog provider declared without a baseURL keeps opencode's login" {
+  sandbox_fixture '{"provider":{"anthropic":{"options":{"timeout":600000}}}}'
+  k 'connect_in_sandbox anthropic'
+  [ "$output" = "opencode auth login -p anthropic" ]
+}
+
+@test "connect_in_sandbox: --custom reports an undeclared id instead of logging in" {
+  sandbox_fixture '{}'
+  k 'connect_in_sandbox acme-llm --custom'
+  [ "$status" -eq 3 ]
+  [ -z "$output" ]
+  [ ! -e "$KONRAD_CONNECT_AUTH" ]
+}
+
+@test "connect_in_sandbox: --custom on a declared id just stores the key" {
+  sandbox_fixture "$ACME"
+  k 'connect_in_sandbox acme-llm --custom <<<"sk-2"'
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '."acme-llm".key' "$KONRAD_CONNECT_AUTH")" = sk-2 ]
+}
+
+@test "valid_provider_id: refuses anything but letters, digits, - and _" {
+  k 'valid_provider_id acme-llm_2'
+  [ "$status" -eq 0 ]
+  k 'valid_provider_id "acme;rm"'
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"invalid provider id"* ]]
+}
