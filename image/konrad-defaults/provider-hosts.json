@@ -69,6 +69,7 @@
   "groq": "api.groq.com",
   "helicone": "ai-gateway.helicone.ai",
   "hetzner": "inference.hetzner.com",
+  "hopper": "api.withhopper.com",
   "hpc-ai": "api.hpc-ai.com",
   "huggingface": "router.huggingface.co",
   "hyper": "hyper.charm.land",
