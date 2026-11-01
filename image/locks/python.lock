@@ -19,7 +19,7 @@ docling-parse==7.24.2
 docling-slim==2.145.0
 et-xmlfile==2.0.0
 faker==40.44.0
-filelock==4.2.5
+filelock==4.2.6
 filetype==1.2.0
 flatbuffers==25.12.19
 fsspec==2026.9.0
