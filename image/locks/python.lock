@@ -16,7 +16,7 @@ doclang==0.8.1
 docling-core==2.105.0
 docling-ibm-models==4.0.4
 docling-parse==7.24.2
-docling-slim==2.145.0
+docling-slim==2.146.0
 et-xmlfile==2.0.0
 faker==40.44.0
 filelock==4.2.7
@@ -92,7 +92,7 @@ setuptools==84.2.1
 shapely==2.2.0
 shellingham==1.5.4
 six==1.17.0
-soupsieve==3.0.4
+soupsieve==4.0
 sympy==1.14.0
 tabulate==0.10.0
 tokenizers==0.23.3
