@@ -12,14 +12,14 @@ colorlog==6.12.0
 cryptography==50.0.2
 defusedxml==0.7.1
 dill==0.4.1
-doclang==0.8.1
-docling-core==2.105.0
+doclang==0.9.0
+docling-core==2.106.0
 docling-ibm-models==4.0.4
 docling-parse==7.24.2
-docling-slim==2.146.0
+docling-slim==2.147.0
 et-xmlfile==2.0.0
 faker==40.44.0
-filelock==4.2.7
+filelock==4.2.9
 filetype==1.2.0
 flatbuffers==25.12.19
 fsspec==2026.9.0
@@ -52,7 +52,7 @@ onnxruntime==1.31.1
 opencv-python-headless==5.0.0.93
 openpyxl==3.1.5
 packaging==26.3
-pandas==3.1.0
+pandas==3.1.1
 pdf2image==1.17.0
 pdfminer-six==20260107
 pdfplumber==0.11.10
@@ -92,7 +92,7 @@ setuptools==84.2.1
 shapely==2.2.0
 shellingham==1.5.4
 six==1.17.0
-soupsieve==4.0
+soupsieve==4.0.1
 sympy==1.14.0
 tabulate==0.10.0
 tokenizers==0.23.3
@@ -107,7 +107,7 @@ tree-sitter-python==0.25.0
 tree-sitter-typescript==0.23.2
 typer==0.27.3
 typing-extensions==4.16.0
-typing-inspection==0.4.4
+typing-inspection==0.4.5
 tzdata==2026.6
 urllib3==2.8.0
 websockets==17.4
