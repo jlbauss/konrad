@@ -7,7 +7,7 @@ beautifulsoup4==4.15.0
 certifi==2026.10.23
 cffi==2.1.1
 charset-normalizer==3.5.2
-click==8.5.0
+click==8.5.1
 colorlog==6.12.0
 cryptography==50.0.2
 defusedxml==0.7.1
@@ -69,8 +69,8 @@ pydantic-core==2.50.4
 pydantic-settings==2.16.2
 pygments==2.21.0
 pylatexenc==2.11
-pypdf==6.21.4
-pypdfium2==5.14.0
+pypdf==7.0.0
+pypdfium2==5.15.0
 python-dateutil==4.0.0
 python-docx==1.2.0
 python-dotenv==1.2.4
@@ -79,7 +79,7 @@ python-pptx==1.0.2
 pyyaml==6.0.3
 rapidocr==3.10.0
 referencing==0.37.0
-regex==2026.9.29
+regex==2026.11.7
 reportlab==5.1.0
 requests==2.34.2
 rich==15.0.0
@@ -99,7 +99,7 @@ tokenizers==0.23.3
 torch==2.15.0+cpu
 torchvision==0.29.2+cpu
 tqdm==4.70.1
-transformers==5.22.1
+transformers==5.22.2
 tree-sitter==0.26.0
 tree-sitter-c==0.24.2
 tree-sitter-javascript==0.25.0
