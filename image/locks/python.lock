@@ -15,11 +15,11 @@ dill==0.4.1
 doclang==0.9.0
 docling-core==2.106.0
 docling-ibm-models==4.0.4
-docling-parse==7.24.2
+docling-parse==7.25.0
 docling-slim==2.149.0
 et-xmlfile==2.0.0
-faker==40.44.0
-filelock==4.2.9
+faker==40.52.0
+filelock==4.2.10
 filetype==1.2.0
 flatbuffers==25.12.19
 fsspec==2026.9.0
@@ -70,7 +70,7 @@ pydantic-settings==2.16.2
 pygments==2.21.0
 pylatexenc==2.11
 pypdf==7.0.0
-pypdfium2==5.15.1
+pypdfium2==5.15.2
 python-dateutil==4.0.0
 python-docx==1.2.0
 python-dotenv==1.2.4
@@ -100,7 +100,7 @@ torch==2.15.0+cpu
 torchvision==0.29.2+cpu
 tqdm==4.70.1
 transformers==5.22.2
-tree-sitter==0.26.0
+tree-sitter==0.26.1
 tree-sitter-c==0.24.2
 tree-sitter-javascript==0.25.0
 tree-sitter-python==0.25.0
