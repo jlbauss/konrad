@@ -13,9 +13,9 @@ cryptography==50.0.2
 defusedxml==0.7.1
 dill==0.4.1
 doclang==0.9.0
-docling-core==2.106.0
+docling-core==2.107.0
 docling-ibm-models==4.0.4
-docling-parse==7.25.0
+docling-parse==7.26.0
 docling-slim==2.150.0
 et-xmlfile==2.0.0
 faker==40.54.0
@@ -48,7 +48,7 @@ networkx==3.7
 numpy==2.5.4
 olefile==0.47
 omegaconf==2.4.0
-onnxruntime==1.31.1
+onnxruntime==1.32.0
 opencv-python-headless==5.0.0.93
 openpyxl==3.1.5
 packaging==26.3
@@ -66,10 +66,10 @@ pyclipper==1.4.0
 pycparser==3.12
 pydantic==2.14.3
 pydantic-core==2.50.4
-pydantic-settings==2.16.2
+pydantic-settings==2.16.3
 pygments==2.21.0
 pylatexenc==2.11
-pypdf==7.0.1
+pypdf==7.1.0
 pypdfium2==5.15.2
 python-dateutil==4.0.0
 python-docx==1.2.0
@@ -99,7 +99,7 @@ tokenizers==0.23.3
 torch==2.15.0+cpu
 torchvision==0.29.2+cpu
 tqdm==4.70.1
-transformers==5.22.2
+transformers==5.23.0
 tree-sitter==0.26.1
 tree-sitter-c==0.24.2
 tree-sitter-javascript==0.25.0
