@@ -1,4 +1,4 @@
-accelerate==1.15.0
+accelerate==1.16.0
 annotated-doc==0.0.6
 annotated-types==0.8.0
 anyio==4.16.0
@@ -13,7 +13,7 @@ cryptography==50.0.2
 defusedxml==0.7.1
 dill==0.4.1
 doclang==0.9.0
-docling-core==2.107.0
+docling-core==2.107.1
 docling-ibm-models==4.0.4
 docling-parse==7.26.0
 docling-slim==2.150.1
