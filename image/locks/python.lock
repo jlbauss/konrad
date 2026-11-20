@@ -12,11 +12,11 @@ colorlog==6.12.0
 cryptography==50.0.2
 defusedxml==0.7.1
 dill==0.4.1
-doclang==0.9.0
+doclang==0.9.1
 docling-core==2.107.1
 docling-ibm-models==4.0.4
-docling-parse==7.26.0
-docling-slim==2.150.1
+docling-parse==7.27.0
+docling-slim==2.151.1
 et-xmlfile==2.0.0
 faker==40.54.0
 filelock==4.2.12
@@ -64,8 +64,8 @@ protobuf==7.36.2
 psutil==7.2.2
 pyclipper==1.4.0
 pycparser==3.12
-pydantic==2.14.3
-pydantic-core==2.50.4
+pydantic==2.14.4
+pydantic-core==2.50.5
 pydantic-settings==2.16.3
 pygments==2.21.0
 pylatexenc==2.11
@@ -111,4 +111,4 @@ typing-inspection==0.4.5
 tzdata==2026.6
 urllib3==2.8.0
 websockets==17.4
-xlsxwriter==3.3.1
+xlsxwriter==3.3.2
