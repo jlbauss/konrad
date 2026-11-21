@@ -2865,13 +2865,15 @@ do_code() {
   case "${1:-}" in
     up)   shift; do_code_up "$@"; return ;;
     down) shift; do_code_down "$@"; return ;;
+    restart) shift; do_code_restart "$@"; return ;;
     ls)   shift; do_code_ls "$@"; return ;;
   esac
   local shell=0 nested=1 session=""
   local usage="usage: $SELF code [--shell] [--no-nested] [--kvm] [--session <name>] <git-url> [claude args…]   (e.g. $SELF code https://gitlab.example.com/me/repo)
        $SELF code up [--no-nested] [--kvm] [--capacity <n>] <git-url>   keep the repo up for sessions from the Claude app
        $SELF code up --all   start every repo that should be up (after a host restart)
-       $SELF code down <git-url>   ·   $SELF code ls"
+       $SELF code restart <git-url> | --all   recreate it from how it was started (after konrad update)
+       $SELF code down <git-url> | --all   ·   $SELF code ls"
   [[ "${1:-}" == help ]] && { printf '%s\n' "$usage"; return 0; }
   while [[ "${1:-}" == -* ]]; do
     case "$1" in
@@ -2977,39 +2979,127 @@ do_code_up() {
 # so one that fails doesn't stop the others; a repo already up is left alone.
 # Without --profile it covers every profile, as `code ls` lists them.
 code_up_all() {
-  local f url profile v any=0 failed=""
-  local -a cmd envs
-  for f in "$CODE_UP_DIR"/konrad-up-*; do
-    [[ -f "$f" ]] || continue
-    profile="$(sed -n 's/^profile=//p' "$f")"
-    [[ -z "$KONRAD_PROFILE" || "$profile" == "$KONRAD_PROFILE" ]] || continue
-    any=1
+  local f url failed=""
+  local -a markers=()
+  while IFS= read -r f; do markers+=("$f"); done < <(code_up_markers)
+  (( ${#markers[@]} )) || { info "no repo should be up — $SELF code up <git-url> starts one"; return 0; }
+  for f in "${markers[@]}"; do
     url="$(sed -n 's/^url=//p' "$f")"
-    cmd=("$0")
-    [[ -n "$profile" ]] && cmd+=(--profile "$profile")
-    cmd+=(code up)
-    [[ "$(sed -n 's/^nested=//p' "$f")" == 0 ]] && cmd+=(--no-nested)
-    [[ "$(sed -n 's/^kvm=//p' "$f")" == 1 ]] && cmd+=(--kvm)
-    v="$(sed -n 's/^capacity=//p' "$f")"
-    [[ -n "$v" ]] && cmd+=(--capacity "$v")
-    cmd+=("$url")
-    while IFS= read -r v; do cmd+=("$v"); done < <(sed -n 's/^arg=//p' "$f")
-    envs=()
-    v="$(sed -n 's/^memory=//p' "$f")"; [[ -n "$v" ]] && envs+=("KONRAD_MEMORY=$v")
-    v="$(sed -n 's/^cpus=//p' "$f")"; [[ -n "$v" ]] && envs+=("KONRAD_CPUS=$v")
-    go "${url%.git}${profile:+ (--profile $profile)}"
-    env ${envs[@]+"${envs[@]}"} "${cmd[@]}" || failed+=" ${url%.git}"
+    code_up_from_marker "$f" || failed+=" ${url%.git}"
   done
-  (( any )) || { info "no repo should be up — $SELF code up <git-url> starts one"; return 0; }
   [[ -z "$failed" ]] || die "couldn't start:$failed — the output above says why"
   return 0
 }
 
-# konrad code down <git-url>: stop the repo's up container. Claude gets time to
-# end its sessions: worktrees with nothing in them go, ones with work stay.
+# The markers of the repos that should be up, one path per line: all of them,
+# or with --profile only that profile's, as `code ls` lists them.
+code_up_markers() {
+  local f profile
+  for f in "$CODE_UP_DIR"/konrad-up-*; do
+    [[ -f "$f" ]] || continue
+    profile="$(sed -n 's/^profile=//p' "$f")"
+    [[ -z "$KONRAD_PROFILE" || "$profile" == "$KONRAD_PROFILE" ]] || continue
+    printf '%s\n' "$f"
+  done
+}
+
+# Start the repo a marker describes, the way it was started, as a konrad of
+# its own: so one that fails doesn't stop the others.
+code_up_from_marker() {
+  local f="$1" url profile v
+  local -a cmd envs=()
+  profile="$(sed -n 's/^profile=//p' "$f")"
+  url="$(sed -n 's/^url=//p' "$f")"
+  cmd=("$0")
+  [[ -n "$profile" ]] && cmd+=(--profile "$profile")
+  cmd+=(code up)
+  [[ "$(sed -n 's/^nested=//p' "$f")" == 0 ]] && cmd+=(--no-nested)
+  [[ "$(sed -n 's/^kvm=//p' "$f")" == 1 ]] && cmd+=(--kvm)
+  v="$(sed -n 's/^capacity=//p' "$f")"
+  [[ -n "$v" ]] && cmd+=(--capacity "$v")
+  cmd+=("$url")
+  while IFS= read -r v; do cmd+=("$v"); done < <(sed -n 's/^arg=//p' "$f")
+  v="$(sed -n 's/^memory=//p' "$f")"; [[ -n "$v" ]] && envs+=("KONRAD_MEMORY=$v")
+  v="$(sed -n 's/^cpus=//p' "$f")"; [[ -n "$v" ]] && envs+=("KONRAD_CPUS=$v")
+  go "${url%.git}${profile:+ (--profile $profile)}"
+  env ${envs[@]+"${envs[@]}"} "${cmd[@]}"
+}
+
+# Stop and remove an up container, leaving its marker to the caller. Claude
+# gets time to end its sessions: worktrees with nothing in them go, ones with
+# work stay.
+code_up_stop() {
+  local name="$1" err
+  eng_container_ls | grep -x "$name" >/dev/null || return 0
+  if code_up_running "$name"; then
+    go "stopping $name (its sessions get 30 s to finish)"
+    eng_stop_container "$name" 30 || true
+  fi
+  err="$(eng_rm_container_checked "$name" 2>&1)" \
+    || { warn "couldn't remove $name: ${err##*$'\n'}"; return 1; }
+  return 0
+}
+
+# konrad code restart <git-url> | --all: recreate a repo's up container from
+# its marker, or every marked repo's. The new container runs the current image
+# and the current konrad's run flags; the marker stays, so it's still up after.
+do_code_restart() {
+  local usage="usage: $SELF code restart <git-url>   ·   $SELF code restart --all"
+  local -a markers=()
+  local f url failed=""
+  require_engine
+  if [[ $# -eq 1 && "$1" == --all ]]; then
+    while IFS= read -r f; do markers+=("$f"); done < <(code_up_markers)
+    (( ${#markers[@]} )) || { info "no repo should be up — $SELF code up <git-url> starts one"; return 0; }
+  elif [[ $# -eq 1 && "$1" != -* ]]; then
+    local vol name
+    url="$(code_normalize_url "$1")"
+    vol="$(code_volume_name "$url")"
+    [[ -n "$KONRAD_PROFILE" ]] && vol+="-$KONRAD_PROFILE"
+    name="$(code_up_name "$vol")"
+    [[ -f "$CODE_UP_DIR/$name" ]] \
+      || die "${url%.git} isn't up${KONRAD_PROFILE:+ under --profile $KONRAD_PROFILE} — $(code_self) code up ${url%.git} starts it"
+    markers=("$CODE_UP_DIR/$name")
+  else
+    die "$usage"
+  fi
+  for f in "${markers[@]}"; do
+    url="$(sed -n 's/^url=//p' "$f")"
+    if code_up_stop "${f##*/}"; then
+      code_up_from_marker "$f" || failed+=" ${url%.git}"
+    else
+      failed+=" ${url%.git}"
+    fi
+  done
+  [[ -z "$failed" ]] || die "couldn't restart:$failed — the output above says why"
+  return 0
+}
+
+# konrad code down <git-url> | --all: stop the repo's up container, or every
+# marked repo's, and forget it, so `up --all` and a reboot leave it down.
 do_code_down() {
-  [[ $# -eq 1 && "$1" != -* ]] || die "usage: $SELF code down <git-url>"
-  local url vol name err
+  local usage="usage: $SELF code down <git-url>   ·   $SELF code down --all"
+  if [[ $# -eq 1 && "$1" == --all ]]; then
+    require_engine
+    local f url failed=""
+    local -a markers=()
+    while IFS= read -r f; do markers+=("$f"); done < <(code_up_markers)
+    (( ${#markers[@]} )) || { info "no repo is up — nothing to stop"; return 0; }
+    for f in "${markers[@]}"; do
+      url="$(sed -n 's/^url=//p' "$f")"
+      if code_up_stop "${f##*/}"; then
+        rm -f "$f"
+        step "${url%.git} is down"
+      else
+        failed+=" ${url%.git}"
+      fi
+    done
+    go "worktrees holding work stay in each clone's .claude/worktrees ($(code_self) code --shell <git-url> to look)"
+    [[ -z "$failed" ]] || die "couldn't stop:$failed — the output above says why"
+    return 0
+  fi
+  [[ $# -eq 1 && "$1" != -* ]] || die "$usage"
+  local url vol name
   url="$(code_normalize_url "$1")"
   vol="$(code_volume_name "$url")"
   [[ -n "$KONRAD_PROFILE" ]] && vol+="-$KONRAD_PROFILE"
@@ -3029,12 +3119,7 @@ do_code_down() {
     done
     return 0
   fi
-  if code_up_running "$name"; then
-    go "stopping $name (its sessions get 30 s to finish)"
-    eng_stop_container "$name" 30 || true
-  fi
-  err="$(eng_rm_container_checked "$name" 2>&1)" \
-    || die "couldn't remove $name: ${err##*$'\n'}"
+  code_up_stop "$name" || exit 1
   step "${url%.git} is down · worktrees holding work stay in the clone's .claude/worktrees ($(code_self) code --shell ${url%.git} to look)"
 }
 
@@ -4108,7 +4193,13 @@ Subcommands:
                         in this terminal.
   $self code up --all   Start every repo that should be up and isn't, as it was
                         started: for a host that restarts (see the README).
-  $self code down <git-url>   Stop it (worktrees holding work are kept).
+  $self code restart <git-url> | --all
+                        Recreate the repo's container, or every up repo's, with
+                        the flags it was started with, on the current image.
+                        Its sessions end; worktrees holding work are kept.
+  $self code down <git-url> | --all
+                        Stop it, or every up repo, and keep it down (worktrees
+                        holding work are kept).
   $self code ls               List the repos that are up.
   $self org add <git-url> [--name <n>] [--branch <b>]
                         Subscribe to an org config layer: clones the repo to

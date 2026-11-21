@@ -234,6 +234,81 @@ refresh() {
   done
 }
 
+# --- konrad code up's markers: up --all, restart, down --all ----------------------
+
+# Two marked repos, one under --profile p; the engine stubbed to log each stop,
+# removal and start to $HOME/calls (konrad captures a removal's own output).
+markers='mkdir -p "$CODE_UP_DIR"
+  printf "url=https://h/o/a.git\nprofile=\ncapacity=2\nnested=0\nkvm=0\nmemory=12g\narg=--verbose\n" > "$CODE_UP_DIR/konrad-up-h-o-a"
+  printf "url=https://h/o/b.git\nprofile=p\ncapacity=4\nnested=1\nkvm=1\n" > "$CODE_UP_DIR/konrad-up-h-o-b"
+  require_engine() { :; }
+  eng_container_ls() { printf "konrad-up-h-o-a\nkonrad-up-h-o-b\n"; }
+  code_up_running() { [[ "$1" != konrad-up-h-o-b ]]; }
+  eng_stop_container() { echo "stop $1" >> "$HOME/calls"; }
+  eng_rm_container_checked() { echo "rm $1" >> "$HOME/calls"; }
+  env() { echo "start $*" >> "$HOME/calls"; }'
+
+@test "code up --all: each marked repo starts as it was started" {
+  k "$markers"'; code_up_all; cat "$HOME/calls"'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"start KONRAD_MEMORY=12g _ code up --no-nested --capacity 2 https://h/o/a.git --verbose"* ]]
+  [[ "$output" == *"start _ --profile p code up --kvm --capacity 4 https://h/o/b.git"* ]]
+}
+
+@test "code up --all, restart --all and down --all: --profile narrows them to its repos" {
+  k "$markers"'; KONRAD_PROFILE=p; code_up_markers'
+  [ "$output" = "$HOME/.local/state/konrad/code-up/konrad-up-h-o-b" ]
+}
+
+@test "code restart --all: stops, removes and starts each repo, and keeps its marker" {
+  k "$markers"'; do_code_restart --all; cat "$HOME/calls"; ls "$CODE_UP_DIR"'
+  [ "$status" -eq 0 ]
+  # a is running: stopped, then removed; b is stopped already: only removed.
+  [[ "$output" == *"stop konrad-up-h-o-a"*"rm konrad-up-h-o-a"*"start KONRAD_MEMORY=12g"*"rm konrad-up-h-o-b"*"start _ --profile p"* ]]
+  [[ "$output" != *"stop konrad-up-h-o-b"* ]]
+  [[ "$output" == *konrad-up-h-o-a*konrad-up-h-o-b ]]
+}
+
+@test "code restart <url>: only that repo; one that isn't up is refused" {
+  k "$markers"'; do_code_restart https://h/o/a; cat "$HOME/calls"'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"rm konrad-up-h-o-a"* && "$output" != *konrad-up-h-o-b* ]]
+  k "$markers"'; do_code_restart https://h/o/c'
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"isn't up"*"code up https://h/o/c"* ]]
+  k "$markers"'; do_code_restart'
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"usage:"* ]]
+}
+
+@test "code restart: a container that can't be removed isn't started again, and fails the run" {
+  k "$markers"'; eng_rm_container_checked() { [[ "$1" != konrad-up-h-o-a ]] || { echo "Error: busy"; return 1; }; }
+     env() { echo "start $*"; }
+     do_code_restart --all'
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"couldn't remove konrad-up-h-o-a: Error: busy"* ]]
+  [[ "$output" == *"couldn't restart: https://h/o/a"* ]]
+  [[ "$output" != *"https://h/o/a.git --verbose"* ]]
+  [[ "$output" == *"start _ --profile p code up"* ]]
+}
+
+@test "code down --all: stops every repo and forgets it" {
+  k "$markers"'; do_code_down --all; cat "$HOME/calls"; ls -A "$CODE_UP_DIR"'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"stop konrad-up-h-o-a"*"rm konrad-up-h-o-a"*"rm konrad-up-h-o-b"* ]]
+  [[ "$output" != *start* ]]
+  [ -z "$(ls -A "$HOME/.local/state/konrad/code-up")" ]
+}
+
+@test "code down --all and restart --all with nothing up say so" {
+  k 'require_engine() { :; }; do_code_down --all'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"no repo is up"* ]]
+  k 'require_engine() { :; }; do_code_restart --all'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"no repo should be up"* ]]
+}
+
 # --- argument parsing (the real script, run as a command) ----------------------------------
 
 @test "update --check is gone, with a pointer to what replaces it" {
