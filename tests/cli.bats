@@ -29,6 +29,21 @@ load helpers
   [ "$output" = podman ]
 }
 
+@test "detect_engine: Podman containers log to a capped file, not journald" {
+  k 'KONRAD_ENGINE=podman; detect_engine; echo "${ENG_LOG_FLAGS[*]}"'
+  [ "$status" -eq 0 ]
+  [ "$output" = "--log-driver=k8s-file --log-opt=max-size=10mb" ]
+  k 'uname() { [[ "$1" == -s ]] && echo Linux || echo x86_64; }
+     detect_engine; echo "${ENG_LOG_FLAGS[*]}"'
+  [ "$output" = "--log-driver=k8s-file --log-opt=max-size=10mb" ]
+}
+
+@test "detect_engine: apple/container gets no log flags" {
+  k 'KONRAD_ENGINE=container; detect_engine; echo "[${ENG_LOG_FLAGS[*]+${ENG_LOG_FLAGS[*]}}]"'
+  [ "$status" -eq 0 ]
+  [ "$output" = "[]" ]
+}
+
 @test "detect_engine: an unknown KONRAD_ENGINE is refused" {
   k 'KONRAD_ENGINE=docker; detect_engine'
   [ "$status" -ne 0 ]

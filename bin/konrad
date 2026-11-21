@@ -327,6 +327,7 @@ WORKSPACE_GUARD_ENTRIES=(.git .githooks .husky .vscode .devcontainer .claude .mc
 # `podman pull`, `container delete` vs `podman rm`, JSON-only inspect, no
 # `--userns`, no `:z`/`:U`/`:ro` mount suffixes).
 KONRAD_ENGINE="${KONRAD_ENGINE:-}"
+ENG_LOG_FLAGS=()   # set with the engine (detect_engine)
 # opencode's loopback port for the remote-MCP OAuth callback. `konrad mcp-auth`
 # publishes it to the host so the post-approval redirect reaches the sandbox.
 # opencode uses a fixed port today; env-overridable if that changes.
@@ -364,15 +365,23 @@ _pull_arch() {
 detect_engine() {
   if [[ -n "$KONRAD_ENGINE" ]]; then
     case "$KONRAD_ENGINE" in
-      podman|container) return 0 ;;
+      podman|container) ;;
       *) die "KONRAD_ENGINE must be 'podman' or 'container' (got '$KONRAD_ENGINE')." ;;
     esac
-  fi
-  if [[ "$(uname -s)" == "Darwin" ]]; then
+  elif [[ "$(uname -s)" == "Darwin" ]]; then
     KONRAD_ENGINE="container"
   else
     KONRAD_ENGINE="podman"
   fi
+  # Every container konrad starts logs to a file capped at 10 MB, not to
+  # Podman's default, journald: konrad's containers print a terminal UI, and
+  # each redraw became a journal entry, enough for a busy up container to push
+  # the host's own services out of its journal. `podman logs` reads the file
+  # the same way. Per run, so the host's default for its other containers
+  # stays. apple/container takes no such flag.
+  ENG_LOG_FLAGS=()
+  [[ "$KONRAD_ENGINE" == podman ]] && ENG_LOG_FLAGS=(--log-driver=k8s-file --log-opt=max-size=10mb)
+  return 0
 }
 
 # True when the selected engine's service is reachable.
@@ -1281,6 +1290,7 @@ fw_setup() {
   fi
 
   "$KONRAD_ENGINE" run -d --rm --name "$FW_PROXY_NAME" --init \
+    ${ENG_LOG_FLAGS[@]+"${ENG_LOG_FLAGS[@]}"} \
     "${fw_net_args[@]}" \
     ${KR_HARDEN_FLAGS[@]+"${KR_HARDEN_FLAGS[@]}"} \
     ${fw_alias_flags[@]+"${fw_alias_flags[@]}"} \
@@ -1635,6 +1645,7 @@ EOF
   local -a run_cmd=(
     "$KONRAD_ENGINE" run
     --rm ${tty_flags[@]+"${tty_flags[@]}"} --init --name "konrad-$$"
+    ${ENG_LOG_FLAGS[@]+"${ENG_LOG_FLAGS[@]}"}
     ${userns_flags[@]+"${userns_flags[@]}"}
     ${seal_flags[@]+"${seal_flags[@]}"}
     ${net_flags[@]+"${net_flags[@]}"}
@@ -3389,6 +3400,7 @@ code_launch() {
   [[ "$mode" == up ]] && attach_flags=(-d)
   local -a run_cmd=(
     "$KONRAD_ENGINE" run "${attach_flags[@]}" --name "$cname"
+    ${ENG_LOG_FLAGS[@]+"${ENG_LOG_FLAGS[@]}"}
     ${CODE_HOSTNAME_FLAGS[@]+"${CODE_HOSTNAME_FLAGS[@]}"}
     "${init_flags[@]}"
     "${priv_flags[@]}"
