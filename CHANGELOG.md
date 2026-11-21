@@ -9,6 +9,16 @@ All notable, user-facing changes to konrad. The format follows [Keep a Changelog
 
 Each section after 0.40.0 is written by CI from the commits it releases: every `feat`, `fix` and `perf` commit, as its subject and the first paragraph of its body (see [Commit style](CONTRIBUTING.md#commit-style)). The *why* lives in those commits and in [ARCHITECTURE.md](ARCHITECTURE.md). Each image build publishes as `:0.X` (minor line), `:latest`, and an immutable `:<short-sha>` (see the [image tags](CONTRIBUTING.md#image-tags)).
 
+## [0.44.0] - 2026-11-21
+
+### Added
+
+- **konrad code restart and down --all.** `konrad code restart <git-url>` recreates a repo's container with the flags it was started with, on the image you have now, and keeps it up: run it after `konrad update` so a repo that stays up gets the update. `konrad code restart --all` does that for every repo that's up, and `konrad code down --all` stops them all and keeps them down. Like `down`, a restart ends the sessions running in the repo; worktrees holding work stay.
+
+### Fixed
+
+- **konrad's containers no longer fill the system journal on Linux.** On Linux, every container konrad starts now keeps its output in a log file of at most 10 MB instead of the system journal. A repo kept up with `konrad code up` printed a status line many times a minute, and each one landed in the journal, crowding out the logs of everything else on the machine. `podman logs <container>` shows the log as before. A repo that's already up keeps logging to the journal until its container is recreated (`konrad code restart <git-url>`).
+
 ## [0.43.0] - 2026-10-30
 
 ### Added
