@@ -58,6 +58,7 @@
   "cloudflare-workers-ai": "api.cloudflare.com",
   "cohere": "api.cohere.com",
   "commandcode": "api.commandcode.ai",
+  "concentrate": "api.concentrate.ai",
   "confidential-ai": "api.confidential.ai",
   "coralbricks": "inference.coralbricks.ai",
   "cortecs": "api.cortecs.ai",

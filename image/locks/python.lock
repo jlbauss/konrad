@@ -15,11 +15,11 @@ dill==0.4.1
 doclang==0.10.1
 docling-core==2.108.0
 docling-ibm-models==4.0.4
-docling-parse==7.27.0
+docling-parse==7.27.1
 docling-slim==2.151.1
 et-xmlfile==2.0.0
 faker==40.63.0
-filelock==4.2.12
+filelock==4.3.0
 filetype==1.2.0
 flatbuffers==25.12.19
 fsspec==2026.9.0
@@ -111,4 +111,4 @@ typing-inspection==0.4.5
 tzdata==2026.6
 urllib3==2.8.0
 websockets==17.4
-xlsxwriter==3.3.3
+xlsxwriter==3.3.4
