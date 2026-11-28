@@ -256,6 +256,7 @@
   "teapot-router": "api.teapotrouter.com",
   "tencent-coding-plan": "api.lkeap.cloud.tencent.com",
   "tencent-token-plan": "tokenhub.tencentmaas.com",
+  "tencent-token-plan-intl": "tokenhub-intl.tencentcloudmaas.com",
   "tencent-tokenhub": "tokenhub.tencentmaas.com",
   "tensorx": "api.tensorx.ai",
   "tenstorrent": "console.tenstorrent.com",
